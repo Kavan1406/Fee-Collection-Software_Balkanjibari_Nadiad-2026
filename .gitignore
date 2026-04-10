@@ -1,0 +1,63 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files
+.env*
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+.vercel
+
+# Backup and data dump files
+*.tar.gz
+*.zip
+*.json
+*.pdf
+*_backup.json
+*_backup_*.json
+supabase_full_backup.json
+full_data_backup*.json
+datadump.json
+db_backup.json
+
+# Log files
+*.log
+*.txt
+emergency_error.log
+incoming_debug.log
+
+# Debug/diagnostic scripts
+debug_*.py
+step_redirect.py
+parse_error.py
+fetch_live_error.py
+set_*.py
+load_to_render.py
+run_loaddata.py
+run_migrate.py
+fix_admin.py
+backup_script.py
+.env*.local
+
+# System files
+.DS_Store
+Thumbs.db
