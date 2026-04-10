@@ -126,7 +126,6 @@ export default function RegisterPage() {
     phone: '',
     email: '',
     address: '',
-    area: '',
     city: '',
     pincode: '',
   })
@@ -299,7 +298,6 @@ export default function RegisterPage() {
     if (!/^\d{10}$/.test(form.phone)) return 'Please enter a valid 10-digit mobile number.'
     // Email is now optional, but validate format if provided
     if (form.email && !/\S+@\S+\.\S+/.test(form.email)) return 'Please enter a valid email address format.'
-    if (!form.area.trim()) return 'Area/Neighborhood is required.'
     if (!form.address.trim()) return 'Full address is required.'
     if (!form.city.trim()) return 'City/Village name is required.'
     if (!/^\d{6}$/.test(form.pincode)) return 'Please enter a valid 6-digit pincode.'
@@ -324,11 +322,10 @@ export default function RegisterPage() {
       })())
       fd.append('age', form.age)
       fd.append('gender', form.gender)
-      fd.append('phone', form.phone)
-      fd.append('email', form.email)
-      fd.append('address', form.address)
-      fd.append('area', form.area)
-      fd.append('city', form.city)
+      fd.append('phone', form.phone.trim())
+      fd.append('email', form.email.trim())
+      fd.append('address', form.address.trim())
+      fd.append('city', form.city.trim())
       fd.append('pincode', form.pincode)
       fd.append('enrollment_date', (() => {
         const t = new Date()
@@ -711,15 +708,6 @@ export default function RegisterPage() {
                   />
                 </div>
                 <div>
-                  <label className={labelCls}>Area / Neighborhood <span className="text-red-500">*</span></label>
-                  <input
-                    className={inputCls}
-                    placeholder="e.g. Vaniavad, Mission Area..."
-                    value={form.area}
-                    onChange={e => setForm({ ...form, area: e.target.value })}
-                  />
-                </div>
-                <div>
                   <label className={labelCls}>Email Address <span className="text-red-500">*</span></label>
                   <input
                     type="email"
@@ -763,57 +751,7 @@ export default function RegisterPage() {
             </div>
 
 
-            {/* ---- Subjects Overview (Confirm Details) ---- */}
-            <div className="mb-8 overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
-              <div className="bg-slate-50 dark:bg-slate-800/50 px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-                <h3 className="font-poppins font-bold text-slate-800 dark:text-white text-sm uppercase tracking-wider flex items-center gap-2">
-                  <BookOpen size={16} className="text-primary" /> Summer Camp Subject Schedule
-                </h3>
-                <button 
-                  onClick={(e) => { e.preventDefault(); fetchSubjects(); toast.success('Subject details updated.') }}
-                  className="flex items-center gap-1.5 px-3 py-1 bg-white dark:bg-slate-800 hover:bg-slate-100 border border-slate-200 dark:border-slate-700 rounded-lg text-[10px] font-black text-slate-500 transition-all uppercase"
-                >
-                  <Plus size={10} className="rotate-45" /> Refresh Data
-                </button>
-              </div>
-              <div className="overflow-x-auto max-h-[300px] overflow-y-auto custom-scrollbar">
-                <table className="w-full text-left border-collapse">
-                  <thead className="sticky top-0 bg-slate-50 dark:bg-slate-800 z-10">
-                    <tr className="border-b border-slate-200 dark:border-slate-800">
-                      <th className="px-4 py-2 text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase">Subject</th>
-                      <th className="px-4 py-2 text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase">Batch Time</th>
-                      <th className="px-4 py-2 text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase text-center">Fee</th>
-                      <th className="px-4 py-2 text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase text-right">Availability</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {subjects.filter(s => s.activity_type === 'SUMMER_CAMP').map((s) => {
-                      const isFull = s.enrolled_count >= s.max_seats
-                      const fee = s.current_fee ? s.current_fee.amount : s.monthly_fee || '0'
-                      return (
-                        <tr key={s.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors">
-                          <td className="px-4 py-3 text-[13px] font-bold text-slate-700 dark:text-slate-200">{s.name}</td>
-                          <td className="px-4 py-3 text-[12px] text-slate-500 dark:text-slate-400">{s.default_batch_timing}</td>
-                          <td className="px-4 py-3 text-[13px] font-black text-blue-600 dark:text-indigo-400 text-center">₹{parseFloat(fee).toFixed(0)}</td>
-                          <td className="px-4 py-3 text-right">
-                            {isFull ? (
-                              <span className="px-2 py-0.5 bg-rose-500 text-white text-[10px] font-black rounded uppercase">FULL</span>
-                            ) : (
-                              <div className="flex flex-col items-end">
-                                <span className="text-[11px] font-black text-emerald-500 dark:text-emerald-400">
-                                  {s.max_seats - s.enrolled_count} LEFT
-                                </span>
-                                <span className="text-[9px] font-medium text-slate-400 dark:text-slate-500 uppercase">Limit: {s.max_seats}</span>
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+
 
             {/* ---- Subject Selection ---- */}
             <div>
@@ -887,13 +825,12 @@ export default function RegisterPage() {
                               {summerCamp.length > 0 && (
                                 <optgroup label="☀️ Summer Camp 2026">
                                   {summerCamp.map(s => {
-                                    const isFull = s.enrolled_count >= s.max_seats
                                     const fee = s.current_fee
                                       ? `₹${s.current_fee.amount}`
                                       : s.monthly_fee ? `₹${s.monthly_fee}` : ''
                                     return (
-                                      <option key={s.id} value={s.id} disabled={isFull}>
-                                        {s.name} {isFull ? '(SEATS FULL)' : ` — ${fee}`}
+                                      <option key={s.id} value={s.id}>
+                                        {s.name} — {fee}
                                       </option>
                                     )
                                   })}

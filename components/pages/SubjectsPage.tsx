@@ -153,12 +153,61 @@ export default function SubjectsPage({ userRole, canEdit }: SubjectsPageProps) {
               setEditingSubject(null)
               resetForm()
             }}
-            className="btn-standard"
+            className="btn-standard transition-all hover:scale-105 active:scale-95 bg-indigo-600 text-white flex items-center gap-2 px-5 py-2.5 rounded-xl font-poppins font-bold text-sm shadow-lg shadow-indigo-500/20"
           >
             <Plus size={18} />
             <span>Add Subject</span>
           </button>
         )}
+      </div>
+      
+      {/* ---- Subjects Overview (Schedule View) ---- */}
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+          <h3 className="font-poppins font-bold text-slate-800 text-sm uppercase tracking-wider flex items-center gap-2">
+            <BookOpen size={16} className="text-indigo-600" /> Summer Camp Subject Schedule
+          </h3>
+          <button 
+            onClick={() => fetchSubjects()}
+            className="flex items-center gap-1.5 px-3 py-1 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-black text-slate-500 transition-all uppercase"
+          >
+            <Plus size={10} className="rotate-45" /> Refresh Data
+          </button>
+        </div>
+        <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+          <table className="w-full text-left border-collapse">
+            <thead className="sticky top-0 bg-slate-50 z-10">
+              <tr className="border-b border-slate-200">
+                <th className="px-4 py-2 text-[11px] font-black text-slate-400 uppercase">Subject</th>
+                <th className="px-4 py-2 text-[11px] font-black text-slate-400 uppercase">Batch Time</th>
+                <th className="px-4 py-2 text-[11px] font-black text-slate-400 uppercase text-center">Fee</th>
+                <th className="px-4 py-2 text-[11px] font-black text-slate-400 uppercase text-right">Availability</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {subjects.filter((s: any) => s.activity_type === 'SUMMER_CAMP').map((s: any) => {
+                const isFull = s.enrolled_count >= s.max_seats
+                const fee = s.current_fee ? s.current_fee.amount : s.monthly_fee || '0'
+                return (
+                  <tr key={s.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-4 py-3 text-[13px] font-bold text-slate-700">{s.name}</td>
+                    <td className="px-4 py-3 text-[12px] text-slate-500">{s.default_batch_timing}</td>
+                    <td className="px-4 py-3 text-[13px] font-black text-indigo-600 text-center">₹{parseFloat(fee).toFixed(0)}</td>
+                    <td className="px-4 py-3 text-right">
+                      {isFull ? (
+                        <span className="px-2 py-0.5 bg-rose-500 text-white text-[9px] font-black rounded uppercase">FULL</span>
+                      ) : (
+                        <span className="text-[11px] font-bold text-emerald-500">
+                          {s.max_seats - (s.enrolled_count || 0)} / {s.max_seats} LEFT
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Error Display */}
