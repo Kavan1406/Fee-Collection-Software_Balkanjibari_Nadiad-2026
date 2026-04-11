@@ -24,7 +24,6 @@ class Subject(models.Model):
     
     ACTIVITY_TYPE_CHOICES = [
         ('SUMMER_CAMP', 'Summer Camp'),
-        ('YEAR_ROUND', 'Year-Round Activity'),
     ]
     
     name = models.CharField(max_length=100, unique=True)

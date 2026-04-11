@@ -415,8 +415,8 @@ def confirm_registration_payment(request):
 
 
 def _send_registration_email(student, enrolled_subjects, receipt_token=None):
-    """Send confirmation email matching User Template."""
-    from django.core.mail import send_mail
+    """Send confirmation email with fee receipt PDF attached."""
+    from django.core.mail import EmailMessage
     from django.conf import settings
 
     subjects_text = ', '.join(s['subject'] for s in enrolled_subjects)
@@ -430,7 +430,10 @@ Student ID: {student.student_id}
 Username:   {student.login_username}
 Password:   {student.login_password_hint}
 Subjects: {subjects_text}
-Thanks for enrolling in Summer Camp 2026!"""
+Thanks for enrolling in Summer Camp 2026!
+
+Your fee receipt is attached to this email as a PDF."""
+
     if not student.email:
         print("\n" + "="*50)
         print("SIMULATED SMS NOTIFICATION (No Email Provided)")
@@ -440,15 +443,37 @@ Thanks for enrolling in Summer Camp 2026!"""
         print("="*50 + "\n")
         return
 
+    # Generate the fee receipt PDF
+    pdf_bytes = None
     try:
-        send_mail(
+        from utils.registration_receipt import generate_receipt_pdf
+        # Extract order_id from enrolled payments
+        from apps.payments.models import Payment
+        latest_payment = Payment.objects.filter(
+            enrollment__student=student,
+            status='SUCCESS'
+        ).order_by('-payment_date').first()
+        order_id = latest_payment.razorpay_order_id if latest_payment else None
+        pdf_bytes = generate_receipt_pdf(student, order_id)
+    except Exception as e:
+        print(f"[EMAIL] Could not generate receipt PDF for attachment: {e}")
+
+    try:
+        email = EmailMessage(
             subject='Welcome to Balkanji Bari — Your Login Details',
-            message=message.strip(),
+            body=message.strip(),
             from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'info@balkanjibari.org'),
-            recipient_list=[student.email],
-            fail_silently=False, 
+            to=[student.email],
         )
-        print(f"[EMAIL] Confirmation sent to {student.email}")
+
+        # Attach the fee receipt PDF if generated successfully
+        if pdf_bytes:
+            safe_name = ''.join(c if c.isalnum() else '_' for c in student.name)
+            filename = f"FeeReceipt_{safe_name}_{student.student_id}.pdf"
+            email.attach(filename, pdf_bytes, 'application/pdf')
+
+        email.send(fail_silently=False)
+        print(f"[EMAIL] Confirmation with receipt PDF sent to {student.email}")
     except Exception as e:
         print(f"[EMAIL] Error: {e}")
         # Log error but don't crash registration if smtp fails

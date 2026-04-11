@@ -166,14 +166,11 @@ def generate_id_card_pdf(enrollment, is_provisional=False):
         lib_y = fields_y - (5 * line_spacing)
         c.setFont("Helvetica-Bold", 7.5)
         c.setFillColor(black)
-        c.drawString(label_x, lib_y, "LIBRARY ACCESS: 2026 Valid")
+        c.drawString(label_x, lib_y, "LIBRARY ACCESS: 2026-27 Valid")
 
-        # === FOOTER / PRESIDENT SIGNATURE ===
+        # === FOOTER / AUTHORITY SIGNATURE ===
         c.setFont("Helvetica", 6)
-        c.drawString(cx + CARD_W - 35*mm, cy + 4*mm, "President :")
-        
-        if os.path.exists(sig_path):
-            c.drawImage(sig_path, cx + CARD_W - 22*mm, cy + 3*mm, width=15*mm, height=5*mm, mask='auto', preserveAspectRatio=True)
+        c.drawString(cx + CARD_W - 35*mm, cy + 4*mm, "Authority Sign:")
         
         c.setLineWidth(0.5)
         c.line(cx + CARD_W - 22*mm, cy + 3.5*mm, cx + CARD_W - 6*mm, cy + 3.5*mm)

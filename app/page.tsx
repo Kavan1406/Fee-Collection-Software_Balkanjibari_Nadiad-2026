@@ -123,7 +123,7 @@ export default function LandingPage() {
                   <p className="text-blue-300 dark:text-slate-600 font-semibold text-sm italic">Visit: April 15th - April 25th</p>
                   <p className="text-primary font-bold text-sm tracking-wide bg-primary/10 dark:bg-primary/5 py-1 px-3 rounded-md inline-block">5:00 PM – 7:00 PM</p>
                   <p className="text-slate-400 dark:text-slate-500 text-[13px] leading-relaxed border-t border-white/10 dark:border-slate-200 pt-3 mt-3">
-                    રોકડ ચૂકવણી દ્વારા પ્રવેશ માટે, ૧૫ થી ૨૫ એપ્રિલ દરમિયાન સાંજે ૫:૦૦ થી ૭:૦૦ વાગ્યા સુધી બાળકાંજી ની બારી, નડિયાદ ઓફિસમાં રૂબરૂ આવવું.
+                    રોકડ ચૂકવણી દ્વારા પ્રવેશ માટે, ૧૫ થી ૨૫ એપ્રિલ દરમિયાન સાંજે ૫:૦૦ થી ૭:૦૦ વાગ્યા સુધી બાળકાંજી બારી, નડિયાદ ઓફિસમાં રૂબરૂ આવવું.
                   </p>
                 </div>
               </div>
@@ -137,7 +137,7 @@ export default function LandingPage() {
                 <div className="space-y-3">
                   <p className="text-slate-300 dark:text-slate-600 text-sm leading-relaxed">Need help with the form? Visit the office for assistance.</p>
                   <p className="text-slate-400 dark:text-slate-500 text-[13px] leading-relaxed border-t border-white/10 dark:border-slate-200 pt-3 mt-3">
-                    ઓનલાઈન ફોર્મ ભરવામાં મદદ જોઈતી હોય તેવા વિદ્યાર્થીઓ પણ ઉક્ત સમય દરમિયાન ઓફિસની મુલાકાત લઈ શકે છે.
+                    ઓનલાઈન ફોર્મ ભરવામાં મદદ જોઈતી હોય તેવા વિદ્યાર્થીઓ પણ ઉપરોક્ત સમય દરમિયાન ઓફિસની મુલાકાત લઈ શકે છે.
                   </p>
                 </div>
               </div>
@@ -201,7 +201,7 @@ export default function LandingPage() {
                         </div>
                         <div>
                           <p className="text-[10px] font-bold uppercase text-blue-400 dark:text-blue-500 tracking-widest leading-none mb-1">Coordinator</p>
-                          <p className="font-bold text-sm text-white dark:text-slate-800">Prajeshbhai: 9898555933</p>
+                          <p className="font-bold text-sm text-white dark:text-slate-800">Pragneshbhai: 9898555933</p>
                         </div>
                       </div>
                       <a href="tel:9898555933" className="px-5 py-2 bg-blue-500/10 hover:bg-blue-500 text-blue-300 dark:text-blue-600 hover:text-white text-[11px] font-bold rounded-full transition-all border border-blue-400/20">
@@ -230,24 +230,7 @@ export default function LandingPage() {
                   </div>
                 </div>
 
-                {/* Office Hours */}
-                <div className="pt-6 border-t border-slate-200 dark:border-white/10 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-black uppercase text-blue-600 dark:text-blue-300">Office Hours</p>
-                    <div className="px-3 py-1 bg-primary/10 text-blue-600 dark:text-blue-300 rounded-full text-[12px] font-bold uppercase tracking-tighter transition-all group-hover:bg-primary/20">Mon – Sat</div>
-                  </div>
 
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-base bg-slate-100 dark:bg-white/5 p-3 rounded-xl border border-slate-200 dark:border-white/5">
-                      <p className="font-bold text-slate-500 dark:text-slate-400 uppercase text-[11px] tracking-wider">Morning</p>
-                      <p className="font-bold text-slate-800 dark:text-white text-xl">10:00 AM - 12:00 PM</p>
-                    </div>
-                    <div className="flex items-center justify-between text-base bg-slate-100 dark:bg-white/5 p-3 rounded-xl border border-slate-200 dark:border-white/5">
-                      <p className="font-bold text-slate-500 dark:text-slate-400 uppercase text-[11px] tracking-wider">Evening</p>
-                      <p className="font-bold text-slate-800 dark:text-white text-xl">05:00 PM - 08:00 PM</p>
-                    </div>
-                  </div>
-                </div>
 
               </div>
             </div>

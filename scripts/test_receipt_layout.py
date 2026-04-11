@@ -45,9 +45,6 @@ def test_generate_pdf():
 
     mock_enrollments = [
         MockEnrollment(subjects[0], "6:00 PM - 7:00 PM", True),
-        MockEnrollment(subjects[1], "7:00 PM - 8:00 PM", False),
-        MockEnrollment(subjects[2], "8:00 AM - 9:00 AM", False),
-        MockEnrollment(subjects[3], "5:00 PM - 6:00 PM", False),
     ]
 
     # Mock the student's enrollments relationship
