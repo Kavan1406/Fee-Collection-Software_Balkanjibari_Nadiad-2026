@@ -41,6 +41,7 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
 # CORS Hardening
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGINS = [
     'https://balkanji-bari-dashboard.vercel.app',
     'https://fee-collection-software-balkanjibari-nadiad-2026.vercel.app',
     'https://admin-student-dashboard-ui.vercel.app',
