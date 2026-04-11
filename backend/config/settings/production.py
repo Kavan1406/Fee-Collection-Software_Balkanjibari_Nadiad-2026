@@ -14,6 +14,7 @@ ALLOWED_HOSTS = [
     'balkanji-backend.onrender.com',
     'balkanji-bari-dashboard.vercel.app',
     'fee-collection-software-balkanjibari-nadiad-2026.vercel.app',
+    'fee-collection-software-balkanjibar.vercel.app',
     'admin-student-dashboard-ui.vercel.app',
     'localhost',
     '127.0.0.1',
@@ -44,6 +45,7 @@ CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [
     'https://balkanji-bari-dashboard.vercel.app',
     'https://fee-collection-software-balkanjibari-nadiad-2026.vercel.app',
+    'https://fee-collection-software-balkanjibar.vercel.app',
     'https://admin-student-dashboard-ui.vercel.app',
     'https://balkanji-backend-ai5a.onrender.com',
     'https://balkanji-backend.onrender.com',
@@ -59,6 +61,7 @@ CORS_ALLOWED_ORIGIN_REGEXES = [
 CSRF_TRUSTED_ORIGINS = [
     'https://balkanji-bari-dashboard.vercel.app',
     'https://fee-collection-software-balkanjibari-nadiad-2026.vercel.app',
+    'https://fee-collection-software-balkanjibar.vercel.app',
     'https://admin-student-dashboard-ui.vercel.app',
     'https://balkanji-backend-ai5a.onrender.com',
     'https://balkanji-backend.onrender.com',
