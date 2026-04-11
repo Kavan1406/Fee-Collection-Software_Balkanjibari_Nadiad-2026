@@ -14,6 +14,7 @@ import hashlib
 import secrets
 import string
 import time
+import threading
 from decimal import Decimal
 from django.db import OperationalError
 
@@ -457,10 +458,17 @@ def confirm_registration_payment(request):
         f"{student.student_id}:{razorpay_order_id}".encode()
     ).decode()
 
-    # --- Send confirmation email (Live SMTP) ---
+    # --- Send confirmation email in BACKGROUND to prevent timeout ---
     try:
-        _send_registration_email(student, enrolled_subjects, receipt_token)
+        email_thread = threading.Thread(
+            target=_send_registration_email,
+            args=(student, enrolled_subjects, receipt_token)
+        )
+        email_thread.daemon = True  # Don't block process exit
+        email_thread.start()
+        print(f"[THREAD] Started background email task for {student.student_id}")
     except Exception as e:
+        print(f"[THREAD] Failed to start email thread: {e}")
         print(f"[EMAIL] Failed to send registration confirmation: {e}")
 
     return Response({
