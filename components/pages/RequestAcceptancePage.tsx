@@ -110,11 +110,11 @@ export default function RequestAcceptancePage() {
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Ready for Print</p>
             <p className="text-2xl font-black text-emerald-600 font-poppins">{requests.length} Students</p>
          </div>
-         <div className="card-standard p-6 bg-slate-900 border-none">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Cashier Status</p>
+         <div className="card-standard p-6 border-l-4 border-emerald-500 bg-white dark:bg-slate-900">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 font-inter">Cashier Status</p>
             <div className="flex items-center gap-2 mt-1">
-               <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-               <p className="text-lg font-black text-white font-poppins">Online</p>
+               <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+               <p className="text-2xl font-black text-slate-900 dark:text-emerald-400 font-poppins capitalize">Online</p>
             </div>
          </div>
       </div>

@@ -5,7 +5,11 @@ import { AlertCircle, Eye, EyeOff, UserPlus } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useRouter } from 'next/navigation'
 
-export default function LoginPage() {
+interface LoginPageProps {
+  showRegistration?: boolean
+}
+
+export default function LoginPage({ showRegistration = true }: LoginPageProps) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -146,50 +150,58 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Divider */}
-          <div className="flex items-center gap-3 my-5">
-            <div className="flex-1 h-px bg-gray-200" />
-            <span className="text-gray-400 text-xs uppercase tracking-widest">or</span>
-            <div className="flex-1 h-px bg-gray-200" />
-          </div>
+          {showRegistration && (
+            <>
+              {/* Divider */}
+              <div className="flex items-center gap-3 my-5">
+                <div className="flex-1 h-px bg-gray-200" />
+                <span className="text-gray-400 text-xs uppercase tracking-widest">or</span>
+                <div className="flex-1 h-px bg-gray-200" />
+              </div>
 
-          {/* New Student Registration Button */}
-          <button
-            onClick={() => router.push('/register')}
-            className="w-full btn-standard border-2 border-indigo-200 bg-indigo-50/10 text-indigo-600 hover:bg-indigo-50"
-          >
-            <UserPlus size={18} />
-            New Student Registration
-          </button>
+              {/* New Student Registration Button */}
+              <button
+                onClick={() => router.push('/register')}
+                className="w-full btn-standard border-2 border-indigo-200 bg-indigo-50/10 text-indigo-600 hover:bg-indigo-50"
+              >
+                <UserPlus size={18} />
+                New Student Registration
+              </button>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Cash Payment Notice (Wide Horizontal Banner) */}
-      <div className="mt-8 w-full max-w-5xl animate-in fade-in slide-in-from-bottom-4 duration-700">
-        <div className="p-6 rounded-[24px] border border-red-200 bg-red-50/50 dark:bg-rose-950/20 dark:border-rose-900/50 shadow-sm relative overflow-hidden group">
-          <div className="flex flex-col lg:flex-row items-center lg:items-start gap-6 relative z-10 transition-transform duration-500">
-            <div className="w-12 h-12 rounded-full bg-rose-100 dark:bg-rose-900/50 flex items-center justify-center shrink-0 border border-rose-200/50">
-              <AlertCircle className="text-rose-600 dark:text-rose-400" size={24} />
-            </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-12 flex-1">
-              <div className="space-y-2">
-                <p className="text-[10px] font-bold text-rose-400 uppercase tracking-widest pl-0.5 font-poppins">Instruction</p>
-                <p className="text-rose-900 dark:text-rose-200 text-[13.5px] font-medium leading-relaxed text-center lg:text-left font-inter">
-                  For admission through cash payment, you have to visit the <span className="text-rose-600 font-semibold decoration-rose-500/30 underline-offset-4 decoration-2">Balkanji Ni Bari, Nadiad</span> office between <strong>15 April to 25 April</strong> during <strong>5:00 PM to 7:00 PM</strong> for filling the online form with cash. Students who need help filling the online form may also visit the office during the same hours.
-                </p>
+      {showRegistration && (
+        <>
+          {/* Cash Payment Notice (Wide Horizontal Banner) */}
+          <div className="mt-8 w-full max-w-5xl animate-in fade-in slide-in-from-bottom-4 duration-700">
+            <div className="p-6 rounded-[24px] border border-red-200 bg-red-50/50 dark:bg-rose-950/20 dark:border-rose-900/50 shadow-sm relative overflow-hidden group">
+              <div className="flex flex-col lg:flex-row items-center lg:items-start gap-6 relative z-10 transition-transform duration-500">
+                <div className="w-12 h-12 rounded-full bg-rose-100 dark:bg-rose-900/50 flex items-center justify-center shrink-0 border border-rose-200/50">
+                  <AlertCircle className="text-rose-600 dark:text-rose-400" size={24} />
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-12 flex-1">
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-bold text-rose-400 uppercase tracking-widest pl-0.5 font-poppins">Instruction</p>
+                    <p className="text-rose-900 dark:text-rose-200 text-[13.5px] font-medium leading-relaxed text-center lg:text-left font-inter">
+                      For admission through cash payment, you have to visit the <span className="text-rose-600 font-semibold decoration-rose-500/30 underline-offset-4 decoration-2">Balkanji Ni Bari, Nadiad</span> office between <strong>15 April to 25 April</strong> during <strong>5:00 PM to 7:00 PM</strong> for filling the online form with cash. Students who need help filling the online form may also visit the office during the same hours.
+                    </p>
+                  </div>
+                  <div className="space-y-2 border-t lg:border-t-0 lg:border-l border-rose-200/50 pt-6 lg:pt-0 lg:pl-12">
+                    <p className="text-[10px] font-bold text-rose-400 uppercase tracking-widest pl-0.5 font-poppins">સૂચના</p>
+                    <p className="text-rose-900 dark:text-rose-200 text-[13.5px] font-medium leading-relaxed text-center lg:text-left font-inter" lang="gu">
+                      રોકડ ચૂકવણી દ્વારા પ્રવેશ માટે, <span className="text-rose-600 font-semibold">૧૫ એપ્રિલ થી ૨૫ એપ્રિલ</span> દરમિયાન <span className="font-semibold">સાંજે ૫:૦૦ થી ૭:૦૦ વાગ્યા</span> સુધી બાળકાંજી ની બારી, નડિયાદ ઓફિસમાં રૂબરૂ આવવું. ઓનલાઈન ફોર્મ ભરવામાં मदद જોઈતી હોય તેવા વિદ્યાર્થીઓ પણ ઉક્ત સમય દરમિયાન ઓફિસની મુલાકાત લઈ શકે છે.
+                    </p>
+                  </div>
+                </div>
               </div>
-              <div className="space-y-2 border-t lg:border-t-0 lg:border-l border-rose-200/50 pt-6 lg:pt-0 lg:pl-12">
-                <p className="text-[10px] font-bold text-rose-400 uppercase tracking-widest pl-0.5 font-poppins">સૂચના</p>
-                <p className="text-rose-900 dark:text-rose-200 text-[13.5px] font-medium leading-relaxed text-center lg:text-left font-inter" lang="gu">
-                  રોકડ ચૂકવણી દ્વારા પ્રવેશ માટે, <span className="text-rose-600 font-semibold">૧૫ એપ્રિલ થી ૨૫ એપ્રિલ</span> દરમિયાન <span className="font-semibold">સાંજે ૫:૦૦ થી ૭:૦૦ વાગ્યા</span> સુધી બાળકાંજી ની બારી, નડિયાદ ઓફિસમાં રૂબરૂ આવવું. ઓનલાઈન ફોર્મ ભરવામાં मदद જોઈતી હોય તેવા વિદ્યાર્થીઓ પણ ઉક્ત સમય દરમિયાન ઓફિસની મુલાકાત લઈ શકે છે.
-                </p>
-              </div>
+              {/* Subtle radial glow background decoration */}
+              <div className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/2 w-64 h-64 bg-rose-200/20 rounded-full blur-3xl pointer-events-none" />
             </div>
           </div>
-          {/* Subtle radial glow background decoration */}
-          <div className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/2 w-64 h-64 bg-rose-200/20 rounded-full blur-3xl pointer-events-none" />
-        </div>
-      </div>
+        </>
+      )}
 
       {/* Footer */}
       <p className="text-center text-gray-400 text-xs mt-8 font-inter">

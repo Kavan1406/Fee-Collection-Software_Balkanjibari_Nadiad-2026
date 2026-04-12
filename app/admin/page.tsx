@@ -11,7 +11,7 @@ export default function AdminPage() {
   const router = typeof window !== 'undefined' ? require('next/navigation').useRouter() : null
 
   if (!isLoading && !isAuthenticated) {
-    return <LoginPage />
+    return <LoginPage showRegistration={false} />
   }
 
   // Security: If Student, redirect to student dashboard
