@@ -6,6 +6,7 @@ import { studentsApi, subjectsApi, enrollmentsApi, paymentsApi, Student, CreateS
 import { API_BASE_URL, getMediaUrl } from '@/lib/api/client'
 import { useNotifications } from '@/hooks/useNotifications'
 import StudentProfileView from './StudentProfileView'
+import { SkeletonTable } from '@/components/Skeleton'
 
 interface StudentsPageProps {
   userRole: 'admin' | 'staff' | 'student' | 'accountant'
@@ -160,6 +161,7 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
   const [lastCreatedId, setLastCreatedId] = useState<number | null>(null)
   const [lastEnrollmentIds, setLastEnrollmentIds] = useState<number[]>([])
   const [lastPaymentMethod, setLastPaymentMethod] = useState<'CASH' | 'ONLINE' | null>(null)
+  const [submittedCredentials, setSubmittedCredentials] = useState<{studentId: string, username: string, password: string} | null>(null)
 
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
@@ -262,53 +264,19 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
           setLastPaymentMethod(paymentMethod as any);
 
           if (paymentMethod === 'CASH') {
-            // Auto-open receipts in new tabs first
-            try {
-              const payResponse = await paymentsApi.getAll({ student_id: studentId });
-              if (payResponse.results.length > 0) {
-                for (const payment of payResponse.results) {
-                  await new Promise(r => setTimeout(r, 400)); // 0.4s delay
-                  await paymentsApi.openReceiptInNewTab(payment.id);
-                }
-              }
-            } catch (err) {
-              console.error('Auto receipt open failed:', err);
-            }
-
-            // Wait 2 seconds before opening ID card
-            await new Promise(r => setTimeout(r, 2000));
-
-            // Auto-open ONE ID card (shows all subjects now)
-            try {
-              if (enrollmentIds.length > 0) {
-                console.log('=== ATTEMPTING TO OPEN ID CARD ===');
-                console.log('Enrollment ID:', enrollmentIds[0]);
-                console.log('All enrollment IDs:', enrollmentIds);
-
-                await enrollmentsApi.openIdCardInNewTab(enrollmentIds[0]);
-
-                console.log('=== ID CARD OPENED SUCCESSFULLY ===');
-                notifySuccess('ID Card opened in new tab!');
-              } else {
-                console.error('No enrollment IDs available');
-                notifyError('No enrollments found to generate ID card');
-              }
-            } catch (err: any) {
-              console.error('=== AUTO ID CARD OPEN FAILED ===');
-              console.error('Error message:', err.message);
-              console.error('Error response:', err.response);
-              console.error('Full error:', err);
-              notifyError('Failed to open ID card: ' + (err.message || 'Unknown error'));
-            }
-
-            notifySuccess('Student saved and documents triggered for download.');
+            // After successful creation, set credentials for the display
+            setSubmittedCredentials({
+              studentId: result.data.student_id,
+              username: result.data.login_username,
+              password: result.data.login_password_hint
+            });
+            notifySuccess('Registration submitted. Please wait for cashier confirmation.');
           } else {
             // For ONLINE payments, just notify user
             notifyInfo('Student created. Receipt and ID card will be available after payment confirmation.');
+            setShowForm(false);
+            resetForm();
           }
-
-          setShowForm(false);
-          resetForm();
         }
       }
       fetchStudents()
@@ -527,10 +495,46 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
             className="w-full sm:w-auto h-11 px-6 rounded-xl font-poppins font-medium flex items-center justify-center gap-2 transition-all active:scale-[0.98] text-xs uppercase tracking-widest bg-blue-600 text-white shadow-lg shadow-blue-500/20 hover:bg-blue-700"
           >
             <Plus size={18} />
-            <span>New Admission</span>
+            <span>Add New Student Registration</span>
           </button>
         )}
       </div>
+
+      {/* Success Credentials Box */}
+      {submittedCredentials && (
+        <div className="bg-emerald-50 dark:bg-emerald-900/10 border-2 border-emerald-500 rounded-3xl p-8 shadow-xl relative overflow-hidden group">
+           <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full -mr-16 -mt-16" />
+           <div className="flex flex-col md:flex-row items-center gap-6 relative z-10">
+              <div className="w-16 h-16 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shadow-lg shadow-emerald-500/20">
+                 <Plus className="rotate-45" size={32} />
+              </div>
+              <div className="flex-1 text-center md:text-left">
+                 <h2 className="text-xl font-black text-slate-900 dark:text-white font-poppins mb-1 uppercase tracking-tight">Registration Submitted!</h2>
+                 <p className="text-slate-500 dark:text-slate-400 font-medium text-sm">Application for <b>{submittedCredentials.studentId}</b> is now pending cashier confirmation.</p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full md:w-auto">
+                 <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-emerald-100 shadow-sm">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Username</p>
+                    <p className="text-sm font-bold text-slate-900 dark:text-white font-poppins">{submittedCredentials.username}</p>
+                 </div>
+                 <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-emerald-100 shadow-sm">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Password</p>
+                    <p className="text-sm font-bold text-slate-900 dark:text-white font-poppins font-mono tracking-wider">{submittedCredentials.password}</p>
+                 </div>
+              </div>
+              <button 
+                onClick={() => {
+                  setSubmittedCredentials(null);
+                  setShowForm(false);
+                  resetForm();
+                }}
+                className="px-6 h-12 bg-slate-900 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:scale-105 transition-transform active:scale-95"
+              >
+                Done
+              </button>
+           </div>
+        </div>
+      )}
 
       {/* Error Message */}
       {error && (
@@ -925,10 +929,7 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
       {/* Students List Container */}
       <div className="space-y-4">
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-12 glass-premium rounded-3xl shadow-sm">
-            <Loader2 className="animate-spin text-indigo-600 mb-3" size={32} />
-            <p className="text-gray-500 font-bold animate-pulse uppercase tracking-widest text-[9px]">Loading Students...</p>
-          </div>
+          <SkeletonTable rows={8} />
         ) : students.length === 0 ? (
           <div className="text-center py-16 bg-white dark:bg-gray-800 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-sm">
             <div className="w-20 h-20 bg-gray-50 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">

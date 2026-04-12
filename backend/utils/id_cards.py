@@ -68,77 +68,63 @@ def generate_id_card_pdf(enrollment, is_provisional=False):
             
         cx, cy = positions[idx]
         
-        # === CARD BORDER (Rounded Edge) ===
+        # === CARD BORDER (Rounded Edge - Premium) ===
         c.setStrokeColor(black)
-        c.setLineWidth(0.5)
-        c.roundRect(cx, cy, CARD_W, CARD_H, radius=3*mm, stroke=1, fill=0)
+        c.setLineWidth(1.0)
+        c.roundRect(cx, cy, CARD_W, CARD_H, radius=4*mm, stroke=1, fill=0)
         
         # === WATERMARK LOGO IN CENTER (FADED) ===
         if os.path.exists(logo_path):
             c.saveState()
-            c.setFillAlpha(0.06)
-            watermark_size = 38 * mm
-            watermark_x = cx + (CARD_W - watermark_size) / 2
-            watermark_y = cy + (CARD_H - watermark_size) / 2 - 2*mm
-            c.drawImage(logo_path, watermark_x, watermark_y, 
-                       width=watermark_size, height=watermark_size, 
-                       mask='auto', preserveAspectRatio=True)
+            c.setFillAlpha(0.04)
+            watermark_size = 40 * mm
+            c.drawImage(logo_path, cx + (CARD_W - watermark_size)/2, cy + (CARD_H - watermark_size)/2 - 1*mm, 
+                       width=watermark_size, height=watermark_size, mask='auto', preserveAspectRatio=True)
             c.restoreState()
         
-        # === LOGO (TOP LEFT OF CARD) ===
-        logo_margin = 3 * mm
-        logo_size = 12 * mm
+        # === LOGO (LEFT SIDE) ===
+        logo_margin = 4 * mm
+        logo_size = 14 * mm
         if os.path.exists(logo_path):
             c.drawImage(logo_path, cx + logo_margin, cy + CARD_H - logo_size - logo_margin, 
-                       width=logo_size, height=logo_size, 
-                       mask='auto', preserveAspectRatio=True)
+                       width=logo_size, height=logo_size, mask='auto', preserveAspectRatio=True)
         
-        # === HEADER TEXT ===
-        text_x = cx + logo_margin + logo_size + 3 * mm
+        # === INSTITUTION NAME & CAMP YEAR ===
+        header_x = cx + logo_margin + logo_size + 4 * mm
         c.setFillColor(black)
+        c.setFont("Helvetica-Bold", 13)
+        c.drawString(header_x, cy + CARD_H - 8 * mm, "BALKAN-JI-BARI")
         
-        # BALKAN-JI-BARI
-        c.setFont("Helvetica-Bold", 11)
-        c.drawString(text_x, cy + CARD_H - 6.5*mm, "BALKAN-JI-BARI")
+        c.setFont("Helvetica", 6.5)
+        c.drawString(header_x, cy + CARD_H - 12 * mm, "Mill Road, Nadiad - 387 001.")
         
-        # Address
-        c.setFont("Helvetica", 6)
-        c.drawString(text_x, cy + CARD_H - 10*mm, "Mill Road, Nadiad - 387 001.")
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(header_x, cy + CARD_H - 18 * mm, "Summer Camp 2026")
         
-        # Summer Camp 2026
-        c.setFont("Helvetica-Bold", 10)
-        c.drawString(text_x, cy + CARD_H - 15*mm, "Summer Camp 2026")
+        # === ADMISSION ID BOX (TOP RIGHT) ===
+        id_box_w = 16 * mm
+        id_box_h = 20 * mm
+        id_box_x = cx + CARD_W - id_box_w - logo_margin
+        id_box_y = cy + CARD_H - id_box_h - logo_margin
         
-        # === STUDENT LOGIN ID BOX (TOP RIGHT OF CARD) ===
-        id_w = 14 * mm
-        id_h = 16 * mm
-        id_margin = 3 * mm
-        id_x = cx + CARD_W - id_w - id_margin
-        id_y = cy + CARD_H - id_h - id_margin
-        
-        c.setStrokeColor(black)
         c.setLineWidth(0.3)
-        c.roundRect(id_x, id_y, id_w, id_h, radius=2*mm, stroke=1, fill=0)
+        c.roundRect(id_box_x, id_box_y, id_box_w, id_box_h, radius=2*mm, stroke=1, fill=0)
         
-        c.setFont("Helvetica-Bold", 4.5)
-        c.drawCentredString(id_x + id_w/2, id_y + id_h - 2.5*mm, "Student ID")
+        c.setFont("Helvetica-Bold", 5)
+        c.drawCentredString(id_box_x + id_box_w/2, id_box_y + id_box_h - 4*mm, "Student ID")
         
-        c.drawCentredString(id_x + id_w/2, id_y + 5*mm, student_login_id.upper())
-        
-        # === ROLL NUMBER (PHASE 4) ===
-        roll_no = getattr(enr, 'roll_number', None)
-        if roll_no:
-            c.setFont("Helvetica-Bold", 6.5)
-            c.setFillColor(grey)
-            c.drawCentredString(id_x + id_w/2, id_y + 1*mm, f"Roll No: {roll_no}")
-        
+        # Draw ID Value
+        login_id = str(getattr(student, 'login_username', None) or getattr(student, 'student_id', 'N/A'))
+        c.setFont("Helvetica-Bold", 7)
+        c.setFillColor(grey)
+        c.drawCentredString(id_box_x + id_box_w/2, id_box_y + 8*mm, login_id.upper())
         c.setFillColor(black)
 
-        # === DATA FIELDS ===
-        fields_y = cy + CARD_H - 22 * mm
-        label_x = cx + 6 * mm
-        value_x = cx + 24 * mm
-        line_spacing = 5 * mm
+        # === DATA FIELDS (MATCHING IMAGE 3) ===
+        fields_start_y = cy + CARD_H - 28 * mm
+        label_x = cx + 8 * mm
+        value_x = cx + 30 * mm
+        line_v_spacing = 6 * mm
         
         fields = [
             ("Student Name :", student.name.upper() if student.name else "N/A"),
@@ -147,36 +133,28 @@ def generate_id_card_pdf(enrollment, is_provisional=False):
             ("Mobile :", student.phone if student.phone else "N/A"),
         ]
         
-        c.setFont("Helvetica", 7)
         for i, (label, value) in enumerate(fields):
-            y = fields_y - (i * line_spacing)
-            c.setFillColor(black)
-            c.drawString(label_x, y, label)
+            curr_y = fields_start_y - (i * line_v_spacing)
+            c.setFont("Helvetica", 8)
+            c.drawString(label_x, curr_y, label)
             
-            # Draw underline for value
+            # Draw baseline/underline for field
             c.setLineWidth(0.2)
-            c.line(value_x - 1*mm, y - 0.5*mm, cx + CARD_W - 6*mm, y - 0.5*mm)
+            c.line(value_x - 1*mm, curr_y - 1*mm, cx + CARD_W - 8*mm, curr_y - 1*mm)
             
-            # Draw value
-            val_str = str(value)
-            f_size = get_font_size(val_str, CARD_W - 30*mm, base_size=7)
+            # Value text
+            val_text = str(value)
+            f_size = get_font_size(val_text, CARD_W - 38*mm, base_size=8)
             c.setFont("Helvetica", f_size)
-            c.drawString(value_x, y, val_str)
-            c.setFont("Helvetica", 7) 
+            c.drawString(value_x, curr_y, val_text)
             
-        # === LIBRARY ACCESS ===
-        # Placed securely below mobile number with one line space
-        lib_y = fields_y - (5 * line_spacing)
-        c.setFont("Helvetica-Bold", 7.5)
-        c.setFillColor(black)
-        c.drawString(label_x, lib_y, "LIBRARY ACCESS: 2026-27 Valid")
-
-        # === FOOTER / AUTHORITY SIGNATURE ===
-        c.setFont("Helvetica", 6)
-        c.drawString(cx + CARD_W - 35*mm, cy + 4*mm, "Authority Sign:")
+        # === LIBRARY ACCESS BANNER ===
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(label_x, cy + 8 * mm, "LIBRARY ACCESS: 2026-27 Valid")
         
-        c.setLineWidth(0.5)
-        c.line(cx + CARD_W - 22*mm, cy + 3.5*mm, cx + CARD_W - 6*mm, cy + 3.5*mm)
+        # === SIGNATURE SECTION ===
+        c.setFont("Helvetica", 7)
+        c.drawString(cx + CARD_W - 40*mm, cy + 5 * mm, "Authority Sign: _______________")
 
     c.showPage()
     c.save()
@@ -212,71 +190,60 @@ def generate_bulk_id_cards_pdf(enrollments):
             student = enr.student
             cx, cy = positions[idx]
             
-            # --- CARD RENDERING LOGIC (Identical to generate_id_card_pdf but for multiple students) ---
+            # --- CARD RENDERING (MATCHING SINGULAR DESIGN) ---
             
             # Border
             c.setStrokeColor(black)
-            c.setLineWidth(0.5)
-            c.roundRect(cx, cy, CARD_W, CARD_H, radius=3*mm, stroke=1, fill=0)
+            c.setLineWidth(1.0)
+            c.roundRect(cx, cy, CARD_W, CARD_H, radius=4*mm, stroke=1, fill=0)
             
             # Watermark
             if os.path.exists(logo_path):
                 c.saveState()
-                c.setFillAlpha(0.06)
-                watermark_size = 38 * mm
-                c.drawImage(logo_path, cx + (CARD_W - watermark_size)/2, cy + (CARD_H - watermark_size)/2 - 2*mm, 
-                           width=watermark_size, height=watermark_size, mask='auto', preserveAspectRatio=True)
+                c.setFillAlpha(0.04)
+                w_size = 40 * mm
+                c.drawImage(logo_path, cx + (CARD_W - w_size)/2, cy + (CARD_H - w_size)/2 - 1*mm, width=w_size, height=w_size, mask='auto', preserveAspectRatio=True)
                 c.restoreState()
             
             # Logo & Header
-            logo_margin = 3*mm; logo_size = 12*mm
+            l_marg = 4*mm; l_size = 14*mm
             if os.path.exists(logo_path):
-                c.drawImage(logo_path, cx + logo_margin, cy + CARD_H - logo_size - logo_margin, width=logo_size, height=logo_size, mask='auto')
+                c.drawImage(logo_path, cx + l_marg, cy + CARD_H - l_size - l_marg, width=l_size, height=l_size, mask='auto', preserveAspectRatio=True)
             
-            text_x = cx + logo_margin + logo_size + 3*mm
-            c.setFillColor(black); c.setFont("Helvetica-Bold", 11)
-            c.drawString(text_x, cy + CARD_H - 6.5*mm, "BALKAN-JI-BARI")
-            c.setFont("Helvetica", 6); c.drawString(text_x, cy + CARD_H - 10*mm, "Mill Road, Nadiad - 387 001.")
-            c.setFont("Helvetica-Bold", 10); c.drawString(text_x, cy + CARD_H - 15*mm, "Summer Camp 2026")
+            h_x = cx + l_marg + l_size + 4*mm
+            c.setFillColor(black); c.setFont("Helvetica-Bold", 13)
+            c.drawString(h_x, cy + CARD_H - 8*mm, "BALKAN-JI-BARI")
+            c.setFont("Helvetica", 6.5); c.drawString(h_x, cy + CARD_H - 12*mm, "Mill Road, Nadiad - 387 001.")
+            c.setFont("Helvetica-Bold", 12); c.drawString(h_x, cy + CARD_H - 18*mm, "Summer Camp 2026")
             
             # ID Box
-            id_w=14*mm; id_h=16*mm; id_x=cx+CARD_W-id_w-3*mm; id_y=cy+CARD_H-id_h-3*mm
-            c.setLineWidth(0.3); c.roundRect(id_x, id_y, id_w, id_h, radius=2*mm)
-            c.setFont("Helvetica-Bold", 4.5); c.drawCentredString(id_x + id_w/2, id_y + id_h - 2.5*mm, "Admission ID")
+            ib_w=16*mm; ib_h=20*mm; ib_x=cx+CARD_W-ib_w-l_marg; ib_y=cy+CARD_H-ib_h-l_marg
+            c.setLineWidth(0.3); c.roundRect(ib_x, ib_y, ib_w, ib_h, radius=2*mm)
+            c.setFont("Helvetica-Bold", 5); c.drawCentredString(ib_x + ib_w/2, ib_y + ib_h - 4*mm, "Student ID")
             
             login_id = str(getattr(student, 'login_username', None) or getattr(student, 'student_id', 'N/A'))
-            c.setFillColor(grey); c.setFont("Helvetica-Bold", get_font_size(login_id, id_w-1*mm, 6))
-            c.drawCentredString(id_x + id_w/2, id_y + 5*mm, login_id.upper())
+            c.setFont("Helvetica-Bold", 7); c.setFillColor(grey)
+            c.drawCentredString(ib_x + ib_w/2, ib_y + 8*mm, login_id.upper())
+            c.setFillColor(black)
             
-            # Roll Number (PHASE 4)
-            roll_no = getattr(enr, 'roll_number', None)
-            if roll_no:
-                c.setFont("Helvetica-Bold", 6.5)
-                c.drawCentredString(id_x + id_w/2, id_y + 1*mm, f"Roll No: {roll_no}")
-            
-            # Data Fields
-            fields_y = cy + CARD_H - 22*mm; label_x = cx + 6*mm; value_x = cx + 24*mm; spacing = 5*mm
-            fields = [
+            # Fields
+            f_y = cy + CARD_H - 28*mm; lab_x = cx + 8*mm; val_x = cx + 30*mm; sp = 6*mm
+            field_items = [
                 ("Student Name :", student.name.upper() if student.name else "N/A"),
                 ("Subject :", enr.subject.name if enr.subject else "N/A"),
                 ("Batch :", enr.batch_time if enr.batch_time else "N/A"),
                 ("Mobile :", student.phone if student.phone else "N/A"),
             ]
-            c.setFillColor(black); c.setFont("Helvetica", 7)
-            for j, (label, val) in enumerate(fields):
-                y = fields_y - (j * spacing)
-                c.drawString(label_x, y, label)
-                c.setLineWidth(0.2); c.line(value_x - 1*mm, y - 0.5*mm, cx + CARD_W - 6*mm, y - 0.5*mm)
-                c.setFont("Helvetica", get_font_size(str(val), CARD_W - 30*mm, 7))
-                c.drawString(value_x, y, str(val))
-                c.setFont("Helvetica", 7)
-                
-            # Valid Notification
-            c.setFont("Helvetica-Bold", 7.5); c.drawString(label_x, fields_y - (5 * spacing), "LIBRARY ACCESS: 2026-27 Valid")
+            for j, (lbl, val) in enumerate(field_items):
+                cyy = f_y - (j * sp)
+                c.setFont("Helvetica", 8); c.drawString(lab_x, cyy, lbl)
+                c.setLineWidth(0.2); c.line(val_x - 1*mm, cyy - 1*mm, cx + CARD_W - 8*mm, cyy - 1*mm)
+                c.setFont("Helvetica", get_font_size(str(val), CARD_W - 38*mm, 8))
+                c.drawString(val_x, cyy, str(val))
             
             # Footer
-            c.setFont("Helvetica", 6); c.drawString(cx + CARD_W - 35*mm, cy + 4*mm, "Authority Sign:")
-            c.setLineWidth(0.5); c.line(cx + CARD_W - 22*mm, cy + 3.5*mm, cx + CARD_W - 6*mm, cy + 3.5*mm)
+            c.setFont("Helvetica-Bold", 9); c.drawString(lab_x, cy + 8*mm, "LIBRARY ACCESS: 2026-27 Valid")
+            c.setFont("Helvetica", 7); c.drawString(cx+CARD_W-40*mm, cy+5*mm, "Authority Sign: _______________")
             
         c.showPage()
         

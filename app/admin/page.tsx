@@ -10,23 +10,12 @@ export default function AdminPage() {
   const [currentPage, setCurrentPage] = useState('dashboard')
   const router = typeof window !== 'undefined' ? require('next/navigation').useRouter() : null
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (!isAuthenticated) {
+  if (!isLoading && !isAuthenticated) {
     return <LoginPage />
   }
 
   // Security: If Student, redirect to student dashboard
-  if (user?.role === 'STUDENT' && router) {
+  if (!isLoading && user?.role === 'STUDENT' && router) {
     router.replace('/dashboard')
     return null
   }
@@ -35,7 +24,7 @@ export default function AdminPage() {
     <DashboardLayout
       currentPage={currentPage}
       setCurrentPage={setCurrentPage}
-      userRole={user?.role.toLowerCase() as 'admin' | 'staff' | 'student' | 'accountant'}
+      userRole={user?.role?.toLowerCase() as 'admin' | 'staff' | 'student' | 'accountant' || 'staff'}
     />
   )
 }

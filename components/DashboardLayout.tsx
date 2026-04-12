@@ -19,6 +19,7 @@ import StudentSubjectsAndFees from './pages/StudentSubjectsAndFees'
 import StudentPayments from './pages/StudentPayments'
 import AccountantDashboard from '@/components/pages/AccountantDashboard'
 import StudentLedgerPage from '@/components/pages/StudentLedgerPage'
+import RequestAcceptancePage from '@/components/pages/RequestAcceptancePage'
 
 interface DashboardLayoutProps {
   currentPage: string
@@ -57,6 +58,9 @@ export default function DashboardLayout({
       case 'student-payments':
         if (userRole === 'student') return <StudentPayments />
         return <DashboardPage setCurrentPage={setCurrentPage} userRole={userRole} />
+      case 'requests':
+        if (userRole === 'student') return <StudentDashboard setCurrentPage={setCurrentPage} />
+        return <RequestAcceptancePage />
       case 'students':
         if (userRole === 'student') return <StudentDashboard setCurrentPage={setCurrentPage} />
         if (userRole === 'staff' && !user?.can_view_students) return <div className="p-8 text-center font-bold text-slate-400">Access Denied</div>

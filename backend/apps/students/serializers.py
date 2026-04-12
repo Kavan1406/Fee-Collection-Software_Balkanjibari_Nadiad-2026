@@ -306,13 +306,22 @@ class StudentCreateSerializer(serializers.ModelSerializer):
                 library_fee = 10.00 if include_library_fee else 0.00
                 total_fee = subject_fee + library_fee
                 
-                # For online payments, create pending enrollment
-                # For cash/check, create paid enrollment
+                # NEW: Logic for "Office Cash Payment" workflow
+                # If staff is registering, and it's CASH, we set as PENDING_CONFIRMATION
+                # to allow the cashier to accept it later.
+                is_staff = request.user.role in ['ADMIN', 'STAFF', 'ACCOUNTANT'] if request and request.user.is_authenticated else False
+                
                 if payment_method == 'ONLINE':
                     paid_amount = 0.00
                     pending_amount = total_fee
                     payment_status = 'PENDING_CONFIRMATION'
+                elif is_staff and payment_method == 'CASH':
+                    # This is the new "Counter Cash" registration
+                    paid_amount = 0.00
+                    pending_amount = total_fee
+                    payment_status = 'PENDING_CONFIRMATION'
                 else:
+                    # Legacy behavior for other types/roles (Direct success)
                     paid_amount = total_fee
                     pending_amount = 0.00
                     payment_status = 'SUCCESS'

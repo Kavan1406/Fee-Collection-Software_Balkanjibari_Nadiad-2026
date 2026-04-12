@@ -185,10 +185,39 @@ class PaymentViewSet(viewsets.ModelViewSet):
         enrollment.pending_amount -= payment.amount
         enrollment.save()
         
+        # --- NEW: Automated Document Generation for Counter Workflow ---
+        receipt_url = None
+        id_card_url = None
+        
+        try:
+            # 1. Generate Receipt
+            from utils.receipts import generate_receipt_pdf
+            from django.core.files.base import ContentFile
+            
+            pdf_content = generate_receipt_pdf(payment)
+            filename = f"Receipt_{payment.receipt_number}.pdf"
+            payment.receipt_pdf.save(filename, ContentFile(pdf_content), save=True)
+            receipt_url = payment.receipt_pdf.url
+            
+            # 2. Generate ID Card
+            from utils.id_cards import generate_id_card_pdf
+            card_content = generate_id_card_pdf(enrollment)
+            card_filename = f"ID_Card_{enrollment.enrollment_id}.pdf"
+            enrollment.id_card.save(card_filename, ContentFile(card_content), save=True)
+            id_card_url = enrollment.id_card.url
+            
+        except Exception as e:
+            # log the error but don't fail the confirmation
+            logger.error(f"Failed to auto-generate docs during confirm: {str(e)}")
+        
         return Response({
             'success': True,
-            'message': f'Payment {payment.payment_id} confirmed and receipt {payment.receipt_number} generated.',
-            'data': PaymentSerializer(payment).data
+            'message': f'Payment {payment.payment_id} confirmed.',
+            'data': {
+                **PaymentSerializer(payment).data,
+                'receipt_url': receipt_url,
+                'id_card_url': id_card_url
+            }
         })
 
     @action(detail=True, methods=['get'], url_path='download_receipt')

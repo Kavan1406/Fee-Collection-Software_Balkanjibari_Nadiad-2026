@@ -102,15 +102,17 @@ def generate_receipt_pdf(payment=None, student=None, order_id=None):
     # Header section
     logo_path = os.path.join(settings.BASE_DIR, 'apps', 'payments', 'static', 'images', 'logo.png')
     logo_img = None
+    logo_img_right = None
     if os.path.exists(logo_path):
-        logo_img = Image(logo_path, width=2.0 * cm, height=2.0 * cm)
+        logo_img = Image(logo_path, width=2.2 * cm, height=2.2 * cm)
+        logo_img_right = Image(logo_path, width=2.2 * cm, height=2.2 * cm)
 
-    h_title_style = ParagraphStyle('HTitle', fontSize=20, fontName='Helvetica-Bold',
-                                   textColor=indigo, alignment=TA_CENTER, leading=22)
-    h_sub_style = ParagraphStyle('HSub', fontSize=8.5, fontName='Helvetica-Bold',
-                                 textColor=dark, alignment=TA_CENTER, leading=10)
-    h_addr_style = ParagraphStyle('HAddr', fontSize=7, fontName='Helvetica',
-                                  textColor=slate, alignment=TA_CENTER, leading=9)
+    h_title_style = ParagraphStyle('HTitle', fontSize=22, fontName='Helvetica-Bold',
+                                   textColor=indigo, alignment=TA_CENTER, leading=24)
+    h_sub_style = ParagraphStyle('HSub', fontSize=9, fontName='Helvetica-Bold',
+                                 textColor=dark, alignment=TA_CENTER, leading=11)
+    h_addr_style = ParagraphStyle('HAddr', fontSize=7.5, fontName='Helvetica',
+                                  textColor=slate, alignment=TA_CENTER, leading=10)
 
     header_text = [
         Paragraph("BALKANJI NI BARI", h_title_style),
@@ -118,30 +120,30 @@ def generate_receipt_pdf(payment=None, student=None, order_id=None):
         Paragraph("Mill Road, Nadiad - 387 001. Gujarat, India.", h_addr_style),
     ]
 
-    header_table = Table([[logo_img or "", header_text, logo_img or ""]],
-                         colWidths=[2.4 * cm, 14.2 * cm, 2.4 * cm])
+    header_table = Table([[logo_img or "", header_text, logo_img_right or ""]],
+                         colWidths=[2.6 * cm, 13.8 * cm, 2.6 * cm])
     header_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('TOPPADDING', (0, 0), (-1, -1), 0),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
     ]))
     story.append(header_table)
-    story.append(Spacer(1, 0.15 * cm))
+    story.append(Spacer(1, 0.2 * cm))
 
-    # Fee Receipt Title Bar
-    title_style = ParagraphStyle('Title', fontSize=11, fontName='Helvetica-Bold',
+    # Fee Receipt Title Bar (Matching Image 1 EXACTLY)
+    title_style = ParagraphStyle('Title', fontSize=12, fontName='Helvetica-Bold',
                                  textColor=dark, alignment=TA_CENTER)
-    title_table = Table([[Paragraph("OFFICIAL FEE RECEIPT", title_style)]],
-                        colWidths=[19 * cm])
+    title_table = Table([[Paragraph("FEE RECEIPT", title_style)]],
+                        colWidths=[19.0 * cm])
     title_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, -1), light_slate),
-        ('BOX', (0, 0), (-1, -1), 0.5, colors.grey),
-        ('TOPPADDING', (0, 0), (-1, -1), 3),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ('BACKGROUND', (0, 0), (-1, -1), HexColor('#F1F5F9')),
+        ('BOX', (0, 0), (-1, -1), 0.8, colors.grey),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
     ]))
     story.append(title_table)
-    story.append(Spacer(1, 0.2 * cm))
+    story.append(Spacer(1, 0.3 * cm))
 
     # Student Details
     lbl_s = ParagraphStyle('Label', fontSize=8, fontName='Helvetica-Bold', textColor=slate)
@@ -194,8 +196,9 @@ def generate_receipt_pdf(payment=None, student=None, order_id=None):
             items.append((enr, enr.total_fee))
 
     for i, (enr, amount) in enumerate(items, 1):
-        sub_fee = float(enr.total_fee) - (10.0 if enr.include_library_fee else 0)
-        lib_fee = 10.0 if enr.include_library_fee else 0
+        # Correctly calculate sub_fee and lib_fee based on include_library_fee
+        lib_fee = 10.0 if enr.include_library_fee else 0.0
+        sub_fee = float(enr.total_fee) - lib_fee
         total = float(amount)
         grand_total += total
         
@@ -208,20 +211,31 @@ def generate_receipt_pdf(payment=None, student=None, order_id=None):
             f"Rs.{total:,.0f}",
         ])
 
-    fee_table = Table(fee_data, colWidths=[0.7 * cm, 6.5 * cm, 4.0 * cm, 2.3 * cm, 2.3 * cm, 2.7 * cm])
+    fee_data.append([
+        '', '', '', '', 'TOTAL PAID', f"Rs.{grand_total:,.0f}"
+    ])
+
+    fee_table = Table(fee_data, colWidths=[1.0 * cm, 6.2 * cm, 3.8 * cm, 2.5 * cm, 2.7 * cm, 2.8 * cm])
     fee_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), indigo),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('FONTSIZE', (0, 0), (-1, -1), 8.5),
         ('ALIGN', (3, 0), (-1, -1), 'RIGHT'),
         ('ALIGN', (0, 0), (2, -1), 'LEFT'),
-        ('TOPPADDING', (0, 0), (-1, -1), 3),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-        ('GRID', (0, 0), (-1, -1), 0.4, HexColor('#CBD5E1')),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('GRID', (0, 0), (-1, -2), 0.5, HexColor('#CBD5E1')),
+        # Total row styling
+        ('FONTNAME', (-2, -1), (-1, -1), 'Helvetica-Bold'),
+        ('BACKGROUND', (-2, -1), (-1, -1), HexColor('#F1F5F9')),
+        ('ALIGN', (-2, -1), (-2, -1), 'RIGHT'),
+        ('BOX', (-2, -1), (-1, -1), 0.5, HexColor('#CBD5E1')),
+        ('SPAN', (0, -1), (3, -1)), # Empty space for total row
     ]))
     story.append(fee_table)
-    story.append(Spacer(1, 0.2 * cm))
+    story.append(Spacer(1, 0.4 * cm))
 
     # Payment Status
     status_s = ParagraphStyle('PS', fontSize=9, fontName='Helvetica-Bold', textColor=green)

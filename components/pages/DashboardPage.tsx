@@ -9,12 +9,15 @@ import {
   AreaChart, Area, PieChart, Pie, Cell
 } from 'recharts'
 
+import { SkeletonDashboard } from '@/components/Skeleton'
+
 interface DashboardPageProps {
   setCurrentPage: (page: string) => void
   userRole?: 'admin' | 'staff' | 'student' | 'accountant'
 }
 
 export default function DashboardPage({ setCurrentPage, userRole = 'staff' }: DashboardPageProps) {
+  // ... rest of component
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [trends, setTrends] = useState<PaymentTrend[]>([])
   const [distribution, setDistribution] = useState<SubjectDistribution[]>([])
@@ -141,11 +144,7 @@ export default function DashboardPage({ setCurrentPage, userRole = 'staff' }: Da
   }
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    )
+    return <SkeletonDashboard />
   }
 
   const handleDownloadReceipt = async (paymentId: number) => {
@@ -165,7 +164,7 @@ export default function DashboardPage({ setCurrentPage, userRole = 'staff' }: Da
   }
 
   return (
-    <div className="p-3 sm:p-6 space-y-4 sm:space-y-8 no-scrollbar overflow-y-auto h-full">
+    <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 no-scrollbar overflow-y-auto h-full bg-slate-50/50 dark:bg-slate-950/20">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4">
         <div>
           <h1 className="h1 uppercase font-poppins">Institution Dashboard</h1>
@@ -181,6 +180,21 @@ export default function DashboardPage({ setCurrentPage, userRole = 'staff' }: Da
             <span>{refreshing ? 'Syncing...' : 'Refresh Data'}</span>
           </button>
         </div>
+      </div>
+
+      {/* Summary Stats Cards - Restored and Beautified */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
+        {summaryCards.map((card, i) => (
+          <div key={i} className={`p-5 rounded-[24px] bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-sm flex items-center gap-4 transition-all hover:shadow-md ring-1 ring-slate-200/50 dark:ring-white/5`}>
+            <div className={`p-4 ${card.bgColor} ${card.iconColor} rounded-2xl`}>
+              <card.icon size={24} />
+            </div>
+            <div>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-inter mb-1">{card.title}</p>
+              <h3 className="text-2xl font-black text-slate-900 dark:text-white font-poppins tracking-tight">{card.value}</h3>
+            </div>
+          </div>
+        ))}
       </div>
 
       {error && (
@@ -204,74 +218,44 @@ export default function DashboardPage({ setCurrentPage, userRole = 'staff' }: Da
            )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {subjects.map((subject) => {
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {subjects.slice(0, 8).map((subject) => {
             const enrolledPercent = Math.min(100, (subject.enrolled_count / subject.max_seats) * 100);
             const isFull = subject.enrolled_count >= subject.max_seats;
             
             return (
-              <div key={subject.id} className="bg-white dark:bg-slate-900 rounded-[28px] p-5 border border-slate-100 dark:border-slate-800 shadow-sm ring-1 ring-blue-500/5 hover:ring-blue-500/10 transition-all group">
-                <div className="flex justify-between items-start mb-4">
+              <div key={subject.id} className="bg-white dark:bg-slate-900 rounded-[22px] p-4 border border-slate-100 dark:border-slate-800 shadow-sm transition-all hover:border-indigo-200 dark:hover:border-indigo-800">
+                <div className="flex justify-between items-start mb-3">
                   <div className="min-w-0">
-                    <h4 className="text-sm font-bold text-slate-900 dark:text-white uppercase truncate font-poppins">{subject.name}</h4>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5 font-inter">ID: {subject.id}</p>
+                    <h4 className="text-[12px] font-bold text-slate-800 dark:text-white uppercase truncate font-poppins">{subject.name}</h4>
                   </div>
-                  {isFull ? (
-                    <span className="bg-rose-50 text-rose-600 text-[8px] font-black uppercase px-2 py-0.5 rounded-md border border-rose-100">FULL</span>
-                  ) : (
-                    <span className="bg-emerald-50 text-emerald-600 text-[8px] font-black uppercase px-2 py-0.5 rounded-md border border-emerald-100">ACTIVE</span>
-                  )}
+                  {isFull && <span className="bg-rose-50 text-rose-600 text-[7px] font-black uppercase px-1.5 py-0.5 rounded border border-rose-100">FULL</span>}
                 </div>
 
-                <div className="space-y-3">
+                <div className="space-y-2">
                    <div className="flex justify-between items-end">
-                      <div>
-                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1 font-inter">Students</p>
-                        <p className="text-lg font-black text-slate-900 dark:text-white font-poppins">{subject.enrolled_count} <span className="text-xs text-slate-400 font-medium">/ {subject.max_seats}</span></p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1 font-inter">Utilization</p>
-                        <p className={`text-sm font-black font-poppins ${enrolledPercent > 90 ? 'text-rose-500' : 'text-indigo-600'}`}>{Math.round(enrolledPercent)}%</p>
-                      </div>
+                      <p className="text-[11px] font-black text-slate-900 dark:text-white font-poppins">{subject.enrolled_count} <span className="text-[9px] text-slate-400 font-medium">/ {subject.max_seats}</span></p>
+                      <p className={`text-[10px] font-black font-poppins ${enrolledPercent > 90 ? 'text-rose-500' : 'text-emerald-500'}`}>{Math.round(enrolledPercent)}%</p>
                    </div>
-
-                   <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                      <div 
-                        className={`h-full transition-all duration-500 ${enrolledPercent > 90 ? 'bg-rose-500' : 'bg-indigo-600'}`}
-                        style={{ width: `${enrolledPercent}%` }}
-                      />
+                   <div className="w-full h-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                      <div className={`h-full transition-all duration-500 ${enrolledPercent > 90 ? 'bg-rose-500' : 'bg-emerald-500'}`} style={{ width: `${enrolledPercent}%` }} />
                    </div>
-
-                   {/* Extended Actions */}
-                   <div className="flex items-center gap-2 mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
-                     <button
-                       onClick={() => handleDownloadBulkIDs(subject)}
-                       className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-xl text-[10px] font-bold uppercase tracking-wider hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors"
-                     >
-                       <Download className="w-3 h-3" />
-                       Bulk ID Cards
-                     </button>
-                     
-                     {userRole === 'admin' && (
-                       <button
-                         onClick={() => handleExtendLimit(subject.id)}
-                         disabled={updatingSubjectId === subject.id}
-                         className="flex items-center gap-2 px-3 py-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-xl text-[10px] font-bold uppercase tracking-wider hover:bg-green-100 dark:hover:bg-green-900/40 transition-colors disabled:opacity-50"
-                       >
-                         {updatingSubjectId === subject.id ? (
-                           <Loader2 className="w-3 h-3 animate-spin" />
-                         ) : (
-                           <Plus className="w-3 h-3" />
-                         )}
-                         Extend (+10)
-                       </button>
-                     )}
+                   <div className="flex gap-2 pt-2">
+                     <button onClick={() => handleDownloadBulkIDs(subject)} className="flex-1 py-1.5 bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-lg text-[9px] font-bold uppercase hover:bg-indigo-50 dark:hover:bg-indigo-900/40 transition-colors">IDs</button>
+                      {userRole === 'admin' && (
+                        <button onClick={() => handleExtendLimit(subject.id)} disabled={updatingSubjectId === subject.id} className="px-2 py-1.5 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 rounded-lg text-[9px] font-bold uppercase transition-colors disabled:opacity-50">+10</button>
+                      )}
                    </div>
                 </div>
               </div>
             );
           })}
         </div>
+        {subjects.length > 8 && (
+          <div className="text-center mt-2">
+            <button onClick={() => setCurrentPage('subjects')} className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hover:text-indigo-600 transition-colors">And {subjects.length - 8} more subjects...</button>
+          </div>
+        )}
       </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -404,36 +388,46 @@ export default function DashboardPage({ setCurrentPage, userRole = 'staff' }: Da
 
         {/* Sidebar Actions & Stats */}
         <div className="space-y-6">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6 shadow-sm">
-            <h2 className="h3 mb-6">Quick Actions</h2>
-            <div className="space-y-3">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 p-6 shadow-sm overflow-hidden relative group">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-110" />
+            <h2 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest font-poppins mb-6 flex items-center gap-2">
+               <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+               Quick Control
+            </h2>
+            <div className="grid grid-cols-1 gap-3 relative z-10">
               <button
                 onClick={() => setCurrentPage('students')}
-                className="w-full btn-standard btn-font bg-slate-900 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900"
+                className="w-full flex items-center justify-between p-3 rounded-2xl bg-slate-900 dark:bg-indigo-600 text-white hover:scale-[1.02] transition-all active:scale-[0.98] shadow-lg shadow-slate-900/10"
               >
-                <Plus size={18} />
-                <span>Add New Student</span>
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-white/10 rounded-xl"><Plus size={18} /></div>
+                  <span className="text-xs font-bold uppercase tracking-widest">New Student Registration</span>
+                </div>
+                <ArrowLeft className="rotate-180 opacity-50" size={14} />
               </button>
               <button
                 onClick={() => setCurrentPage('payments')}
-                className="w-full h-11 px-6 rounded-xl font-poppins font-medium flex items-center justify-center gap-2 transition-all active:scale-[0.98] text-sm bg-emerald-500 text-white shadow-md hover:bg-emerald-600 shadow-emerald-500/10 uppercase tracking-widest"
+                className="w-full flex items-center justify-between p-3 rounded-2xl bg-emerald-500 text-white hover:scale-[1.02] transition-all active:scale-[0.98] shadow-lg shadow-emerald-500/10"
               >
-                <IndianRupee size={18} />
-                <span>Record Payment</span>
+                <div className="flex items-center gap-3">
+                   <div className="p-2 bg-white/10 rounded-xl"><IndianRupee size={18} /></div>
+                   <span className="text-xs font-bold uppercase tracking-widest">Record Fee</span>
+                </div>
+                <ArrowLeft className="rotate-180 opacity-50" size={14} />
               </button>
             </div>
           </div>
 
           {/* Pending Fees Widget */}
-          <div className="glass-premium rounded-2xl p-4 sm:p-6 shadow-sm">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-100 dark:border-slate-800 shadow-sm">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-sm sm:text-base font-bold font-poppins flex items-center gap-2 text-gray-900 dark:text-white uppercase tracking-tight">
-                <IndianRupee size={18} className="text-orange-600" />
-                Pending Fees
+              <h3 className="text-xs font-black font-poppins flex items-center gap-2 text-slate-900 dark:text-white uppercase tracking-widest">
+                <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
+                Due Clearance
               </h3>
               {pendingStudents.length > 0 && stats && (
-                <span className="text-[10px] bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 px-2 py-1 rounded-full font-bold">
-                  ₹{Number(stats.total_pending).toLocaleString()}
+                <span className="text-[10px] bg-orange-50 text-orange-600 px-2 py-0.5 rounded-full font-black border border-orange-100">
+                  ₹{Math.round(stats.total_pending).toLocaleString()}
                 </span>
               )}
             </div>

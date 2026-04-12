@@ -5,11 +5,12 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeft, CheckCircle, AlertCircle, Plus, Trash2, Loader2, Lock, Download, BookOpen, CreditCard, ShieldCheck as LucideShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 
-const DEFAULT_BACKEND_URL = '/api'
+const DEFAULT_BACKEND_URL = 'https://fee-management-software-balkanjibari.onrender.com'
 let API_BASE = process.env.NEXT_PUBLIC_API_URL || DEFAULT_BACKEND_URL
 
 // Use relative /api unless explicitly overridden by an external env var
 if (typeof window !== 'undefined' && (!process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_URL === '/')) {
+  // If we are on vercel and NEXT_PUBLIC_API_URL is missing, use the Render hardcoded link
   API_BASE = DEFAULT_BACKEND_URL
 }
 
