@@ -24,6 +24,7 @@ export default function StudentProfile() {
     photo: null as File | null
   })
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+  const [payments, setPayments] = useState<any[]>([])
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -37,6 +38,16 @@ export default function StudentProfile() {
             address: response.data.address || '',
             photo: null
           })
+          
+          // Fetch payments to get receipt and transaction IDs
+          try {
+            const payRes = await paymentsApi.getMyPayments()
+            if (payRes.success) {
+                setPayments(payRes.data)
+            }
+          } catch (pErr) {
+            console.warn('Failed to fetch payments for profile details', pErr)
+          }
         } else {
           setError('Failed to fetch profile data')
         }
@@ -129,8 +140,7 @@ export default function StudentProfile() {
       {/* Premium Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center px-4 gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-950 uppercase tracking-tight font-poppins">Access Control & Profile</h1>
-          <p className="text-[10px] sm:text-xs font-bold text-slate-900 uppercase tracking-widest mt-1 font-inter">Personal account management</p>
+          <h1 className="text-xl sm:text-2xl font-black text-slate-950 uppercase tracking-tight font-poppins">My Profile</h1>
         </div>
         {!isEditing ? (
           <button
@@ -161,14 +171,10 @@ export default function StudentProfile() {
         )}
       </div>
 
-    {/* Premium Banner Section */}
       <div className="relative px-2 sm:px-0">
-        <div className="h-28 xs:h-32 sm:h-40 bg-indigo-600 rounded-[24px] sm:rounded-[32px] shadow-2xl shadow-indigo-200/50 overflow-hidden relative">
-        </div>
-        
-        <div className="mx-2 xs:mx-4 sm:mx-10 -mt-12 xs:-mt-16 sm:-mt-20 relative z-10">
-          <div className="bg-white dark:bg-slate-900 p-4 xs:p-6 sm:p-8 rounded-[24px] sm:rounded-[32px] shadow-xl shadow-slate-200/50 border border-slate-50 dark:border-slate-800 relative group transition-all duration-500">
-            <div className="flex flex-col md:flex-row items-center gap-4 xs:gap-6 sm:gap-10">
+        <div className="mx-2 xs:mx-4 sm:mx-0 relative z-10">
+          <div className="bg-white dark:bg-slate-900 p-4 xs:p-6 sm:p-10 rounded-[24px] sm:rounded-[32px] shadow-2xl shadow-slate-200/40 border border-slate-100 dark:border-slate-800 ring-1 ring-blue-400/10 dark:ring-blue-400/5 relative group transition-all duration-500">
+            <div className="flex flex-col md:flex-row items-center gap-4 xs:gap-6 sm:gap-12">
               <div className="relative group/photo shrink-0">
                 <div className={`h-24 w-24 xs:h-32 xs:w-32 sm:h-40 sm:w-40 rounded-[20px] xs:rounded-[24px] sm:rounded-[32px] border-[4px] sm:border-[6px] border-white dark:border-slate-800 shadow-2xl overflow-hidden transition-all duration-500 ${isEditing ? 'ring-4 ring-indigo-500/20' : ''} bg-slate-100 flex items-center justify-center text-slate-300 font-bold text-3xl xs:text-4xl sm:text-5xl font-poppins`}>
                   {(photoPreview || student?.photo) && !imgError ? (
@@ -198,15 +204,11 @@ export default function StudentProfile() {
               </div>
               
               <div className="flex-1 text-center md:text-left space-y-1 xs:space-y-2">
-                        <div className="flex items-center justify-center md:justify-start gap-3 bg-slate-100 dark:bg-slate-800 px-4 py-2 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-sm mb-4 max-w-fit">
-                            <span className="text-[9px] sm:text-[10px] font-bold text-slate-950 uppercase tracking-[0.2em] font-inter">Student Records</span>
-                            <span className="text-[14px] sm:text-[18px] font-bold text-black dark:text-white uppercase tracking-tighter font-poppins">Personal Profile</span>
-                        </div>
-                <h2 className="text-xl xs:text-2xl sm:text-4xl font-bold text-slate-900 dark:text-white tracking-tight font-poppins line-clamp-2 uppercase">{student.name}</h2>
-                <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 xs:gap-3 sm:gap-4 text-slate-950 font-bold uppercase tracking-widest text-[8px] xs:text-[9px] sm:text-[10px] font-inter">
-                  <p className="text-blue-900 font-bold">{student.student_id}</p>
-                  <span className="w-1 h-1 rounded-full bg-slate-950"></span>
-                  <p className="line-clamp-1 lowercase">{student.email}</p>
+                <h2 className="text-2xl xs:text-3xl sm:text-5xl font-black text-slate-900 dark:text-white tracking-tight font-poppins line-clamp-2 uppercase">{student.name}</h2>
+                <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 xs:gap-3 sm:gap-4 text-slate-900 font-black uppercase tracking-[0.2em] text-[10px] xs:text-[11px] font-inter">
+                  <p className="text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 px-3 py-1 rounded-lg">{student.student_id}</p>
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-200"></span>
+                  <p className="lowercase font-inter">{student.email}</p>
                 </div>
               </div>
             </div>
@@ -318,27 +320,77 @@ export default function StudentProfile() {
           </div>
         </div>
 
-      {/* Status Details */}
-      <div className="px-4 pb-8">
-        <div className="bg-white dark:bg-slate-900 rounded-[24px] sm:rounded-[32px] p-6 sm:p-8 border border-slate-100 dark:border-slate-800 shadow-xl shadow-slate-200/20">
-          <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white mb-6 sm:mb-8 tracking-tight uppercase font-poppins">Account Status</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-8">
-            <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-5 sm:p-6 border border-slate-100 dark:border-slate-700 group transition-all">
-              <p className="text-[9px] sm:text-[10px] font-bold text-slate-900 uppercase tracking-widest mb-3 font-inter">Enrollment</p>
-              <span className={`inline-flex px-4 py-2 rounded-xl text-[10px] font-bold tracking-widest border shadow-sm font-inter ${student.status === 'ACTIVE'
-                ? 'bg-emerald-50 text-emerald-600 border-emerald-100 uppercase'
-                : 'bg-rose-50 text-rose-600 border-rose-100 uppercase'
-                }`}>
-                {student.status}
-              </span>
-            </div>
+      {/* Login & Enrollment details */}
+      <div className="px-4">
+        <div className="bg-white dark:bg-slate-900 rounded-[32px] p-6 sm:p-10 border border-slate-100 dark:border-slate-800 shadow-xl shadow-slate-200/30 ring-1 ring-blue-400/10 dark:ring-blue-400/5">
+            <h3 className="text-[16px] sm:text-[20px] font-black text-slate-900 dark:text-white uppercase tracking-[0.1em] mb-8 flex items-center gap-3 font-poppins">
+                <BookOpen size={20} className="text-blue-600" /> Account & Enrollment Details
+            </h3>
 
-            <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-5 sm:p-6 border border-slate-100 dark:border-slate-700 group transition-all">
-              <p className="text-[9px] sm:text-[10px] font-bold text-slate-900 uppercase tracking-widest mb-3 font-inter">Financial Standing</p>
-              <p className="text-base sm:text-lg font-bold text-slate-900 dark:text-white uppercase tracking-tight font-poppins">{student.payment_status}</p>
-              <p className="text-[8px] sm:text-[9px] font-bold text-slate-700 mt-2 uppercase tracking-widest leading-tight font-inter">Calculated based on active enrollments</p>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+                <div className="space-y-6">
+                    <div className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-[24px] border border-slate-100 dark:border-slate-700">
+                        <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest mb-4 font-inter">Login Credentials</p>
+                        <div className="space-y-4">
+                            <div className="flex justify-between items-center pb-3 border-b border-slate-200/50">
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Username</span>
+                                <span className="text-sm font-black text-slate-900 dark:text-white font-mono">{student.login_username || 'N/A'}</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Password Hint</span>
+                                <span className="text-sm font-black text-indigo-600 font-mono tracking-tight">{student.login_password_hint || 'Contact Admin'}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="p-6 bg-blue-50/50 dark:bg-blue-900/10 rounded-[24px] border border-blue-100 dark:border-blue-900/30">
+                        <div className="flex justify-between items-center">
+                            <p className="text-[11px] font-black text-blue-600 uppercase tracking-widest font-inter">Overall Financial Standing</p>
+                            <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border shadow-sm font-inter ${
+                                student.payment_status === 'Paid' 
+                                ? 'bg-emerald-500 text-white border-emerald-400' 
+                                : 'bg-rose-500 text-white border-rose-400'
+                            }`}>
+                                {student.payment_status}
+                            </span>
+                        </div>
+                        <p className="text-[9px] font-bold text-slate-500 mt-3 uppercase tracking-widest leading-tight font-inter">Status updated as per latest successful payments</p>
+                    </div>
+                </div>
+
+                <div className="space-y-4">
+                    <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest mb-2 px-2 font-inter">Subject Assignments</p>
+                    <div className="space-y-3">
+                        {student.enrollments && student.enrollments.length > 0 ? (
+                            student.enrollments.map((enr: any, idx: number) => {
+                                const matchedPayment = payments.find(p => p.enrollment === enr.id);
+                                return (
+                                    <div key={idx} className="p-5 bg-white dark:bg-slate-800 rounded-[24px] border border-slate-100 dark:border-slate-700 shadow-sm ring-1 ring-blue-400/5">
+                                        <div className="flex justify-between items-start mb-3">
+                                            <h4 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-tight">{enr.subject_name}</h4>
+                                            <span className="text-[9px] font-black text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-lg border border-indigo-100 dark:border-indigo-900/50">{enr.status}</span>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Receipt No</p>
+                                                <p className="text-[11px] font-black text-slate-700 dark:text-slate-300 font-mono italic">{matchedPayment?.receipt_number || 'N/A'}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Reference ID</p>
+                                                <p className="text-[11px] font-black text-slate-700 dark:text-slate-300 font-mono truncate">{matchedPayment?.transaction_id || matchedPayment?.razorpay_payment_id || 'REGISTERED'}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )
+                            })
+                        ) : (
+                            <div className="p-8 text-center bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase">No enrollments detected</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
             </div>
-          </div>
         </div>
       </div>
     </div>

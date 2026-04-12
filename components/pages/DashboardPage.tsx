@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { TrendingUp, Users, CreditCard, AlertCircle, Plus, IndianRupee, Download } from 'lucide-react'
+import { TrendingUp, Users, CreditCard, AlertCircle, Plus, IndianRupee, Download, Loader2 } from 'lucide-react'
 import { analyticsApi, DashboardStats, PaymentTrend, SubjectDistribution } from '@/lib/api/analytics'
-import { enrollmentsApi, paymentsApi } from '@/lib/api'
+import { enrollmentsApi, paymentsApi, subjectsApi } from '@/lib/api'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   AreaChart, Area, PieChart, Pie, Cell
@@ -20,21 +20,24 @@ export default function DashboardPage({ setCurrentPage, userRole = 'staff' }: Da
   const [distribution, setDistribution] = useState<SubjectDistribution[]>([])
   const [pendingStudents, setPendingStudents] = useState<any[]>([])
   const [recentOnlinePayments, setRecentOnlinePayments] = useState<any[]>([])
+  const [subjects, setSubjects] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState('')
+  const [updatingSubjectId, setUpdatingSubjectId] = useState<number | null>(null)
 
   const fetchData = async (isRefresh = false) => {
     try {
       if (isRefresh) setRefreshing(true)
       else setLoading(true)
       
-      const [statsRes, enrollmentsRes, paymentsRes, trendsRes, distributionRes] = await Promise.all([
+      const [statsRes, enrollmentsRes, paymentsRes, trendsRes, distributionRes, subjectsRes] = await Promise.all([
         analyticsApi.getDashboardStats(),
         enrollmentsApi.getAll({ page_size: 100 }),
         paymentsApi.getAll({ page_size: 10 }),
         analyticsApi.getPaymentTrends(),
-        analyticsApi.getSubjectDistribution()
+        analyticsApi.getSubjectDistribution(),
+        subjectsApi.getAll()
       ])
 
       if (statsRes.success) setStats(statsRes.data || null)
@@ -42,6 +45,8 @@ export default function DashboardPage({ setCurrentPage, userRole = 'staff' }: Da
       if (trendsRes.success) setTrends(trendsRes.data || trendsRes)
       // @ts-ignore
       if (distributionRes.success) setDistribution(distributionRes.data || distributionRes)
+      
+      if (subjectsRes.success) setSubjects(subjectsRes.data || [])
 
       if (enrollmentsRes.results) {
         const pending = enrollmentsRes.results
@@ -92,14 +97,48 @@ export default function DashboardPage({ setCurrentPage, userRole = 'staff' }: Da
       bgColor: 'bg-orange-50',
       iconColor: 'text-orange-600',
     },
-    {
-      title: 'Growth Rate',
-      value: stats ? `${Number(stats.growth_rate)}%` : '0%',
-      icon: TrendingUp,
-      bgColor: 'bg-blue-50',
-      iconColor: 'text-blue-600',
-    },
   ]
+  const handleDownloadBulkIDs = async (subject: any) => {
+    try {
+      setRefreshing(true)
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
+      const response = await fetch(`${baseUrl}/subjects/${subject.id}/download-bulk-id-cards/`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+        }
+      })
+      
+      if (!response.ok) throw new Error('Failed to download bulk ID cards')
+      
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `Bulk_ID_Cards_${subject.name.replace(/\s+/g, '_')}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (err: any) {
+      alert(err.message || 'Error downloading bulk ID cards')
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  const handleExtendLimit = async (subjectId: number) => {
+    try {
+      setUpdatingSubjectId(subjectId);
+      const subject = subjects.find(s => s.id === subjectId);
+      const newMax = subject.max_seats + 10;
+      await subjectsApi.update(subjectId, { max_seats: newMax });
+      await fetchData(true);
+    } catch (err) {
+      console.error('Failed to extend limit', err);
+    } finally {
+      setUpdatingSubjectId(null);
+    }
+  }
 
   if (loading) {
     return (
@@ -141,13 +180,6 @@ export default function DashboardPage({ setCurrentPage, userRole = 'staff' }: Da
             <TrendingUp size={14} className={refreshing ? 'animate-spin text-indigo-600' : ''} />
             <span>{refreshing ? 'Syncing...' : 'Refresh Data'}</span>
           </button>
-          <button
-            onClick={() => setCurrentPage('students')}
-            className="flex items-center gap-2 px-4 h-10 rounded-xl bg-indigo-600 text-white font-medium text-xs uppercase tracking-widest hover:bg-indigo-700 transition-all active:scale-[0.98] shadow-lg shadow-indigo-500/20 font-poppins"
-          >
-            <Plus size={14} />
-            <span>New Admission</span>
-          </button>
         </div>
       </div>
 
@@ -158,114 +190,89 @@ export default function DashboardPage({ setCurrentPage, userRole = 'staff' }: Da
         </div>
       )}
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 xs:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
-        {summaryCards.map((card, index) => {
-          const Icon = card.icon
-          return (
-            <div key={index} className="bg-white dark:bg-slate-900 rounded-2xl p-4 sm:p-6 border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col gap-3 sm:gap-4 transition-all hover:shadow-md">
-              <div className="flex items-center justify-between">
-                <div className={`w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center rounded-xl sm:rounded-2xl ${card.bgColor}`}>
-                  <Icon className={`${card.iconColor} w-5 h-5 sm:w-6 sm:h-6`} />
+      {/* Batch Capacity Management Section */}
+      <section className="space-y-6">
+        <div className="flex items-center justify-between">
+           <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-100 dark:border-indigo-800 rounded-xl text-indigo-600 dark:text-indigo-400">
+                 <Users size={20} />
+              </div>
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white uppercase tracking-tight font-poppins">Batch Capacity & Limits</h2>
+           </div>
+           {userRole === 'admin' && (
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-inter">Admin Control Active</span>
+           )}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {subjects.map((subject) => {
+            const enrolledPercent = Math.min(100, (subject.enrolled_count / subject.max_seats) * 100);
+            const isFull = subject.enrolled_count >= subject.max_seats;
+            
+            return (
+              <div key={subject.id} className="bg-white dark:bg-slate-900 rounded-[28px] p-5 border border-slate-100 dark:border-slate-800 shadow-sm ring-1 ring-blue-500/5 hover:ring-blue-500/10 transition-all group">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="min-w-0">
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white uppercase truncate font-poppins">{subject.name}</h4>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5 font-inter">ID: {subject.id}</p>
+                  </div>
+                  {isFull ? (
+                    <span className="bg-rose-50 text-rose-600 text-[8px] font-black uppercase px-2 py-0.5 rounded-md border border-rose-100">FULL</span>
+                  ) : (
+                    <span className="bg-emerald-50 text-emerald-600 text-[8px] font-black uppercase px-2 py-0.5 rounded-md border border-emerald-100">ACTIVE</span>
+                  )}
                 </div>
-                {index === 3 && stats && (
-                  <span className={`text-[10px] sm:text-[12px] font-bold px-2 py-1 rounded-full uppercase tracking-tighter sm:tracking-wider ${stats.growth_rate >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
-                    {stats.growth_rate >= 0 ? '+' : ''}{stats.growth_rate}%
-                  </span>
-                )}
-              </div>
-              <div>
-                <p className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1 sm:mb-1.5 leading-none font-inter">{card.title}</p>
-                <p className="text-xl sm:text-2xl font-semibold text-slate-900 dark:text-white tracking-tight font-poppins">{card.value}</p>
-              </div>
-            </div>
-          )
-        })}
-      </div>
 
-      {/* Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-        {/* Collection Trend */}
-        <div className="card-standard p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="h3 flex items-center gap-2">
-              <TrendingUp size={18} className="text-indigo-600" />
-              Fee Collection Trend
-            </h3>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-inter">Last 6 Months</span>
-          </div>
-          <div className="h-48 sm:h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={trends}>
-                <defs>
-                  <linearGradient id="colorAmount" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.1}/>
-                    <stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                <XAxis 
-                  dataKey="month" 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{ fontSize: 12, fill: '#9ca3af' }}
-                />
-                <YAxis 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{ fontSize: 12, fill: '#9ca3af' }}
-                  tickFormatter={(val) => `₹${val}`}
-                />
-                <Tooltip 
-                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
-                  formatter={(val: number) => `₹${val.toLocaleString()}`}
-                />
-                <Area 
-                  type="monotone" 
-                  dataKey="amount" 
-                  stroke="#4f46e5" 
-                  strokeWidth={3}
-                  fillOpacity={1} 
-                  fill="url(#colorAmount)" 
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
+                <div className="space-y-3">
+                   <div className="flex justify-between items-end">
+                      <div>
+                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1 font-inter">Students</p>
+                        <p className="text-lg font-black text-slate-900 dark:text-white font-poppins">{subject.enrolled_count} <span className="text-xs text-slate-400 font-medium">/ {subject.max_seats}</span></p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1 font-inter">Utilization</p>
+                        <p className={`text-sm font-black font-poppins ${enrolledPercent > 90 ? 'text-rose-500' : 'text-indigo-600'}`}>{Math.round(enrolledPercent)}%</p>
+                      </div>
+                   </div>
 
-        {/* Subject Distribution */}
-        <div className="card-standard p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="h3 flex items-center gap-2">
-              <Users size={18} className="text-blue-600" />
-              Subject Popularity
-            </h3>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-inter">Enrolled Students</span>
-          </div>
-          <div className="h-48 sm:h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={distribution}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={80}
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {distribution.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.fill} />
-                  ))}
-                </Pie>
-                <Tooltip 
-                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
+                   <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full transition-all duration-500 ${enrolledPercent > 90 ? 'bg-rose-500' : 'bg-indigo-600'}`}
+                        style={{ width: `${enrolledPercent}%` }}
+                      />
+                   </div>
+
+                   {/* Extended Actions */}
+                   <div className="flex items-center gap-2 mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+                     <button
+                       onClick={() => handleDownloadBulkIDs(subject)}
+                       className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-xl text-[10px] font-bold uppercase tracking-wider hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors"
+                     >
+                       <Download className="w-3 h-3" />
+                       Bulk ID Cards
+                     </button>
+                     
+                     {userRole === 'admin' && (
+                       <button
+                         onClick={() => handleExtendLimit(subject.id)}
+                         disabled={updatingSubjectId === subject.id}
+                         className="flex items-center gap-2 px-3 py-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-xl text-[10px] font-bold uppercase tracking-wider hover:bg-green-100 dark:hover:bg-green-900/40 transition-colors disabled:opacity-50"
+                       >
+                         {updatingSubjectId === subject.id ? (
+                           <Loader2 className="w-3 h-3 animate-spin" />
+                         ) : (
+                           <Plus className="w-3 h-3" />
+                         )}
+                         Extend (+10)
+                       </button>
+                     )}
+                   </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
-      </div>
+      </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Section - Recent Payments */}

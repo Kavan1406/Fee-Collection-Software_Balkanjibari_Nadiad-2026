@@ -2,16 +2,15 @@
 
 import { useState, useEffect } from 'react'
 import { Calendar, Loader2, ArrowUp, ArrowDown } from 'lucide-react'
-import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  BarChart, Bar, PieChart, Pie, Cell, Legend
+import { 
+  AreaChart, Area, PieChart, Pie, Cell, ResponsiveContainer, Tooltip, 
+  CartesianGrid, XAxis, YAxis, LineChart, Line, BarChart, Bar, Legend 
 } from 'recharts'
 import {
-  analyticsApi,
-  DashboardStats,
   PaymentTrend,
   SubjectDistribution,
-  PaymentStatusDistribution
+  PaymentStatusDistribution,
+  DashboardStats
 } from '@/lib/api'
 import { useTheme } from '@/contexts/ThemeContext'
 
@@ -184,21 +183,9 @@ export default function AnalyticsPage() {
             <p className="text-[8px] text-slate-400 font-bold uppercase tracking-widest font-inter">Invoiced Volume</p>
           </div>
           <div className="card-standard p-4 flex flex-col gap-2">
-            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-inter">Pending Fees</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-inter">Pending Fees</p>
             <p className="text-xl sm:text-2xl font-bold text-rose-500 tracking-tight font-poppins">{formatCurrency(stats.total_pending)}</p>
             <p className="text-[8px] text-slate-400 font-bold uppercase tracking-widest font-inter">Total Outstanding</p>
-          </div>
-          <div className="card-standard p-4 flex flex-col gap-2">
-            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-inter">Growth Rate</p>
-            <div className="flex items-center gap-2">
-              <p className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight font-poppins">{Number(stats.growth_rate)}%</p>
-              {stats.growth_rate >= 0 ? (
-                <ArrowUp className="text-emerald-500" size={14} />
-              ) : (
-                <ArrowDown className="text-rose-500" size={14} />
-              )}
-            </div>
-            <p className="text-[8px] text-slate-400 font-bold uppercase tracking-widest font-inter">vs previous period</p>
           </div>
         </div>
       )}
@@ -207,38 +194,77 @@ export default function AnalyticsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Line Chart - Fee Collection Over Time */}
         <div className="card-standard p-6">
-          <h2 className="text-base font-bold text-slate-900 dark:text-white mb-6 uppercase tracking-widest font-poppins">Financial Trends</h2>
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-base font-bold text-slate-900 dark:text-white uppercase tracking-widest font-poppins">Collection Trend</h2>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-inter">Last 6 Months</span>
+          </div>
           <div className="h-48 xs:h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={paymentTrends}>
-                <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
+              <AreaChart data={paymentTrends}>
+                <defs>
+                  <linearGradient id="colorAmount" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.1}/>
+                    <stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartColors.grid} />
                 <XAxis 
                   dataKey="month" 
-                  stroke={chartColors.text} 
-                  tick={{ fontSize: 8, fontWeight: 900 }}
-                  interval={typeof window !== 'undefined' && window.innerWidth < 480 ? 1 : 0}
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fontSize: 9, fontWeight: 900, fill: chartColors.text }}
                 />
-                <YAxis stroke={chartColors.text} tick={{ fontSize: 9, fontWeight: 900 }} />
-                <Tooltip
-                  formatter={(value: number) => formatCurrency(value)}
-                  contentStyle={{
-                    borderRadius: '12px',
-                    backgroundColor: isDarkMode ? 'rgba(0,0,0,0.8)' : 'rgba(255,255,255,0.8)',
-                    backdropFilter: 'blur(8px)',
-                    border: '1px solid rgba(255,255,255,0.2)',
-                    fontSize: '10px',
-                    fontWeight: 900
-                  }}
+                <YAxis 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fontSize: 9, fontWeight: 900, fill: chartColors.text }}
+                  tickFormatter={(val) => `₹${val}`}
                 />
-                <Line
-                  type="monotone"
-                  dataKey="amount"
-                  stroke={chartColors.line}
+                <Tooltip 
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', fontSize: '10px', fontWeight: 900 }}
+                  formatter={(val: number) => `₹${val.toLocaleString()}`}
+                />
+                <Area 
+                  type="monotone" 
+                  dataKey="amount" 
+                  stroke="#4f46e5" 
                   strokeWidth={3}
-                  activeDot={{ r: 6 }}
-                  dot={{ r: 4 }}
+                  fillOpacity={1} 
+                  fill="url(#colorAmount)" 
                 />
-              </LineChart>
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Subject Popularity - Donut Chart */}
+        <div className="card-standard p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-base font-bold text-slate-900 dark:text-white uppercase tracking-widest font-poppins">Subject Market Share</h2>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-inter">Enrolled Students</span>
+          </div>
+          <div className="h-48 xs:h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={subjectData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={80}
+                  paddingAngle={5}
+                  dataKey="value"
+                  stroke="none"
+                >
+                  {subjectData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.fill} />
+                  ))}
+                </Pie>
+                <Tooltip 
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', fontSize: '10px', fontWeight: 900 }}
+                />
+                <Legend iconType="circle" wrapperStyle={{ fontSize: '9px', fontWeight: 900, textTransform: 'uppercase' }} />
+              </PieChart>
             </ResponsiveContainer>
           </div>
         </div>

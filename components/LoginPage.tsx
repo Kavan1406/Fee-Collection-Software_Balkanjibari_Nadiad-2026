@@ -173,13 +173,13 @@ export default function LoginPage() {
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-12 flex-1">
               <div className="space-y-2">
-                <p className="text-[10px] font-bold text-rose-400 uppercase tracking-widest pl-0.5 font-poppins">Instruction (English)</p>
+                <p className="text-[10px] font-bold text-rose-400 uppercase tracking-widest pl-0.5 font-poppins">Instruction</p>
                 <p className="text-rose-900 dark:text-rose-200 text-[13.5px] font-medium leading-relaxed text-center lg:text-left font-inter">
                   For admission through cash payment, you have to visit the <span className="text-rose-600 font-semibold decoration-rose-500/30 underline-offset-4 decoration-2">Balkanji Ni Bari, Nadiad</span> office between <strong>15 April to 25 April</strong> during <strong>5:00 PM to 7:00 PM</strong> for filling the online form with cash. Students who need help filling the online form may also visit the office during the same hours.
                 </p>
               </div>
               <div className="space-y-2 border-t lg:border-t-0 lg:border-l border-rose-200/50 pt-6 lg:pt-0 lg:pl-12">
-                <p className="text-[10px] font-bold text-rose-400 uppercase tracking-widest pl-0.5 font-poppins">સૂચના (ગુજરાતી)</p>
+                <p className="text-[10px] font-bold text-rose-400 uppercase tracking-widest pl-0.5 font-poppins">સૂચના</p>
                 <p className="text-rose-900 dark:text-rose-200 text-[13.5px] font-medium leading-relaxed text-center lg:text-left font-inter" lang="gu">
                   રોકડ ચૂકવણી દ્વારા પ્રવેશ માટે, <span className="text-rose-600 font-semibold">૧૫ એપ્રિલ થી ૨૫ એપ્રિલ</span> દરમિયાન <span className="font-semibold">સાંજે ૫:૦૦ થી ૭:૦૦ વાગ્યા</span> સુધી બાળકાંજી ની બારી, નડિયાદ ઓફિસમાં રૂબરૂ આવવું. ઓનલાઈન ફોર્મ ભરવામાં मदद જોઈતી હોય તેવા વિદ્યાર્થીઓ પણ ઉક્ત સમય દરમિયાન ઓફિસની મુલાકાત લઈ શકે છે.
                 </p>

@@ -103,21 +103,8 @@ apiClient.interceptors.request.use((config) => {
     // @ts-ignore - store startTime to detect cold starts
     config.startTime = Date.now();
     
-    // Set a timer to show "Waking up" message if request > 8s
-    // only if it's the first few requests or if we suspect sleep
-    const wakeUpTimer = setTimeout(() => {
-        // @ts-ignore
-        if (!config.completed) {
-            toast.info("Server is waking up...", {
-                description: "This can take 30-60s on free hosting. Please wait...",
-                duration: 15000,
-                id: 'server-wakeup'
-            });
-        }
-    }, 8000);
-
-    // @ts-ignore
-    config.wakeUpTimer = wakeUpTimer;
+    // @ts-ignore - store startTime to detect cold starts
+    config.startTime = Date.now();
 
     return config;
 });
@@ -173,17 +160,11 @@ apiClient.interceptors.response.use(
     
     // @ts-ignore
     response.config.completed = true;
-    // @ts-ignore
-    clearTimeout(response.config.wakeUpTimer);
-    toast.dismiss('server-wakeup');
     return response;
   },
   async (error: AxiosError) => {
     // @ts-ignore
     error.config.completed = true;
-    // @ts-ignore
-    clearTimeout(error.config?.wakeUpTimer);
-    toast.dismiss('server-wakeup');
 
     const originalRequest = error.config as InternalAxiosRequestConfig & {
       _retry?: boolean;

@@ -19,7 +19,7 @@ class EnrollmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Enrollment
         fields = [
-            'id', 'enrollment_id', 'student', 'subject',
+            'id', 'enrollment_id', 'roll_number', 'student', 'subject',
             'enrollment_date', 'batch_time', 'status', 'total_fee', 'paid_amount',
             'pending_amount', 'payment_status', 'id_card', 'created_at'
         ]

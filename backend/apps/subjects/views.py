@@ -9,6 +9,9 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from .models import Subject
 from .serializers import SubjectSerializer, SubjectCreateSerializer
 from utils.permissions import IsStaffAccountantOrAdmin
+from utils.id_cards import generate_bulk_id_cards_pdf
+from django.http import HttpResponse
+from rest_framework.decorators import action
 
 
 class SubjectViewSet(viewsets.ModelViewSet):
@@ -98,3 +101,33 @@ class SubjectViewSet(viewsets.ModelViewSet):
             'success': True,
             'message': 'Subject deleted successfully.'
         }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='download-bulk-id-cards')
+    def download_bulk_id_cards(self, request, pk=None):
+        """Generate/Serve bulk student ID cards for this subject."""
+        subject = self.get_object()
+        
+        # Security: staff and admins only
+        if request.user.role not in ['ADMIN', 'STAFF', 'ACCOUNTANT']:
+            return Response({'success': False, 'error': {'message': 'Access denied.'}}, status=403)
+        
+        try:
+            from apps.enrollments.models import Enrollment
+            enrollments = list(Enrollment.objects.filter(
+                subject=subject, 
+                is_deleted=False, 
+                status='ACTIVE'
+            ).order_by('roll_number', 'created_at'))
+            
+            if not enrollments:
+                return Response({'success': False, 'error': {'message': 'No active enrollments found for this subject.'}}, status=404)
+            
+            pdf_content = generate_bulk_id_cards_pdf(enrollments)
+            
+            filename = f"Bulk_ID_Cards_{subject.name.replace(' ', '_')}.pdf"
+            response = HttpResponse(pdf_content, content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            return response
+            
+        except Exception as e:
+            return Response({'success': False, 'error': {'message': str(e)}}, status=500)

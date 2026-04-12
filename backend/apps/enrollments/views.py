@@ -259,3 +259,31 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response({'success': False, 'error': {'message': str(e)}}, status=500)
 
+    @action(detail=False, methods=['post'], url_path='bulk-backfill-roll-numbers')
+    @transaction.atomic
+    def bulk_backfill_roll_numbers(self, request):
+        """Administrative action to assign roll numbers to all existing enrollments."""
+        if request.user.role != 'ADMIN':
+            return Response({'success': False, 'error': {'message': 'Only admins can perform backfill.'}}, status=403)
+        
+        from apps.subjects.models import Subject
+        subjects = Subject.objects.filter(is_deleted=False)
+        updated_count = 0
+        
+        for subject in subjects:
+            # Order by created_at to assign in enrollment order
+            enrollments = Enrollment.objects.filter(
+                subject=subject, 
+                is_deleted=False
+            ).order_by('created_at')
+            
+            for index, enrollment in enumerate(enrollments, start=1):
+                enrollment.roll_number = index
+                enrollment.save()
+                updated_count += 1
+        
+        return Response({
+            'success': True, 
+            'message': f'Successfully backfilled roll numbers for {updated_count} enrollments.'
+        })
+

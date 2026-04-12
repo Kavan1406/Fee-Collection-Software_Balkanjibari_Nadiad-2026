@@ -138,16 +138,12 @@ export default function StudentDashboard({ setCurrentPage }: StudentDashboardPro
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 no-scrollbar">
-      {/* Premium Banner Section */}
-      <div className="relative">
-        <div className="h-28 sm:h-40 bg-indigo-600 rounded-[28px] sm:rounded-[32px] shadow-2xl shadow-indigo-200/50 overflow-hidden relative">
-           {/* Pure indigo background */}
-        </div>
-        
-        <div className="mx-3 sm:mx-10 -mt-12 sm:-mt-20 relative z-10">
-          <div className="bg-white p-4 sm:p-8 rounded-[28px] sm:rounded-[32px] shadow-xl shadow-slate-200/50 border border-slate-50 flex flex-col md:flex-row items-center md:items-center gap-4 sm:gap-10 group hover:shadow-2xl hover:shadow-indigo-500/10 transition-all duration-500">
+      {/* Profile Header Section */}
+      <div className="relative pt-2">
+        <div className="mx-0 relative z-10">
+          <div className="bg-white dark:bg-slate-800 p-6 sm:p-10 rounded-[32px] shadow-2xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-700 ring-1 ring-blue-400/10 dark:ring-blue-400/5 flex flex-col md:flex-row items-center md:items-center gap-6 sm:gap-12 group transition-all duration-500">
             <div className="relative group/photo shrink-0">
-                <div className="h-20 w-20 xs:h-28 xs:w-28 sm:h-36 sm:w-36 rounded-[24px] sm:rounded-[32px] border-[4px] sm:border-[6px] border-white shadow-xl overflow-hidden bg-slate-50 flex items-center justify-center text-slate-300 font-bold text-2xl sm:text-4xl font-poppins transition-transform duration-500 group-hover:scale-105">
+                <div className="h-24 w-24 xs:h-32 xs:w-32 sm:h-40 sm:w-40 rounded-[32px] border-[6px] border-slate-50 dark:border-slate-700 shadow-xl overflow-hidden bg-slate-100 dark:bg-slate-900 flex items-center justify-center text-slate-300 dark:text-slate-600 font-bold text-3xl sm:text-5xl font-poppins transition-transform duration-500 group-hover:scale-105">
                 {stats.photo && !imgError ? (
                     <img 
                       src={getMediaUrl(stats.photo) || ''} 
@@ -162,29 +158,30 @@ export default function StudentDashboard({ setCurrentPage }: StudentDashboardPro
                     <span className="opacity-80">{stats.student_name?.[0]?.toUpperCase() || 'S'}</span>
                 )}
                 </div>
-                <div className="absolute -bottom-2 -right-2 bg-emerald-500 border-4 border-white h-8 w-8 rounded-full shadow-sm"></div>
+                <div className="absolute -bottom-1 -right-1 bg-emerald-500 border-4 border-white dark:border-slate-800 h-9 w-9 rounded-full shadow-lg ring-4 ring-emerald-500/20"></div>
             </div>
             
-            <div className="flex-1 text-center md:text-left space-y-1">
-              <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-3 justify-center md:justify-start">
-                  <h1 className="text-2xl xs:text-3xl sm:text-5xl font-bold text-slate-900 tracking-tight font-poppins">{stats.student_name}</h1>
-                  <span className="hidden sm:block w-2 h-2 rounded-full bg-slate-200"></span>
-                  <div className="inline-flex items-center px-3 py-1 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100/50 w-fit mx-auto sm:mx-0 font-inter">
-                    <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-widest">Active Student</span>
+            <div className="flex-1 text-center md:text-left space-y-2">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 justify-center md:justify-start">
+                  <h1 className="text-3xl xs:text-4xl sm:text-5xl font-black text-slate-900 dark:text-white tracking-tight font-poppins capitalize">{stats.student_name}</h1>
+                  <div className="inline-flex items-center px-4 py-1.5 rounded-full bg-indigo-600 text-white shadow-lg shadow-indigo-500/20 w-fit mx-auto sm:mx-0 font-inter">
+                    <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-[0.2em]">Active Student</span>
                   </div>
               </div>
-              <div className="flex flex-wrap items-center justify-center md:justify-start gap-6 pt-1">
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-100 font-inter">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-mono">Student ID:</span>
-                    <span className="text-xs font-bold text-slate-700">{stats.student_id}</span>
+              
+              <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 sm:gap-8 pt-2">
+                <div className="flex items-center gap-3 px-4 py-2 rounded-2xl bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-700 font-inter">
+                    <span className="text-[11px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">Student ID:</span>
+                    <span className="text-sm font-black text-indigo-600 dark:text-indigo-400">{stats.student_id}</span>
                 </div>
-                <div className="flex items-center gap-2 group/stat cursor-help">
-                    <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 group-hover/stat:bg-indigo-600 group-hover/stat:text-white transition-colors">
-                        <BookIcon size={14} />
+                
+                <div className="flex items-center gap-3 group/stat cursor-help">
+                    <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                        <BookIcon size={16} />
                     </div>
                     <div>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none font-inter">Enrollments</p>
-                        <p className="text-xs font-bold text-slate-800 mt-0.5 font-poppins">{stats.subjects_count} Active Modules</p>
+                        <p className="text-[11px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-[0.1em] leading-none font-inter">Total Enrollments</p>
+                        <p className="text-sm font-black text-slate-900 dark:text-white mt-1 font-poppins">{stats.subjects_count} Active Modules</p>
                     </div>
                 </div>
               </div>
@@ -223,36 +220,36 @@ export default function StudentDashboard({ setCurrentPage }: StudentDashboardPro
 
       {/* Unified Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-8">
-        <div className="card-standard p-6 sm:p-8 bg-white group hover:border-blue-200 transition-all duration-500 relative overflow-hidden shadow-xl shadow-blue-500/5">
-          <p className="text-[10px] sm:text-[12px] font-bold text-slate-400 uppercase tracking-[0.25em] mb-2 font-inter">Total Subjects Fee</p>
+        <div className="card-standard p-6 sm:p-8 bg-white dark:bg-slate-800 group hover:border-blue-200 dark:hover:border-blue-800 transition-all duration-500 relative overflow-hidden shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-700 ring-1 ring-blue-400/10 dark:ring-blue-400/5">
+          <p className="text-[11px] sm:text-[12px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-[0.2em] mb-3 font-inter">Total Subjects Fee</p>
           <div className="flex items-end gap-2">
-            <h2 className="text-3xl sm:text-5xl font-bold text-slate-900 tracking-tight font-poppins">{formatCurrency(totalFee)}</h2>
-            <span className="text-[9px] sm:text-[11px] font-bold text-blue-500 bg-blue-50 px-2.5 py-1 rounded-full mb-1 font-inter">Locked</span>
+            <h2 className="text-3xl sm:text-4xl font-black text-slate-900 dark:text-white tracking-tight font-poppins">{formatCurrency(totalFee)}</h2>
+            <span className="text-[10px] sm:text-[11px] font-black text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-3 py-1.5 rounded-full mb-1 font-inter">Locked</span>
           </div>
-          <div className="w-12 h-12 sm:w-14 sm:h-14 bg-indigo-50 flex items-center justify-center text-indigo-600 absolute right-4 bottom-4 sm:right-8 sm:bottom-8 shadow-sm group-hover:bg-indigo-600 group-hover:text-white transition-all duration-500 rounded-2xl">
+          <div className="w-12 h-12 sm:w-14 sm:h-14 bg-indigo-50 dark:bg-slate-900 flex items-center justify-center text-indigo-600 dark:text-indigo-400 absolute right-4 bottom-4 sm:right-8 sm:bottom-8 shadow-sm group-hover:bg-indigo-600 group-hover:text-white transition-all duration-500 rounded-2xl">
             <BookIcon size={20} className="sm:w-6 sm:h-6" />
           </div>
         </div>
         
-        <div className="card-standard p-6 sm:p-8 bg-white group hover:border-emerald-200 transition-all duration-500 relative overflow-hidden shadow-xl shadow-emerald-500/5">
-          <p className="text-[10px] sm:text-[12px] font-bold text-slate-400 uppercase tracking-[0.25em] mb-2 font-inter">Total Fees Paid</p>
+        <div className="card-standard p-6 sm:p-8 bg-white dark:bg-slate-800 group hover:border-emerald-200 dark:hover:border-emerald-800 transition-all duration-500 relative overflow-hidden shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-700 ring-1 ring-blue-400/10 dark:ring-blue-400/5">
+          <p className="text-[11px] sm:text-[12px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-[0.2em] mb-3 font-inter">Total Fees Paid</p>
           <div className="flex items-end gap-3">
-            <h2 className="text-3xl sm:text-5xl font-bold text-emerald-600 tracking-tight font-poppins">{formatCurrency(totalPaid)}</h2>
-            <span className="text-[10px] sm:text-sm font-bold text-emerald-500/70 mb-1 font-inter">{paidPercentage.toFixed(1)}% Clear</span>
+            <h2 className="text-3xl sm:text-4xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight font-poppins">{formatCurrency(totalPaid)}</h2>
+            <span className="text-xs sm:text-sm font-black text-emerald-500/80 mb-1.5 font-inter bg-emerald-50 dark:bg-emerald-900/20 px-3 py-1 rounded-lg">{paidPercentage.toFixed(1)}% Clear</span>
           </div>
-          <div className="w-12 h-12 sm:w-14 sm:h-14 bg-emerald-50 flex items-center justify-center text-emerald-600 absolute right-4 bottom-4 sm:right-8 sm:bottom-8 shadow-sm group-hover:bg-emerald-600 group-hover:text-white transition-all duration-500 rounded-2xl">
+          <div className="w-12 h-12 sm:w-14 sm:h-14 bg-emerald-50 dark:bg-slate-900 flex items-center justify-center text-emerald-600 dark:text-emerald-400 absolute right-4 bottom-4 sm:right-8 sm:bottom-8 shadow-sm group-hover:bg-emerald-600 group-hover:text-white transition-all duration-500 rounded-2xl">
             <CreditCard size={20} className="sm:w-6 sm:h-6" />
           </div>
         </div>
 
-        <div className="card-standard p-6 sm:p-8 bg-white group hover:border-rose-200 transition-all duration-500 relative overflow-hidden shadow-xl shadow-rose-500/5">
-          <p className="text-[10px] sm:text-[12px] font-bold text-slate-400 uppercase tracking-[0.25em] mb-2 font-inter">Pending Dues</p>
+        <div className="card-standard p-6 sm:p-8 bg-white dark:bg-slate-800 group hover:border-rose-200 dark:hover:border-rose-800 transition-all duration-500 relative overflow-hidden shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-700 ring-1 ring-blue-400/10 dark:ring-blue-400/5">
+          <p className="text-[11px] sm:text-[12px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-[0.2em] mb-3 font-inter">Pending Dues</p>
           <div className="flex items-end gap-2">
-            <h2 className="text-3xl sm:text-5xl font-bold tracking-tight font-poppins text-rose-600 uppercase">
+            <h2 className="text-3xl sm:text-4xl font-black tracking-tight font-poppins text-rose-600 dark:text-rose-400 uppercase">
                 {formatCurrency(totalPending)}
             </h2>
           </div>
-          <div className="w-12 h-12 sm:w-14 sm:h-14 absolute right-4 bottom-4 sm:right-8 sm:bottom-8 flex items-center justify-center shadow-sm transition-all duration-500 rounded-2xl bg-rose-50 text-rose-600 group-hover:bg-rose-600 group-hover:text-white">
+          <div className="w-12 h-12 sm:w-14 sm:h-14 absolute right-4 bottom-4 sm:right-8 sm:bottom-8 flex items-center justify-center shadow-sm transition-all duration-500 rounded-2xl bg-rose-50 dark:bg-slate-900 text-rose-600 dark:text-rose-400 group-hover:bg-rose-600 group-hover:text-white">
             <AlertCircle size={20} className="sm:w-6 sm:h-6" />
           </div>
         </div>
@@ -260,7 +257,8 @@ export default function StudentDashboard({ setCurrentPage }: StudentDashboardPro
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Enrolled Subjects List Section */}
-        <div className="lg:col-span-2 card-standard p-6 sm:p-10 bg-white shadow-lg shadow-slate-200/40">
+        {/* Enrolled Subjects List Section */}
+        <div className="lg:col-span-2 card-standard p-6 sm:p-10 bg-white dark:bg-slate-800 shadow-lg shadow-slate-200/40 ring-1 ring-blue-400/10 dark:ring-blue-400/5 border border-slate-100 dark:border-slate-700">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 sm:mb-10 pb-4 border-b border-slate-50">
             <div>
                 <h2 className="text-2xl font-bold text-slate-900 tracking-tight font-poppins">Your Enrolled Subjects</h2>
@@ -346,7 +344,7 @@ export default function StudentDashboard({ setCurrentPage }: StudentDashboardPro
         </div>
 
         {/* Financial Progress Section */}
-        <div className="card-standard p-6 sm:p-10 bg-white flex flex-col group/fin shadow-lg shadow-slate-200/40">
+        <div className="card-standard p-6 sm:p-10 bg-white dark:bg-slate-800 flex flex-col group/fin shadow-lg shadow-slate-200/40 ring-1 ring-blue-400/10 dark:ring-blue-400/5 border border-slate-100 dark:border-slate-700">
           <div className="flex items-center gap-3 mb-6 sm:mb-10 pb-4 border-b border-slate-50">
             <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-[15px] sm:rounded-[18px] bg-blue-600 flex items-center justify-center text-white shadow-lg shadow-blue-200 group-hover/fin:scale-110 transition-transform duration-500">
                 <CreditCard size={20} />

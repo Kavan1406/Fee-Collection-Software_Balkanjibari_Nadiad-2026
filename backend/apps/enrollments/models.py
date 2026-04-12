@@ -20,6 +20,12 @@ class Enrollment(models.Model):
         ('DROPPED', 'Dropped'),
     ]
     
+    roll_number = models.IntegerField(
+        null=True, 
+        blank=True, 
+        help_text='Subject-wise roll number (1, 2, 3...)'
+    )
+    
     # Auto-generated enrollment ID (ENR-2024-001-PIANO)
     enrollment_id = models.CharField(
         max_length=30,
@@ -141,6 +147,15 @@ class Enrollment(models.Model):
                     self.enrollment_id = candidate_id
                     break
                 new_num += 1
+        
+        # 2. Auto-assign roll_number per subject if not set (Phase 4: Roll Numbers)
+        if not self.roll_number:
+            last_roll = Enrollment.objects.filter(
+                subject=self.subject,
+                roll_number__isnull=False
+            ).order_by('roll_number').last()
+            
+            self.roll_number = (last_roll.roll_number + 1) if last_roll else 1
         
         # Calculate pending amount
         self.pending_amount = self.total_fee - self.paid_amount

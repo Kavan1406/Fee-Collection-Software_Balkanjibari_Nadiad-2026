@@ -233,20 +233,39 @@ export default function StudentPayments() {
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      {/* Premium Banner Section */}
-      <div className="relative">
-        <div className="h-28 sm:h-44 bg-indigo-600 rounded-[24px] sm:rounded-[32px] shadow-2xl shadow-indigo-200/50 overflow-hidden relative">
-           <div className="absolute inset-0 flex items-center px-6 sm:px-10">
-              <div className="flex items-center gap-3 sm:gap-4">
-                    <div className="p-2 sm:p-3 bg-blue-500/20 rounded-xl">
-                        <CreditCard className="w-6 h-6 sm:w-8 sm:h-8 text-blue-400" />
-                    </div>
-                    <div>
-                        <p className="text-blue-200/60 text-[10px] sm:text-xs font-semibold uppercase tracking-wider mb-0.5 sm:mb-1 font-inter">Financial Overview</p>
-                        <h1 className="text-2xl sm:text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-blue-200 uppercase tracking-tight font-poppins">Payment Ledger</h1>
-                    </div>
-                </div>
-           </div>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-black text-slate-950 uppercase tracking-tight font-poppins">My Payment History</h1>
+          <p className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mt-1 font-inter">Verified Financial Transactions</p>
+        </div>
+        <div className="flex items-center gap-3 px-4 py-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border border-indigo-100 dark:border-indigo-800/50">
+           <CreditCard size={14} className="text-indigo-600 dark:text-indigo-400" />
+           <span className="text-[10px] font-bold text-indigo-700 dark:text-indigo-400 uppercase tracking-widest font-inter">Institutional Ledger</span>
+        </div>
+      </div>
+
+      {/* Financial Summary Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
+        <div className="bg-white dark:bg-slate-900 rounded-[28px] p-6 border border-slate-100 dark:border-slate-800 shadow-lg shadow-slate-200/10 ring-1 ring-blue-400/10 dark:ring-blue-400/5 group relative overflow-hidden">
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 font-inter">Total Commitment</p>
+          <p className="text-2xl font-black text-slate-900 dark:text-white font-poppins">{formatCurrency(paymentHistory.reduce((acc, p) => acc + (p.status === 'SUCCESS' ? Number(p.amount) : 0), 0) + pendingFees.reduce((acc, f) => acc + Number(f.pending_amount), 0))}</p>
+          <div className="absolute top-4 right-4 p-2 bg-slate-50 dark:bg-slate-800/30 text-slate-500 rounded-xl">
+             <IndianRupee size={18} />
+          </div>
+        </div>
+        <div className="bg-white dark:bg-slate-900 rounded-[28px] p-6 border border-slate-100 dark:border-slate-800 shadow-lg shadow-slate-200/10 ring-1 ring-blue-400/10 dark:ring-blue-400/5 group relative overflow-hidden">
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 font-inter">Total Paid</p>
+          <p className="text-2xl font-black text-emerald-600 font-poppins">{formatCurrency(paymentHistory.reduce((acc, p) => acc + (p.status === 'SUCCESS' ? Number(p.amount) : 0), 0))}</p>
+          <div className="absolute top-4 right-4 p-2 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-500 rounded-xl">
+             <CheckCircle size={18} />
+          </div>
+        </div>
+        <div className="bg-white dark:bg-slate-900 rounded-[28px] p-6 border border-slate-100 dark:border-slate-800 shadow-lg shadow-slate-200/10 ring-1 ring-blue-400/10 dark:ring-blue-400/5 group relative overflow-hidden">
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 font-inter">Pending Dues</p>
+          <p className="text-2xl font-black text-rose-600 font-poppins">{formatCurrency(pendingFees.reduce((acc, f) => acc + Number(f.pending_amount), 0))}</p>
+          <div className="absolute top-4 right-4 p-2 bg-rose-50 dark:bg-rose-900/30 text-rose-500 rounded-xl">
+             <AlertCircle size={18} />
+          </div>
         </div>
       </div>
 
@@ -265,12 +284,12 @@ export default function StudentPayments() {
       )}
 
       {/* Pending Fees Section */}
-      <section className="px-1 sm:px-0">
+      <section className="px-1 sm:px-0 pt-4">
         <div className="flex items-center gap-3 mb-6">
-          <div className="p-2 sm:p-2.5 bg-indigo-50 border border-indigo-100 rounded-xl text-indigo-600 shadow-sm">
-            <CreditCard size={20} className="sm:w-[22px] sm:h-[22px]" />
+          <div className="p-2 sm:p-2.5 bg-rose-50 border border-rose-100 rounded-xl text-rose-600 shadow-sm">
+            <AlertCircle size={20} className="sm:w-[22px] sm:h-[22px]" />
           </div>
-          <h2 className="text-lg sm:text-xl font-bold text-slate-900 uppercase tracking-tight font-poppins">Pending Dues</h2>
+          <h2 className="text-lg sm:text-xl font-bold text-slate-900 uppercase tracking-tight font-poppins">Outstanding Dues</h2>
         </div>
 
         {pendingFees.length === 0 ? (
@@ -284,45 +303,31 @@ export default function StudentPayments() {
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-8">
             {pendingFees.map((fee) => (
-              <div key={fee.id} className="bg-white dark:bg-slate-900 rounded-[24px] sm:rounded-[32px] p-6 sm:p-8 border border-slate-100 dark:border-slate-800 shadow-xl shadow-slate-200/20 group hover:shadow-indigo-50 transition-all">
-                <div className="flex justify-between items-start mb-6 sm:mb-8">
+              <div key={fee.id} className="bg-white dark:bg-slate-900 rounded-[32px] p-6 sm:p-10 border border-slate-100 dark:border-slate-800 shadow-xl shadow-slate-200/20 ring-1 ring-blue-400/10 dark:ring-blue-400/5 group">
+                <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-8">
                   <div className="space-y-2">
-                    <span className="inline-block bg-indigo-50 text-indigo-600 text-[10px] sm:text-[11px] font-inter px-3 py-1 rounded-lg font-bold tracking-widest uppercase border border-indigo-100">
-                      Receipt ID: {fee.id}
-                    </span>
-                    <h3 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white uppercase tracking-tight leading-tight group-hover:text-indigo-600 transition-colors font-poppins">{fee.subject_name}</h3>
-                  </div>
-                </div>
-
-                <div className="flex flex-col sm:flex-row items-center justify-between p-4 sm:p-6 bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700 rounded-2xl mb-6 sm:mb-8 gap-4 sm:gap-0">
-                  <div className="text-center sm:text-left">
-                    <div className="text-[9px] sm:text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-1.5 font-inter">Fee Breakdown</div>
-                    <div className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-tighter sm:tracking-tight font-poppins">
-                      Net: {formatCurrency(fee.total_fee)} • Rec: {formatCurrency(fee.paid_amount)}
+                    <h3 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight font-poppins">{fee.subject_name}</h3>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-inter">ID: {fee.id}</span>
+                      <span className="w-1 h-1 rounded-full bg-slate-300"></span>
+                      <span className="text-[10px] font-bold text-rose-500 uppercase tracking-widest font-inter">Action Required</span>
                     </div>
                   </div>
-                  <div className="text-center sm:text-right">
-                    <div className="text-[9px] sm:text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-1 font-inter">Due Amount</div>
-                    <div className="text-2xl sm:text-3xl font-bold text-rose-600 tracking-tighter font-poppins">{formatCurrency(fee.pending_amount)}</div>
+                  <div className="text-right">
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-inter mb-1">Due Amount</p>
+                    <p className="text-3xl font-black text-rose-600 font-poppins">{formatCurrency(fee.pending_amount)}</p>
                   </div>
                 </div>
 
-                <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
-                  <select
-                    className="flex-1 h-12 sm:h-14 px-4 sm:px-5 rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 focus:border-indigo-500 outline-none transition-all font-bold text-[12px] sm:text-[13px] text-slate-900 dark:text-white bg-white dark:bg-slate-900 font-inter"
-                    value={selectedModes[fee.id] || 'ONLINE'}
-                    onChange={(e) => setSelectedModes({ ...selectedModes, [fee.id]: e.target.value as any })}
-                  >
-                    <option value="ONLINE">Gateway: Razorpay</option>
-                    <option value="CASH">Offline: Office Receipt</option>
-                  </select>
-                  <button
-                    onClick={() => handlePayment(fee)}
-                    disabled={!!processingId}
-                    className="flex-1 h-12 sm:h-14 rounded-xl sm:rounded-2xl font-bold text-[11px] sm:text-[13px] uppercase tracking-widest bg-indigo-600 text-white shadow-xl shadow-indigo-500/30 hover:bg-indigo-700 transition-all flex items-center justify-center gap-3 active:scale-[0.98] font-poppins"
-                  >
-                    {processingId === fee.id ? <Loader2 size={18} className="animate-spin text-white" /> : <span>Pay Now</span>}
-                  </button>
+                <div className="grid grid-cols-2 gap-4 p-5 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700 font-inter">
+                  <div>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Fee Breakdown</p>
+                    <p className="text-xs font-black text-slate-900 dark:text-white">{formatCurrency(fee.total_fee)} (Total)</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Status</p>
+                    <p className="text-xs font-black text-amber-600 dark:text-amber-400">UNPAID</p>
+                  </div>
                 </div>
               </div>
             ))}
@@ -346,8 +351,9 @@ export default function StudentPayments() {
                 <tr className="bg-slate-50 border-b border-slate-100 text-left">
                   <th className="px-6 py-5 text-[11px] font-bold uppercase tracking-widest text-slate-500 font-inter">Timestamp</th>
                   <th className="px-6 py-5 text-[11px] font-bold uppercase tracking-widest text-slate-500 font-inter">Subject</th>
-                  <th className="px-6 py-5 text-[11px] font-bold uppercase tracking-widest text-slate-500 font-inter">Net Amount</th>
-                  <th className="px-6 py-5 text-[11px] font-bold uppercase tracking-widest text-slate-500 font-inter">Pending Payments</th>
+                  <th className="px-6 py-5 text-[11px] font-bold uppercase tracking-widest text-slate-500 font-inter">Amount</th>
+                  <th className="px-6 py-5 text-[11px] font-bold uppercase tracking-widest text-slate-500 font-inter">Mode</th>
+                  <th className="px-6 py-5 text-[11px] font-bold uppercase tracking-widest text-slate-500 font-inter">Status</th>
                   <th className="px-6 py-5 text-right text-[11px] font-bold uppercase tracking-widest text-slate-500 font-inter">Receipt</th>
                 </tr>
               </thead>
@@ -363,13 +369,18 @@ export default function StudentPayments() {
                         {new Date(payment.payment_date).toLocaleDateString()}
                       </td>
                       <td className="px-6 py-5 text-xs font-bold text-slate-900 uppercase font-poppins">{payment.subject_name}</td>
-                      <td className="px-6 py-5 text-sm font-bold text-indigo-600 font-poppins">{formatCurrency(payment.amount)}</td>
+                      <td className="px-6 py-5 text-sm font-bold text-slate-900 font-poppins">{formatCurrency(payment.amount)}</td>
+                      <td className="px-6 py-5">
+                         <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-md ${payment.payment_mode === 'ONLINE' ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
+                            {payment.payment_mode === 'ONLINE' ? 'Online' : 'Cash'}
+                         </span>
+                      </td>
                       <td className="px-6 py-5">{getStatusBadge(payment.status)}</td>
                       <td className="px-6 py-5 text-right">
                         {payment.status === 'SUCCESS' && (
                           <button
                             onClick={() => handleDownloadReceipt(payment.id)}
-                            className="bg-white hover:bg-slate-50 text-indigo-600 h-10 px-4 rounded-xl text-[10px] font-bold uppercase tracking-widest border border-slate-200 transition-all shadow-sm flex items-center gap-2 ml-auto font-poppins"
+                            className="bg-white hover:bg-slate-50 text-indigo-600 h-10 px-4 rounded-xl text-[10px] font-bold uppercase tracking-widest border border-slate-200 transition-all shadow-sm ring-1 ring-blue-400/10 flex items-center gap-2 ml-auto font-poppins"
                           >
                             <Download size={14} /> Fee Receipt
                           </button>
@@ -398,16 +409,20 @@ export default function StudentPayments() {
                     </div>
                     {getStatusBadge(payment.status)}
                   </div>
-                  <div className="flex justify-between items-end pt-4 border-t border-slate-50 dark:border-slate-800">
+                  <div className="grid grid-cols-3 gap-2 pt-4 border-t border-slate-50 dark:border-slate-800">
                     <div className="space-y-1">
-                       <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-inter">Cleared On</p>
+                       <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-inter">Date</p>
                        <p className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest font-poppins">
-                         {new Date(payment.payment_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                         {new Date(payment.payment_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
                        </p>
                     </div>
-                    <div className="text-right">
-                       <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-inter">Net Value</p>
-                       <p className="text-lg font-bold text-indigo-600 dark:text-indigo-400 tracking-tighter leading-none font-poppins">{formatCurrency(payment.amount)}</p>
+                    <div className="space-y-1 text-center">
+                       <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-inter">Mode</p>
+                       <p className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest font-poppins">{payment.payment_mode}</p>
+                    </div>
+                    <div className="text-right space-y-1">
+                       <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-inter">Value</p>
+                       <p className="text-sm font-bold text-slate-900 dark:text-white tracking-tighter leading-none font-poppins">{formatCurrency(payment.amount)}</p>
                     </div>
                   </div>
                   {payment.status === 'SUCCESS' && (

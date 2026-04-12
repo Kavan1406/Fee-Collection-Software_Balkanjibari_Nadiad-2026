@@ -105,6 +105,7 @@ class StudentSerializer(serializers.ModelSerializer):
                 'id': e.id, 
                 'subject_id': e.subject.id,
                 'subject_name': e.subject.name,
+                'subject_description': e.subject.description,
                 'batch_time': e.batch_time,
                 'include_library_fee': e.include_library_fee,
                 'total_fee': float(e.total_fee),
