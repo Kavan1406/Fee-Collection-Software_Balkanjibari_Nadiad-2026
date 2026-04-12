@@ -82,10 +82,10 @@ def generate_receipt_pdf(payment=None, student=None, order_id=None):
     doc = SimpleDocTemplate(
         buffer,
         pagesize=pagesize,
-        rightMargin=1.0 * cm,
-        leftMargin=1.0 * cm,
-        topMargin=0.7 * cm,
-        bottomMargin=0.6 * cm,
+        rightMargin=0.5 * cm,
+        leftMargin=0.5 * cm,
+        topMargin=0.4 * cm,
+        bottomMargin=0.4 * cm,
         title=f"Receipt_{student.student_id if student else 'Fee'}"
     )
 
@@ -104,8 +104,8 @@ def generate_receipt_pdf(payment=None, student=None, order_id=None):
     logo_img = None
     logo_img_right = None
     if os.path.exists(logo_path):
-        logo_img = Image(logo_path, width=2.2 * cm, height=2.2 * cm)
-        logo_img_right = Image(logo_path, width=2.2 * cm, height=2.2 * cm)
+        logo_img = Image(logo_path, width=1.6 * cm, height=1.6 * cm)
+        logo_img_right = Image(logo_path, width=1.6 * cm, height=1.6 * cm)
 
     h_title_style = ParagraphStyle('HTitle', fontSize=22, fontName='Helvetica-Bold',
                                    textColor=indigo, alignment=TA_CENTER, leading=24)
@@ -121,7 +121,7 @@ def generate_receipt_pdf(payment=None, student=None, order_id=None):
     ]
 
     header_table = Table([[logo_img or "", header_text, logo_img_right or ""]],
-                         colWidths=[2.6 * cm, 13.8 * cm, 2.6 * cm])
+                         colWidths=[2.0 * cm, 15.0 * cm, 2.0 * cm])
     header_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
@@ -143,7 +143,7 @@ def generate_receipt_pdf(payment=None, student=None, order_id=None):
         ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
     ]))
     story.append(title_table)
-    story.append(Spacer(1, 0.3 * cm))
+    story.append(Spacer(1, 0.15 * cm))
 
     # Student Details
     lbl_s = ParagraphStyle('Label', fontSize=8, fontName='Helvetica-Bold', textColor=slate)
@@ -177,7 +177,7 @@ def generate_receipt_pdf(payment=None, student=None, order_id=None):
     t2.setStyle(TableStyle([('VALIGN', (0, 0), (-1, -1), 'TOP'), ('BOTTOMPADDING', (0, 0), (-1, -1), 2)]))
 
     story.append(Table([[t1, t2]], colWidths=[9.5 * cm, 9.5 * cm]))
-    story.append(Spacer(1, 0.15 * cm))
+    story.append(Spacer(1, 0.1 * cm))
 
     # Enrollments Table
     fee_data = [['#', 'Subject', 'Batch Time', 'SubFee', 'LibFee', 'Total']]
@@ -235,7 +235,7 @@ def generate_receipt_pdf(payment=None, student=None, order_id=None):
         ('SPAN', (0, -1), (3, -1)), # Empty space for total row
     ]))
     story.append(fee_table)
-    story.append(Spacer(1, 0.4 * cm))
+    story.append(Spacer(1, 0.2 * cm))
 
     # Payment Status
     status_s = ParagraphStyle('PS', fontSize=9, fontName='Helvetica-Bold', textColor=green)

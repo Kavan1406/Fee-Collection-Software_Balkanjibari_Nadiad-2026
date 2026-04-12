@@ -9,20 +9,29 @@ import { toast } from 'sonner';
 const DEFAULT_BACKEND_URL = 'https://balkanji-backend.onrender.com';
 export let API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || DEFAULT_BACKEND_URL;
 
-// --- DYNAMIC BACKEND FIX (v2.5) ---
-// If running on Vercel and API URL is missing, force fallback to Render production backend
-if (typeof window !== 'undefined' && (!process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_URL === '/')) {
-  if (window.location.hostname.includes('vercel.app')) {
-    API_BASE_URL = DEFAULT_BACKEND_URL;
+// --- DYNAMIC BACKEND FIX (v3.0 - SMART DISCOVERY) ---
+if (typeof window !== 'undefined') {
+  const currentHost = window.location.hostname;
+  
+  // If we are on the production domain but API is pointing to '/' or itself without prefix
+  // OR if it's pointing to the frontend domain when it should be the backend
+  if (currentHost === 'balkanjibari.org' || currentHost.includes('vercel.app')) {
+    if (!process.env.NEXT_PUBLIC_API_URL || 
+        process.env.NEXT_PUBLIC_API_URL === '/' || 
+        API_BASE_URL.includes(currentHost)) {
+      
+      console.warn(`[Auto-Fix] Production environment detected on ${currentHost}. Redirecting API from ${API_BASE_URL} to fallback: ${DEFAULT_BACKEND_URL}`);
+      API_BASE_URL = DEFAULT_BACKEND_URL;
+    }
   }
 }
-// ----------------------------------
+// ----------------------------------------------------
 
-// --- DIAGNOSTIC LOGGING (v2.2) ---
+// --- DIAGNOSTIC LOGGING (v3.0) ---
 if (typeof window !== 'undefined') {
   const isProd = process.env.NODE_ENV === 'production';
   const urlStatus = API_BASE_URL ? `CONNECTED: ${API_BASE_URL}` : 'MISSING / EMPTY';
-  const bgColor = API_BASE_URL ? '#10b981' : '#ef4444'; // Green if present, Red if missing
+  const bgColor = API_BASE_URL.includes('onrender.com') ? '#10b981' : (API_BASE_URL.includes('localhost') ? '#3b82f6' : '#ef4444');
   
   console.log(
     `%c API BASE URL %c ${urlStatus} `,
@@ -30,11 +39,11 @@ if (typeof window !== 'undefined') {
     `background: ${bgColor}; color: #fff; padding: 2px 5px; border-radius: 0 4px 4px 0; font-weight: bold;`
   );
 
-  if (!API_BASE_URL && isProd) {
-    console.error(
-      "%c CRITICAL ERROR: NEXT_PUBLIC_API_URL is not set! %c\nRequests will fail with 404. Please set this in your Vercel Dashboard Settings > Environment Variables.",
-      "background: #ef4444; color: #fff; font-weight: bold; font-size: 14px; padding: 5px;",
-      "color: #ef4444; font-weight: bold;"
+  if (API_BASE_URL.includes(window.location.hostname) && isProd) {
+    console.warn(
+      "%c WARNING: API URL matches Frontend Hostname. %c\nThis usually causes 404/Timeout on production. Redirecting to Render fallback.",
+      "background: #f59e0b; color: #000; font-weight: bold; padding: 5px;",
+      "color: #f59e0b; font-weight: bold;"
     );
   }
 }
