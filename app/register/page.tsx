@@ -859,9 +859,19 @@ export default function RegisterPage() {
                                 value={sub.batch_time}
                                 onChange={e => updateSubject(idx, 'batch_time', e.target.value)}
                               >
-                                {(SUBJECT_BATCH_TIMINGS[sub.subject_name] || []).map(t => (
-                                  <option key={t} value={t}>{t}</option>
-                                ))}
+                                {(() => {
+                                  const hardcoded = SUBJECT_BATCH_TIMINGS[sub.subject_name] || []
+                                  const current = subData?.default_batch_timing
+                                  const options = [...hardcoded]
+                                  if (current && !options.includes(current)) {
+                                    options.push(current)
+                                  }
+                                  return options.length > 0 ? options.map(t => (
+                                    <option key={t} value={t}>{t}</option>
+                                  )) : (
+                                    <option value="">No timings available</option>
+                                  )
+                                })()}
                               </select>
                             </div>
                           ) : (

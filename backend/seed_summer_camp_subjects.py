@@ -70,7 +70,7 @@ def seed_subjects():
         )
         
         status = "Created" if created else "Updated"
-        print(f"[{status}] {item['name']} - ₹{item['fee']} ({item['time']})")
+        print(f"[{status}] {item['name']} - Rs.{item['fee']} ({item['time']})")
 
     print("\nTotal Subjects in Summer Camp:", Subject.objects.filter(activity_type='SUMMER_CAMP').count())
 
