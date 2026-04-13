@@ -2,6 +2,8 @@
 Views for Subject CRUD operations.
 """
 
+import logging
+
 from rest_framework import status, viewsets
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -12,6 +14,11 @@ from utils.permissions import IsStaffAccountantOrAdmin
 from utils.id_cards import generate_bulk_id_cards_pdf
 from django.http import HttpResponse
 from rest_framework.decorators import action
+from django.db import connection
+from django.db.utils import OperationalError, ProgrammingError
+
+
+logger = logging.getLogger(__name__)
 
 
 class SubjectViewSet(viewsets.ModelViewSet):
@@ -63,19 +70,58 @@ class SubjectViewSet(viewsets.ModelViewSet):
     
     def list(self, request, *args, **kwargs):
         """List all active subjects with optional activity type filtering."""
-        queryset = self.filter_queryset(self.get_queryset())
-        
-        # Filter by activity type if provided
         activity_type = request.query_params.get('activity_type', None)
-        if activity_type in ['SUMMER_CAMP', 'YEAR_ROUND']:
-            queryset = queryset.filter(activity_type=activity_type)
-        
-        serializer = self.get_serializer(queryset, many=True)
-        
-        return Response({
-            'success': True,
-            'data': serializer.data
-        }, status=status.HTTP_200_OK)
+        logger.info(
+            "Subject list request received | path=%s | activity_type=%s | auth_header_present=%s",
+            request.path,
+            activity_type,
+            bool(request.headers.get('Authorization')),
+        )
+
+        try:
+            # Explicit connectivity probe helps Render logs identify DB/network issues quickly.
+            connection.ensure_connection()
+
+            queryset = self.filter_queryset(self.get_queryset())
+
+            # Filter by activity type if provided
+            if activity_type in ['SUMMER_CAMP', 'YEAR_ROUND']:
+                queryset = queryset.filter(activity_type=activity_type)
+
+            subject_count = queryset.count()
+            logger.info("Subject list query succeeded | row_count=%s", subject_count)
+
+            serializer = self.get_serializer(queryset, many=True)
+
+            return Response({
+                'success': True,
+                'data': serializer.data
+            }, status=status.HTTP_200_OK)
+
+        except (ProgrammingError, OperationalError) as db_error:
+            error_text = str(db_error).lower()
+
+            # If table/schema is not ready yet, keep frontend stable with an empty list payload.
+            if 'relation "subjects" does not exist' in error_text or 'no such table' in error_text:
+                logger.exception("Subjects table is missing while listing subjects.")
+                return Response({
+                    'success': True,
+                    'data': []
+                }, status=status.HTTP_200_OK)
+
+            logger.exception("Database error while listing subjects.")
+            return Response({
+                'success': False,
+                'status': status.HTTP_500_INTERNAL_SERVER_ERROR,
+                'message': 'Internal server error'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception:
+            logger.exception("Unhandled error while listing subjects.")
+            return Response({
+                'success': False,
+                'status': status.HTTP_500_INTERNAL_SERVER_ERROR,
+                'message': 'Internal server error'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     def update(self, request, *args, **kwargs):
         """Update a subject."""
