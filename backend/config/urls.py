@@ -9,7 +9,6 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.http import JsonResponse, HttpResponse
 from django.views.generic import RedirectView
-from apps.payments.views import offline_requests, offline_request_accept
 from config.health import health_check, db_health_check
 from drf_spectacular.views import (
     SpectacularAPIView,
@@ -53,8 +52,6 @@ urlpatterns = [
     path('api/v1/subjects/', include('apps.subjects.urls')),
     path('api/v1/enrollments/', include('apps.enrollments.urls')),
     path('api/v1/payments/', include('apps.payments.urls')),
-    path('api/v1/requests/', offline_requests, name='offline-requests'),
-    path('api/v1/requests/accept/<int:request_id>/', offline_request_accept, name='offline-request-accept'),
     path('api/v1/analytics/', include('apps.analytics.urls')),
     path('api/v1/audit/', include('apps.audit.urls')),
     path('api/v1/notifications/', include('apps.notifications.urls')),
