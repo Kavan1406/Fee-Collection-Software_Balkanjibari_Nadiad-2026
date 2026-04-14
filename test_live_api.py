@@ -1,19 +1,26 @@
 import urllib.request
 import json
 
-url = "https://balkanji-backend.onrender.com/api/v1/auth/login/"
+url = "https://balkanji-backend-ai5a.onrender.com/api/v1/auth/login/"
 
-req = urllib.request.Request(url)
+payload = {
+    "username": "admin",
+    "password": "Balkanji@2026"
+}
+
+data = json.dumps(payload).encode("utf-8")
+headers = {
+    "Content-Type": "application/json"
+}
+
+req = urllib.request.Request(url, data=data, headers=headers, method="POST")
 try:
     with urllib.request.urlopen(req) as response:
         data = response.read().decode()
         print(f"Status: OK {response.status}")
         try:
             parsed = json.loads(data)
-            subjects = parsed.get('data', [])
-            print(f"Subjects count: {len(subjects)}")
-            for s in subjects[:10]:
-                print(f"  - {s['name']} ({s.get('activity_type', 'N/A')})")
+            print(json.dumps(parsed, indent=2))
         except:
             print("Response:", data[:500])
 except urllib.error.HTTPError as e:

@@ -6,32 +6,25 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { toast } from 'sonner';
 
-const DEFAULT_BACKEND_URL = 'https://balkanji-backend.onrender.com';
+const DEFAULT_BACKEND_URL = 'https://balkanji-backend-ai5a.onrender.com';
+const BLOCKED_BACKEND_URL = 'https://balkanji-backend.onrender.com';
 export let API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || DEFAULT_BACKEND_URL;
 
-// --- DYNAMIC BACKEND FIX (v4.0 - STRICT CONNECTIVITY OVERWRITE) ---
-if (typeof window !== 'undefined') {
-  const currentHost = window.location.hostname;
-  
-  // NEW: Priority bypass for local development
-  const isLocal = currentHost === 'localhost' || currentHost === '127.0.0.1';
-  
-  if (!isLocal) {
-    // 1. Force Render Backend whenever we are on a Vercel-hosted subdomain
-    if (currentHost.includes('vercel.app')) {
-      API_BASE_URL = DEFAULT_BACKEND_URL;
-    }
-
-    // 2. ABSOLUTE OVERWRITE: If the URL contains the "poisoned" domain, force fallback
-    if (API_BASE_URL.includes('balkanjibari.org')) {
-      console.warn(`[Auto-Heal] Poisoned domain detected (balkanjibari.org). Forcing fallback to: ${DEFAULT_BACKEND_URL}`);
-      API_BASE_URL = DEFAULT_BACKEND_URL;
-    }
-  } else {
-    console.log(`%c SYSTEM %c Local environment detected. Skipping production overwrites. `, "background: #3b82f6; color: #fff; font-weight: bold; padding: 2px 5px; border-radius: 4px 0 0 4px;", "background: #1d4ed8; color: #fff; padding: 2px 5px; border-radius: 0 4px 4px 0;");
+// Respect NEXT_PUBLIC_API_URL, but permanently block the deprecated backend domain.
+if (API_BASE_URL.includes('balkanji-backend.onrender.com')) {
+  if (typeof window !== 'undefined') {
+    console.warn(`[API_BASE_URL] Blocked deprecated backend detected. Switching to: ${DEFAULT_BACKEND_URL}`);
   }
+  API_BASE_URL = DEFAULT_BACKEND_URL;
 }
-// -------------------------------------------------------------------
+
+// Keep old poison-domain guard as a safety fallback.
+if (API_BASE_URL.includes('balkanjibari.org')) {
+  if (typeof window !== 'undefined') {
+    console.warn(`[Auto-Heal] Poisoned domain detected (balkanjibari.org). Forcing fallback to: ${DEFAULT_BACKEND_URL}`);
+  }
+  API_BASE_URL = DEFAULT_BACKEND_URL;
+}
 
 // --- DIAGNOSTIC LOGGING (v3.0) ---
 if (typeof window !== 'undefined') {

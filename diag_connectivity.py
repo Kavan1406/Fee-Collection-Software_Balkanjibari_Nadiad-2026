@@ -1,7 +1,7 @@
 import requests
 import sys
 
-BACKEND_URL = "https://balkanji-backend.onrender.com"
+BACKEND_URL = "https://balkanji-backend-ai5a.onrender.com"
 HEALTH_ENDPOINT = f"{BACKEND_URL}/health/"
 
 print(f"--- Production Connectivity Diagnostic ---")

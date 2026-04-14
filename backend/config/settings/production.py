@@ -13,7 +13,6 @@ ALLOWED_HOSTS = [
     '*',
     'balkanjibari.org',
     'balkanji-backend-ai5a.onrender.com',
-    'balkanji-backend.onrender.com',
     'balkanji-bari-dashboard.vercel.app',
     'fee-collection-software-balkanjibari-nadiad-2026.vercel.app',
     'fee-collection-software-balkanjibar.vercel.app',
@@ -73,7 +72,6 @@ CSRF_TRUSTED_ORIGINS = [
     'https://fee-collection-software-balkanjibar.vercel.app',
     'https://admin-student-dashboard-ui.vercel.app',
     'https://balkanji-backend-ai5a.onrender.com',
-    'https://balkanji-backend.onrender.com',
     'https://*.vercel.app',
     'https://*.onrender.com',
 ]

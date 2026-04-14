@@ -1,10 +1,10 @@
 import requests
 import json
 
-url = "https://admin-student-dashboard-ui.vercel.app/api/v1/auth/login/"
+url = "https://balkanji-backend-ai5a.onrender.com/api/v1/auth/login/"
 payload = {
     "username": "admin",
-    "password": "admin123"
+    "password": "Balkanji@2026"
 }
 headers = {
     "Content-Type": "application/json"
