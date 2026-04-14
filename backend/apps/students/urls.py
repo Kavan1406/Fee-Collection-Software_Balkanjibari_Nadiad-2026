@@ -21,6 +21,8 @@ app_name = 'students'
 urlpatterns = [
     # Public self-registration endpoints (no auth required)
     path('register/', register_student, name='public-register'),
+    # Explicit mapping keeps this endpoint stable even if router action wiring differs across deployments.
+    path('register-offline/', views.StudentViewSet.as_view({'post': 'register_offline'}), name='register-offline'),
     path('confirm-registration-payment/', confirm_registration_payment, name='confirm-reg-payment'),
     path('download-receipt/', download_registration_receipt, name='download-reg-receipt'),
     path('import-csv/', import_students_csv, name='import-students-csv'),
