@@ -45,27 +45,30 @@ def import_students_csv(request):
     # Pre-fetch subjects for faster lookup
     subjects_cache = {s.name.lower(): s for s in Subject.objects.filter(is_active=True)}
     
-    with transaction.atomic():
-        for i, row in enumerate(reader, 1):
-            try:
+    for i, row in enumerate(reader, 1):
+        try:
+            # Use a per-row transaction so one bad row does not poison the rest
+            # of the import with a broken atomic state.
+            with transaction.atomic():
                 name = row.get('name', '').strip()
                 email = row.get('email', '').strip()
                 phone = row.get('phone', '').strip().replace(' ', '')
-                
+
                 if not name or not phone:
                     results['errors'].append(f"Row {i}: Missing required fields (name, phone)")
                     continue
-                
-                # If email is missing, we create a placeholder based on phone
+
+                # If email is missing, create a placeholder based on phone.
                 if not email:
                     email = f"{phone}@balkanjibari.local"
-                
+
                 # 1. Handle User Account
                 user_qs = User.objects.filter(email=email)
+                user_created = False
                 if user_qs.exists():
                     user = user_qs.first()
                 else:
-                    # Create new user
+                    user_created = True
                     username = f"stu{get_random_string(5).lower()}"
                     user = User.objects.create(
                         email=email,
@@ -77,7 +80,7 @@ def import_students_csv(request):
                     password = f"STU{phone[-4:] if len(phone) >= 4 else '0000'}{get_random_string(4)}"
                     user.set_password(password)
                     user.save()
-                
+
                 # 2. Handle Student Profile
                 dob_str = row.get('date_of_birth', '').strip()
                 dob = None
@@ -88,7 +91,7 @@ def import_students_csv(request):
                             break
                         except ValueError:
                             continue
-                
+
                 age = 0
                 if dob:
                     today = timezone.now().date()
@@ -109,24 +112,22 @@ def import_students_csv(request):
                         'pincode': row.get('pincode', ''),
                     }
                 )
-                
+
                 if student_created:
                     results['created'] += 1
                 else:
                     results['updated'] += 1
-                
+
                 # 3. Handle Enrollment
                 subject_name = row.get('subject', '').strip()
-                enrollment_success = False
                 enrolled_subjects = []
 
                 if subject_name:
                     subject = subjects_cache.get(subject_name.lower())
                     if not subject:
                         subject = Subject.objects.filter(name__iexact=subject_name).first()
-                    
+
                     if subject:
-                        # Check seat availability
                         enrolled_count = Enrollment.objects.filter(subject=subject, is_deleted=False, status='ACTIVE').count()
                         if enrolled_count < subject.max_seats:
                             enr, enr_created = Enrollment.objects.get_or_create(
@@ -139,7 +140,6 @@ def import_students_csv(request):
                                 }
                             )
                             if enr_created:
-                                enrollment_success = True
                                 enrolled_subjects.append({
                                     'subject': subject.name,
                                     'batch_time': enr.batch_time,
@@ -150,15 +150,15 @@ def import_students_csv(request):
                     else:
                         results['errors'].append(f"Row {i}: Subject '{subject_name}' not found.")
 
-                # 4. Send Credentials Email for NEW users
+                # 4. Send credentials email for newly created user.
                 if user_created:
                     try:
                         _send_registration_email(student, enrolled_subjects)
                     except Exception as e:
                         results['errors'].append(f"Row {i}: Student created but email failed: {str(e)}")
-            
-            except Exception as e:
-                results['errors'].append(f"Row {i}: {str(e)}")
+
+        except Exception as e:
+            results['errors'].append(f"Row {i}: {str(e)}")
     
     return Response({
         'success': True, 
