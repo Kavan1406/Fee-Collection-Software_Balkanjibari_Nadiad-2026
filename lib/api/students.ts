@@ -127,6 +127,43 @@ export const studentsApi = {
     },
 
     /**
+     * Offline registration alias endpoint.
+     */
+    registerOffline: async (data: CreateStudentData): Promise<ApiResponse<Student>> => {
+        const formData = new FormData();
+        Object.keys(data).forEach(key => {
+            const value = (data as any)[key];
+            if (key === 'enrollments') {
+                formData.append(key, typeof value === 'string' ? value : JSON.stringify(value));
+            } else if (key === 'photo') {
+                if (value instanceof File) {
+                    formData.append(key, value);
+                }
+            } else if (value !== null && value !== undefined) {
+                formData.append(key, value);
+            }
+        });
+
+        try {
+            const response = await apiClient.post<ApiResponse<Student>>(
+                '/api/v1/students/register-offline/',
+                formData
+            );
+            return response.data;
+        } catch (error: any) {
+            const status = error?.response?.status;
+            if (status === 404 || status === 405) {
+                const fallbackResponse = await apiClient.post<ApiResponse<Student>>(
+                    '/api/v1/students/',
+                    formData
+                );
+                return fallbackResponse.data;
+            }
+            throw error;
+        }
+    },
+
+    /**
      * Update student
      */
     update: async (

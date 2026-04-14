@@ -337,7 +337,7 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
         resetForm()
       } else {
         console.log('DEBUG: Submitting student data:', submissionData);
-        result = await studentsApi.create(submissionData)
+        result = await studentsApi.registerOffline(submissionData)
         console.log('DEBUG: Save result:', result);
         notifySuccess('Registration Successful')
         // Store for receipt/id card printing

@@ -121,6 +121,20 @@ export const subjectsApi = {
 };
 
 export const enrollmentsApi = {
+    getDocumentRequestConfig: () => {
+        const token = typeof window !== 'undefined'
+            ? (sessionStorage.getItem('access_token') || localStorage.getItem('access_token'))
+            : null;
+
+        return {
+            responseType: 'blob' as const,
+            headers: {
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                Accept: 'application/pdf, application/json, */*',
+            },
+        };
+    },
+
     /**
      * Get all enrollments with optional student and activity type filters
      */
@@ -188,7 +202,7 @@ export const enrollmentsApi = {
         try {
             const response = await apiClient.get(
                 `/api/v1/enrollments/${id}/download-id-card/`,
-                { responseType: 'blob' }
+                enrollmentsApi.getDocumentRequestConfig()
             );
 
             const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
@@ -210,21 +224,26 @@ export const enrollmentsApi = {
                     console.error('Failed to parse error blob as JSON', e);
                 }
             }
-            throw error;
+            console.error('downloadIdCard failed:', error?.message || error);
+            return;
         }
     },
 
-    openIdCardInNewTab: async (id: number): Promise<void> => {
+    openIdCardInNewTab: async (id: number, targetWindow?: Window | null): Promise<void> => {
         try {
             const response = await apiClient.get(
                 `/api/v1/enrollments/${id}/download-id-card/`,
-                { responseType: 'blob' }
+                enrollmentsApi.getDocumentRequestConfig()
             );
 
             // Create blob URL and open in new tab
             const blob = new Blob([response.data], { type: 'application/pdf' });
             const url = window.URL.createObjectURL(blob);
-            window.open(url, '_blank');
+            if (targetWindow && !targetWindow.closed) {
+                targetWindow.location.href = url;
+            } else {
+                window.open(url, '_blank');
+            }
 
             // Clean up the URL after a delay
             setTimeout(() => window.URL.revokeObjectURL(url), 100);
@@ -240,7 +259,8 @@ export const enrollmentsApi = {
                     console.error('Failed to parse error blob as JSON', e);
                 }
             }
-            throw error;
+            console.error('openIdCardInNewTab failed:', error?.message || error);
+            return;
         }
     },
 
@@ -248,7 +268,7 @@ export const enrollmentsApi = {
         try {
             const response = await apiClient.get(
                 `/api/v1/enrollments/${id}/download-receipt/`,
-                { responseType: 'blob' }
+                enrollmentsApi.getDocumentRequestConfig()
             );
 
             const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
@@ -270,21 +290,26 @@ export const enrollmentsApi = {
                     console.error('Failed to parse error blob as JSON', e);
                 }
             }
-            throw error;
+            console.error('downloadReceipt failed:', error?.message || error);
+            return;
         }
     },
 
-    openReceiptInNewTab: async (id: number): Promise<void> => {
+    openReceiptInNewTab: async (id: number, targetWindow?: Window | null): Promise<void> => {
         try {
             const response = await apiClient.get(
                 `/api/v1/enrollments/${id}/download-receipt/`,
-                { responseType: 'blob' }
+                enrollmentsApi.getDocumentRequestConfig()
             );
 
             // Create blob URL and open in new tab
             const blob = new Blob([response.data], { type: 'application/pdf' });
             const url = window.URL.createObjectURL(blob);
-            window.open(url, '_blank');
+            if (targetWindow && !targetWindow.closed) {
+                targetWindow.location.href = url;
+            } else {
+                window.open(url, '_blank');
+            }
 
             // Clean up the URL after a delay
             setTimeout(() => window.URL.revokeObjectURL(url), 100);
@@ -300,7 +325,8 @@ export const enrollmentsApi = {
                     console.error('Failed to parse error blob as JSON', e);
                 }
             }
-            throw error;
+            console.error('openReceiptInNewTab failed:', error?.message || error);
+            return;
         }
     },
 };

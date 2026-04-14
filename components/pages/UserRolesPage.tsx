@@ -27,7 +27,6 @@ export default function UserRolesPage() {
     can_view_payments: false,
     can_view_analytics: false,
     can_view_reports: false,
-    can_view_ledger: false,
     can_view_users: false,
     can_view_settings: false,
     is_two_factor_enabled: false
@@ -108,7 +107,6 @@ export default function UserRolesPage() {
       can_view_payments: user.can_view_payments || false,
       can_view_analytics: user.can_view_analytics || false,
       can_view_reports: user.can_view_reports || false,
-      can_view_ledger: user.can_view_ledger || false,
       can_view_users: user.can_view_users || false,
       can_view_settings: user.can_view_settings || false,
       is_two_factor_enabled: user.is_two_factor_enabled || false
@@ -134,7 +132,6 @@ export default function UserRolesPage() {
       can_view_payments: false,
       can_view_analytics: false,
       can_view_reports: false,
-      can_view_ledger: false,
       can_view_users: false,
       can_view_settings: false,
       is_two_factor_enabled: false
@@ -153,7 +150,6 @@ export default function UserRolesPage() {
       can_view_payments: val,
       can_view_analytics: val,
       can_view_reports: val,
-      can_view_ledger: val,
       can_view_users: val,
       can_view_settings: val
     })
@@ -182,14 +178,13 @@ export default function UserRolesPage() {
 
   const permissionsList = [
     { id: 'can_view_dashboard', label: 'Dashboard' },
-    { id: 'can_view_registration_requests', label: 'Registration Request' },
     { id: 'can_view_students', label: 'Students' },
     { id: 'can_view_subjects', label: 'Subjects' },
     { id: 'can_view_enrollments', label: 'Enrollments' },
     { id: 'can_view_payments', label: 'Payments' },
+    { id: 'can_view_registration_requests', label: 'Request Acceptance' },
     { id: 'can_view_analytics', label: 'Analytics' },
     { id: 'can_view_reports', label: 'Reports' },
-    { id: 'can_view_ledger', label: 'Ledger' },
     { id: 'can_view_users', label: 'Users' },
     { id: 'can_view_settings', label: 'Settings' },
   ]

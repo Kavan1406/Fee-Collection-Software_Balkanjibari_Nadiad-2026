@@ -120,7 +120,9 @@ apiClient.interceptors.request.use((config) => {
 // Request interceptor - Add JWT token to requests
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const token = sessionStorage.getItem('access_token');
+    const token =
+      sessionStorage.getItem('access_token') ||
+      localStorage.getItem('access_token');
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -199,7 +201,9 @@ apiClient.interceptors.response.use(
       originalRequest._retry = true;
       isRefreshing = true;
 
-      const refreshToken = sessionStorage.getItem('refresh_token');
+      const refreshToken =
+        sessionStorage.getItem('refresh_token') ||
+        localStorage.getItem('refresh_token');
 
       if (!refreshToken) {
         // No refresh token, redirect to login
@@ -220,6 +224,8 @@ apiClient.interceptors.response.use(
         // Store new tokens
         sessionStorage.setItem('access_token', access);
         sessionStorage.setItem('refresh_token', refresh);
+        localStorage.setItem('access_token', access);
+        localStorage.setItem('refresh_token', refresh);
 
         // Update the failed request with new token
         if (originalRequest.headers) {
@@ -241,6 +247,8 @@ apiClient.interceptors.response.use(
         // Refresh failed, clear tokens and redirect to login
         console.error('Token refresh failed:', refreshError);
         sessionStorage.clear();
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
         window.location.href = '/';
         return Promise.reject(refreshError);
       }

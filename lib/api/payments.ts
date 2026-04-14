@@ -38,6 +38,20 @@ export interface CreatePaymentData {
     notes?: string;
 }
 
+export interface OfflineRequestItem {
+    request_id: number;
+    student_id: string;
+    student_name: string;
+    subject: string;
+    total_fees: number;
+    status: 'PENDING' | 'COMPLETED' | 'REJECTED' | string;
+    payment_status: string;
+    payment_mode: 'CASH' | 'ONLINE';
+    created_at: string;
+    payment_id: number;
+    enrollment_id: number;
+}
+
 export interface PaymentPaginatedResponse<T> {
     success: boolean;
     count: number;
@@ -49,6 +63,25 @@ export interface PaymentPaginatedResponse<T> {
 }
 
 export const paymentsApi = {
+    mapPaymentToOfflineRequestItem: (payment: any): OfflineRequestItem => ({
+        request_id: payment.id,
+        student_id: payment.student_id || '',
+        student_name: payment.student_name || '',
+        subject: payment.subject_name || 'N/A',
+        total_fees: Number(payment.amount || 0),
+        status:
+            payment.status === 'SUCCESS'
+                ? 'COMPLETED'
+                : payment.status === 'FAILED'
+                ? 'REJECTED'
+                : 'PENDING',
+        payment_status: payment.status || '',
+        payment_mode: (payment.payment_mode || 'CASH') as 'CASH' | 'ONLINE',
+        created_at: payment.created_at,
+        payment_id: payment.id,
+        enrollment_id: payment.enrollment,
+    }),
+
     /**
      * Get all payments with pagination and filters
      */
@@ -192,7 +225,7 @@ export const paymentsApi = {
     /**
      * Open receipt in new tab
      */
-    openReceiptInNewTab: async (id: number): Promise<void> => {
+    openReceiptInNewTab: async (id: number, targetWindow?: Window | null): Promise<void> => {
         try {
             const response = await apiClient.get(
                 `/api/v1/payments/${id}/download_receipt/`,
@@ -202,7 +235,11 @@ export const paymentsApi = {
             // Create blob URL and open in new tab
             const blob = new Blob([response.data], { type: 'application/pdf' });
             const url = window.URL.createObjectURL(blob);
-            window.open(url, '_blank');
+            if (targetWindow && !targetWindow.closed) {
+                targetWindow.location.href = url;
+            } else {
+                window.open(url, '_blank');
+            }
 
             // Clean up the URL after a delay
             setTimeout(() => window.URL.revokeObjectURL(url), 100);
@@ -241,6 +278,83 @@ export const paymentsApi = {
             `/api/v1/payments/${id}/confirm/`
         );
         return response.data;
+    },
+
+    /**
+     * Alias request list endpoint for offline cash workflow.
+     */
+    getOfflineRequests: async (status: 'PENDING' | 'COMPLETED' | 'REJECTED' | 'ALL' = 'PENDING'): Promise<ApiResponse<OfflineRequestItem[]>> => {
+        try {
+            const response = await apiClient.get<ApiResponse<OfflineRequestItem[]>>(
+                '/api/v1/requests/',
+                { params: { status } }
+            );
+            return response.data;
+        } catch (error: any) {
+            const httpStatus = error?.response?.status;
+            if (httpStatus !== 404 && httpStatus !== 405) {
+                throw error;
+            }
+
+            if (status === 'PENDING') {
+                const [pendingConfirmation, created] = await Promise.all([
+                    apiClient.get('/api/v1/payments/', {
+                        params: { payment_mode: 'CASH', status: 'PENDING_CONFIRMATION', page_size: 1000 },
+                    }),
+                    apiClient.get('/api/v1/payments/', {
+                        params: { payment_mode: 'CASH', status: 'CREATED', page_size: 1000 },
+                    }),
+                ]);
+
+                const merged = [
+                    ...(pendingConfirmation?.data?.results || []),
+                    ...(created?.data?.results || []),
+                ].map(paymentsApi.mapPaymentToOfflineRequestItem);
+
+                return {
+                    success: true,
+                    data: merged,
+                } as ApiResponse<OfflineRequestItem[]>;
+            }
+
+            const fallbackStatus =
+                status === 'COMPLETED'
+                    ? 'SUCCESS'
+                    : status === 'REJECTED'
+                    ? 'FAILED'
+                    : undefined;
+
+            const response = await apiClient.get('/api/v1/payments/', {
+                params: { payment_mode: 'CASH', status: fallbackStatus, page_size: 1000 },
+            });
+
+            const mapped = (response?.data?.results || []).map(paymentsApi.mapPaymentToOfflineRequestItem);
+            return {
+                success: true,
+                data: mapped,
+            } as ApiResponse<OfflineRequestItem[]>;
+        }
+    },
+
+    /**
+     * Alias request accept endpoint for offline cash workflow.
+     */
+    acceptOfflineRequest: async (requestId: number): Promise<any> => {
+        try {
+            const response = await apiClient.post(
+                `/api/v1/requests/accept/${requestId}/`
+            );
+            return response.data;
+        } catch (error: any) {
+            const httpStatus = error?.response?.status;
+            if (httpStatus === 404 || httpStatus === 405) {
+                const fallbackResponse = await apiClient.post(
+                    `/api/v1/payments/${requestId}/confirm/`
+                );
+                return fallbackResponse.data;
+            }
+            throw error;
+        }
     },
 
     /**

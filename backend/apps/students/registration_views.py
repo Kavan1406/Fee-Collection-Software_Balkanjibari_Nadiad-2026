@@ -298,9 +298,12 @@ def _handle_registration_logic(request):
     # between availability check and save.
     for _ in range(5):
         try:
-            user.username = final_username
-            user.set_password(raw_password)
-            user.save()
+            # Keep retry savepoint-scoped so a failed save does not poison
+            # the surrounding atomic block.
+            with transaction.atomic():
+                user.username = final_username
+                user.set_password(raw_password)
+                user.save()
             username_saved = True
             break
         except IntegrityError:

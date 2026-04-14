@@ -4,7 +4,6 @@ Serializers for authentication endpoints.
 
 from rest_framework import serializers
 from django.contrib.auth import authenticate
-from django.conf import settings
 from rest_framework_simplejwt.tokens import RefreshToken as JWT_RefreshToken
 from .models import User, RefreshToken
 from datetime import timedelta
@@ -56,10 +55,8 @@ class UserSerializer(serializers.ModelSerializer):
                 return photo_str
             
             # Clean up the path if it's already a Cloudinary path
-            cloud_name = getattr(settings, 'CLOUDINARY_CLOUD_NAME', 'dkjznnmaw')
-            clean_path = photo_str
-            clean_path = clean_path.replace(f'https://res.cloudinary.com/{cloud_name}/image/upload/', '')
-            return f"https://res.cloudinary.com/{cloud_name}/image/upload/{clean_path}"
+            clean_path = photo_str.replace('https://res.cloudinary.com/dvkfuevyw/image/upload/', '')
+            return f"https://res.cloudinary.com/dvkfuevyw/image/upload/{clean_path}"
         except:
             return None
 

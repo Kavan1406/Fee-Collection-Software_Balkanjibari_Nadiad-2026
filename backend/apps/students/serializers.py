@@ -4,6 +4,7 @@ Serializers for Student model.
 
 from rest_framework import serializers
 import logging
+from django.db import transaction, IntegrityError
 from .models import Student
 from apps.authentication.models import User
 
@@ -336,14 +337,27 @@ class StudentCreateSerializer(serializers.ModelSerializer):
         User = get_user_model()
         user = None
         try:
-            # Try to create a new user
-            user = User.objects.create_user(
-                username=username,
-                password=default_password,
-                role='STUDENT',
-                is_active=True
-            )
+            # Isolate potential uniqueness races so the outer transaction
+            # remains usable for fallback lookup/linking.
+            with transaction.atomic():
+                user = User.objects.create_user(
+                    username=username,
+                    password=default_password,
+                    role='STUDENT',
+                    is_active=True
+                )
             print(f"DEBUG: New user created and linked for {student.student_id}")
+        except IntegrityError as e:
+            print(f"DEBUG: User creation had integrity conflict, checking existing user: {str(e)}")
+            # If user already exists, try to get and link it.
+            try:
+                user = User.objects.get(username=username)
+                if user.role != 'STUDENT':
+                    user.role = 'STUDENT'
+                    user.save(update_fields=['role'])
+                print(f"DEBUG: Existing user {username} found and prepared for linking")
+            except User.DoesNotExist:
+                print(f"DEBUG: Could not find user after integrity conflict for {student.student_id}")
         except Exception as e:
             print(f"DEBUG: User creation failed, checking for existing user: {str(e)}")
             # If user already exists, try to get and link it

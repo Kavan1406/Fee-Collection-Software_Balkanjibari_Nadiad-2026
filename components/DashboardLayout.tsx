@@ -97,6 +97,7 @@ export default function DashboardLayout({
         return <ReportsPage userRole={userRole} />
       case 'request-acceptance':
         if (userRole === 'student') return <StudentDashboard setCurrentPage={setCurrentPage} />
+        if (userRole === 'staff' && !user?.can_view_registration_requests) return <div className="p-8 text-center font-bold text-slate-400">Access Denied</div>
         return <RequestAcceptancePage userRole={userRole} />
       case 'users':
         if (userRole !== 'admin') {

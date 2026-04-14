@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Calendar, Loader2, ArrowUp, ArrowDown } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import { Calendar, Loader2, ArrowUp } from 'lucide-react'
 import { 
-  AreaChart, Area, PieChart, Pie, Cell, ResponsiveContainer, Tooltip, 
-  CartesianGrid, XAxis, YAxis, LineChart, Line, BarChart, Bar, Legend 
+  AreaChart, Area, PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
+  CartesianGrid, XAxis, YAxis, BarChart, Bar, Legend
 } from 'recharts'
 import {
   analyticsApi,
@@ -15,7 +15,13 @@ import {
 } from '@/lib/api'
 import { useTheme } from '@/contexts/ThemeContext'
 
-// Cache buster: v1.0.3
+const SUBJECT_COLORS = ['#1d4ed8', '#0f766e', '#c2410c', '#7c3aed', '#be123c', '#0f766e', '#0891b2', '#65a30d']
+
+const truncateLabel = (label: string, maxLength: number = 18) => {
+  if (!label) return 'Unknown'
+  return label.length > maxLength ? `${label.slice(0, maxLength - 1)}...` : label
+}
+
 export default function AnalyticsPage() {
   const { isDarkMode } = useTheme()
   const [loading, setLoading] = useState(true)
@@ -27,18 +33,45 @@ export default function AnalyticsPage() {
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
 
-  // Debug: Log theme state
-  useEffect(() => {
-    console.log('Analytics Page - isDarkMode:', isDarkMode)
-    console.log('Analytics Page - document has dark class:', document.documentElement.classList.contains('dark'))
-  }, [isDarkMode])
-
   // Theme-aware colors for charts
   const chartColors = {
     line: isDarkMode ? '#60a5fa' : '#3b82f6',
     grid: isDarkMode ? '#374151' : '#e5e7eb',
     text: isDarkMode ? '#f3f4f6' : '#1f2937',
   }
+
+  const normalizedSubjectData = useMemo(() => {
+    const sanitized = (subjectData || [])
+      .filter((item) => Number(item?.value || 0) > 0)
+      .map((item, idx) => ({
+        ...item,
+        fill: item.fill || SUBJECT_COLORS[idx % SUBJECT_COLORS.length],
+      }))
+      .sort((a, b) => Number(b.value) - Number(a.value))
+
+    if (sanitized.length <= 6) {
+      return sanitized
+    }
+
+    const top = sanitized.slice(0, 6)
+    const others = sanitized.slice(6)
+    const othersValue = others.reduce((sum, item) => sum + Number(item.value || 0), 0)
+    const total = sanitized.reduce((sum, item) => sum + Number(item.value || 0), 0)
+
+    return [
+      ...top,
+      {
+        name: 'Other Subjects',
+        value: othersValue,
+        percentage: total > 0 ? Number(((othersValue / total) * 100).toFixed(2)) : 0,
+        fill: '#64748b',
+      },
+    ]
+  }, [subjectData])
+
+  const totalSubjectEnrollments = useMemo(() => {
+    return normalizedSubjectData.reduce((sum, item) => sum + Number(item.value || 0), 0)
+  }, [normalizedSubjectData])
 
 
   useEffect(() => {
@@ -249,29 +282,53 @@ export default function AnalyticsPage() {
             <h2 className="text-base font-bold text-slate-900 dark:text-white uppercase tracking-widest font-poppins">Subject Market Share</h2>
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-inter">Enrolled Students</span>
           </div>
-          <div className="h-48 xs:h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={subjectData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={80}
-                  paddingAngle={5}
-                  dataKey="value"
-                  stroke="none"
-                >
-                  {subjectData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.fill} />
-                  ))}
-                </Pie>
-                <Tooltip 
-                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', fontSize: '10px', fontWeight: 900 }}
-                />
-                <Legend iconType="circle" wrapperStyle={{ fontSize: '9px', fontWeight: 900, textTransform: 'uppercase' }} />
-              </PieChart>
-            </ResponsiveContainer>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+            <div className="h-56 relative">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={normalizedSubjectData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={84}
+                    paddingAngle={3}
+                    dataKey="value"
+                    stroke="none"
+                  >
+                    {normalizedSubjectData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.fill} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(value: number, _name, props: any) => [
+                      `${Number(value).toLocaleString('en-IN')} students`,
+                      props?.payload?.name || 'Subject',
+                    ]}
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', fontSize: '10px', fontWeight: 900 }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Total</p>
+                <p className="text-xl font-bold text-slate-900 font-poppins">{totalSubjectEnrollments}</p>
+              </div>
+            </div>
+            <div className="max-h-56 overflow-y-auto pr-1 space-y-2">
+              {normalizedSubjectData.length === 0 ? (
+                <p className="text-xs text-slate-500 font-semibold">No subject data available.</p>
+              ) : (
+                normalizedSubjectData.map((item) => (
+                  <div key={item.name} className="flex items-center justify-between text-[11px] border border-slate-100 rounded-lg px-2.5 py-2 bg-slate-50/70">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.fill }} />
+                      <span className="font-bold text-slate-700 truncate">{truncateLabel(item.name, 22)}</span>
+                    </div>
+                    <span className="font-bold text-slate-900">{Number(item.value).toLocaleString('en-IN')}</span>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
 
@@ -280,10 +337,17 @@ export default function AnalyticsPage() {
           <h2 className="text-base font-bold text-slate-900 dark:text-white mb-6 uppercase tracking-widest font-poppins">Subject Impact</h2>
           <div className="h-48 xs:h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={subjectData} layout="vertical">
+              <BarChart data={normalizedSubjectData.slice(0, 6)} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={chartColors.grid} />
                 <XAxis type="number" stroke={chartColors.text} tick={{ fontSize: 9, fontWeight: 900 }} />
-                <YAxis dataKey="name" type="category" width={80} stroke={chartColors.text} tick={{ fontSize: 9, fontWeight: 900 }} />
+                <YAxis
+                  dataKey="name"
+                  type="category"
+                  width={110}
+                  stroke={chartColors.text}
+                  tick={{ fontSize: 9, fontWeight: 900 }}
+                  tickFormatter={(value) => truncateLabel(String(value), 16)}
+                />
                 <Tooltip
                   contentStyle={{
                     borderRadius: '12px',
@@ -295,7 +359,7 @@ export default function AnalyticsPage() {
                   }}
                 />
                 <Bar dataKey="value" radius={[0, 4, 4, 0]}>
-                  {subjectData.map((entry, index) => (
+                  {normalizedSubjectData.slice(0, 6).map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.fill} />
                   ))}
                 </Bar>

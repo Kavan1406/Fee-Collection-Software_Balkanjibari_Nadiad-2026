@@ -3,7 +3,6 @@ Serializers for Enrollment model.
 """
 
 from rest_framework import serializers
-from django.conf import settings
 from .models import Enrollment
 from apps.students.serializers import StudentSimpleSerializer
 from apps.subjects.serializers import SubjectSerializer
@@ -31,9 +30,6 @@ class EnrollmentSerializer(serializers.ModelSerializer):
         if not obj.id_card:
             return None
         try:
-            if hasattr(obj.id_card, 'url') and obj.id_card.url:
-                return obj.id_card.url
-
             import re
             clean_path = str(obj.id_card)
             if not clean_path or clean_path == 'None':
@@ -55,8 +51,7 @@ class EnrollmentSerializer(serializers.ModelSerializer):
                         clean_path = new_path
                         changed = True
             
-            cloud_name = getattr(settings, 'CLOUDINARY_CLOUD_NAME', 'dkjznnmaw')
-            return f"https://res.cloudinary.com/{cloud_name}/image/upload/{clean_path}"
+            return f"https://res.cloudinary.com/dvkfuevyw/image/upload/{clean_path}"
         except Exception:
             return None
     

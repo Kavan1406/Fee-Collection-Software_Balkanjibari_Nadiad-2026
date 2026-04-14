@@ -12,20 +12,32 @@ interface SidebarProps {
   onLogout?: () => void
 }
 
+type StaffPermissionKey =
+  | 'can_view_dashboard'
+  | 'can_view_students'
+  | 'can_view_subjects'
+  | 'can_view_enrollments'
+  | 'can_view_payments'
+  | 'can_view_registration_requests'
+  | 'can_view_analytics'
+  | 'can_view_reports'
+  | 'can_view_users'
+  | 'can_view_settings'
+
 const menuItems = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['ADMIN', 'STAFF', 'ACCOUNTANT', 'STUDENT'] },
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['ADMIN', 'STAFF', 'ACCOUNTANT', 'STUDENT'], permission: 'can_view_dashboard' as StaffPermissionKey },
   { id: 'profile', label: 'My Profile', icon: User, roles: ['STUDENT'] },
   { id: 'subjects-fees', label: 'My Subjects & Fees', icon: BookOpen, roles: ['STUDENT'] },
   { id: 'student-payments', label: 'My Payments', icon: CreditCard, roles: ['STUDENT'] },
-  { id: 'students', label: 'Students', icon: Users, roles: ['ADMIN', 'STAFF', 'ACCOUNTANT'] },
-  { id: 'subjects', label: 'Subjects', icon: BookOpen, roles: ['ADMIN', 'STAFF'] },
-  { id: 'enrollments', label: 'Enrollments', icon: LogIn, roles: ['ADMIN', 'STAFF'] },
-  { id: 'payments', label: 'Payments', icon: CreditCard, roles: ['ADMIN', 'STAFF', 'ACCOUNTANT'] },
-  { id: 'request-acceptance', label: 'Request Acceptance', icon: CreditCard, roles: ['ADMIN', 'STAFF', 'ACCOUNTANT'] },
-  { id: 'analytics', label: 'Analytics', icon: BarChart3, roles: ['ADMIN', 'STAFF', 'ACCOUNTANT'] },
-  { id: 'reports', label: 'Reports', icon: FileText, roles: ['ADMIN', 'STAFF', 'ACCOUNTANT'] },
-  { id: 'users', label: 'Users', icon: Lock, roles: ['ADMIN'] },
-  { id: 'settings', label: 'Settings', icon: Settings, roles: ['ADMIN'] },
+  { id: 'students', label: 'Students', icon: Users, roles: ['ADMIN', 'STAFF', 'ACCOUNTANT'], permission: 'can_view_students' as StaffPermissionKey },
+  { id: 'subjects', label: 'Subjects', icon: BookOpen, roles: ['ADMIN', 'STAFF'], permission: 'can_view_subjects' as StaffPermissionKey },
+  { id: 'enrollments', label: 'Enrollments', icon: LogIn, roles: ['ADMIN', 'STAFF'], permission: 'can_view_enrollments' as StaffPermissionKey },
+  { id: 'payments', label: 'Payments', icon: CreditCard, roles: ['ADMIN', 'STAFF', 'ACCOUNTANT'], permission: 'can_view_payments' as StaffPermissionKey },
+  { id: 'request-acceptance', label: 'Request Acceptance', icon: CreditCard, roles: ['ADMIN', 'STAFF', 'ACCOUNTANT'], permission: 'can_view_registration_requests' as StaffPermissionKey },
+  { id: 'analytics', label: 'Analytics', icon: BarChart3, roles: ['ADMIN', 'STAFF', 'ACCOUNTANT'], permission: 'can_view_analytics' as StaffPermissionKey },
+  { id: 'reports', label: 'Reports', icon: FileText, roles: ['ADMIN', 'STAFF', 'ACCOUNTANT'], permission: 'can_view_reports' as StaffPermissionKey },
+  { id: 'users', label: 'Users', icon: Lock, roles: ['ADMIN', 'STAFF'], permission: 'can_view_users' as StaffPermissionKey },
+  { id: 'settings', label: 'Settings', icon: Settings, roles: ['ADMIN', 'STAFF'], permission: 'can_view_settings' as StaffPermissionKey },
 ]
 
 export default function Sidebar({ currentPage, setCurrentPage, user, isOpen, onLogout }: SidebarProps) {

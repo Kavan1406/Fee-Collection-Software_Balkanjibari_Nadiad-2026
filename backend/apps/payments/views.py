@@ -1,5 +1,5 @@
 from rest_framework import viewsets, status, filters
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db import transaction
@@ -24,6 +24,70 @@ except ImportError:
 from apps.students.utils import get_or_repair_student
 
 logger = logging.getLogger(__name__)
+
+PENDING_REQUEST_STATUSES = {'PENDING_CONFIRMATION', 'CREATED'}
+
+
+def _normalize_request_status(status_value: str) -> str:
+    if status_value in PENDING_REQUEST_STATUSES:
+        return 'PENDING'
+    if status_value == 'SUCCESS':
+        return 'COMPLETED'
+    if status_value == 'FAILED':
+        return 'REJECTED'
+    return status_value
+
+
+def _confirm_offline_cash_payment(payment: Payment, confirmed_by):
+    """Confirm pending cash payment and generate receipt + ID card assets."""
+    allowed_statuses = {'PENDING_CONFIRMATION'}
+    if payment.payment_mode == 'CASH':
+        allowed_statuses.add('CREATED')
+
+    if payment.status not in allowed_statuses:
+        raise ValueError(f'Cannot confirm payment with status {payment.status}.')
+
+    enrollment = Enrollment.objects.select_for_update().get(id=payment.enrollment_id)
+
+    payment.status = 'SUCCESS'
+    payment.payment_mode = 'CASH'
+    payment.payment_date = timezone.now().date()
+    payment.recorded_by = confirmed_by
+    payment.save()
+
+    enrollment.paid_amount += payment.amount
+    enrollment.pending_amount -= payment.amount
+    enrollment.save()
+
+    receipt_url = None
+    id_card_url = None
+
+    try:
+        from django.core.files.base import ContentFile
+        from utils.id_cards import generate_id_card_pdf
+        from utils.receipts import generate_receipt_pdf
+
+        # Consolidated receipt supports multiple selected subjects row-wise for student.
+        receipt_content = generate_receipt_pdf(student=enrollment.student)
+        receipt_filename = f"Receipt_{payment.receipt_number}_Consolidated.pdf"
+        payment.receipt_pdf.save(receipt_filename, ContentFile(receipt_content), save=True)
+        receipt_url = payment.receipt_pdf.url
+
+        id_card_content = generate_id_card_pdf(enrollment)
+        card_filename = f"ID_Card_{enrollment.enrollment_id}.pdf"
+        enrollment.id_card.save(card_filename, ContentFile(id_card_content), save=True)
+        id_card_url = enrollment.id_card.url
+    except Exception as doc_err:
+        logger.error(f"Failed to auto-generate docs during confirm: {str(doc_err)}")
+
+    return {
+        'payment': payment,
+        'enrollment': enrollment,
+        'receipt_url': receipt_url,
+        'id_card_url': id_card_url,
+        'receipt_download_url': f'/api/v1/payments/{payment.id}/download_receipt/',
+        'id_card_download_url': f'/api/v1/enrollments/{enrollment.id}/download-id-card/',
+    }
 
 class PaymentViewSet(viewsets.ModelViewSet):
     """
@@ -170,54 +234,16 @@ class PaymentViewSet(viewsets.ModelViewSet):
         """Admin/Staff confirming an offline payment request."""
         payment = self.get_object()
 
-        allowed_statuses = {'PENDING_CONFIRMATION'}
-        # Backward compatibility: older cash requests may be stored as CREATED.
-        if payment.payment_mode == 'CASH':
-            allowed_statuses.add('CREATED')
-
-        if payment.status not in allowed_statuses:
+        try:
+            result = _confirm_offline_cash_payment(payment, request.user)
+        except ValueError as val_err:
             return Response({
                 'success': False,
-                'error': {'message': f'Cannot confirm payment with status {payment.status}.'}
+                'error': {'message': str(val_err)}
             }, status=status.HTTP_400_BAD_REQUEST)
-            
-        enrollment = Enrollment.objects.select_for_update().get(id=payment.enrollment_id)
-        
-        # Update payment
-        payment.status = 'SUCCESS'
-        payment.payment_mode = 'CASH'
-        payment.payment_date = timezone.now().date()
-        payment.recorded_by = request.user
-        payment.save() # receipt_number generated here on success
-        
-        # Update enrollment
-        enrollment.paid_amount += payment.amount
-        enrollment.pending_amount -= payment.amount
-        enrollment.save()
-        
-        # Automated document generation for counter workflow.
-        receipt_url = None
-        id_card_url = None
-        
-        try:
-            from utils.receipts import generate_receipt_pdf
-            from django.core.files.base import ContentFile
 
-            # Generate one consolidated receipt for the student with subject-wise rows.
-            pdf_content = generate_receipt_pdf(student=enrollment.student)
-            filename = f"Receipt_{payment.receipt_number}_Consolidated.pdf"
-            payment.receipt_pdf.save(filename, ContentFile(pdf_content), save=True)
-            receipt_url = payment.receipt_pdf.url
-
-            from utils.id_cards import generate_id_card_pdf
-            card_content = generate_id_card_pdf(enrollment)
-            card_filename = f"ID_Card_{enrollment.enrollment_id}.pdf"
-            enrollment.id_card.save(card_filename, ContentFile(card_content), save=True)
-            id_card_url = enrollment.id_card.url
-
-        except Exception as e:
-            # Do not block payment confirmation if document generation fails.
-            logger.error(f"Failed to auto-generate docs during confirm: {str(e)}")
+        payment = result['payment']
+        enrollment = result['enrollment']
         
         return Response({
             'success': True,
@@ -226,8 +252,10 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 **PaymentSerializer(payment).data,
                 'payment_id': payment.id,
                 'enrollment_id': payment.enrollment_id,
-                'receipt_url': receipt_url,
-                'id_card_url': id_card_url,
+                'receipt_url': result['receipt_url'],
+                'id_card_url': result['id_card_url'],
+                'receipt_download_url': result['receipt_download_url'],
+                'id_card_download_url': result['id_card_download_url'],
                 'receipt_type': 'CONSOLIDATED'
             }
         })
@@ -292,7 +320,6 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 'success': False,
                 'error': {'message': f'Failed to generate receipt: {str(e)}'}
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
     @action(detail=False, methods=['get'], url_path='my-payments')
     def my_payments(self, request):
         """Get payment history for the logged-in student with Ultra-Strict Healing and Transparency."""
@@ -503,3 +530,77 @@ class PaymentViewSet(viewsets.ModelViewSet):
             return response
         except Exception as e:
             return Response({'success': False, 'error': {'message': str(e)}}, status=500)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsStaffAccountantOrAdmin])
+def offline_requests(request):
+    """Alias API: list offline cash requests for request-acceptance workflow."""
+    status_filter = (request.query_params.get('status') or 'PENDING').upper()
+
+    queryset = Payment.objects.filter(is_deleted=False, payment_mode='CASH').select_related(
+        'enrollment__student',
+        'enrollment__subject',
+    ).order_by('-created_at')
+
+    if status_filter == 'PENDING':
+        queryset = queryset.filter(status__in=PENDING_REQUEST_STATUSES)
+    elif status_filter in {'COMPLETED', 'ACCEPTED', 'PAID'}:
+        queryset = queryset.filter(status='SUCCESS')
+    elif status_filter == 'REJECTED':
+        queryset = queryset.filter(status='FAILED')
+
+    data = [
+        {
+            'request_id': p.id,
+            'student_id': p.enrollment.student_id,
+            'student_name': p.enrollment.student.name,
+            'subject': p.enrollment.subject.name if p.enrollment.subject else 'N/A',
+            'total_fees': float(p.amount),
+            'status': _normalize_request_status(p.status),
+            'payment_status': p.status,
+            'payment_mode': p.payment_mode,
+            'created_at': p.created_at,
+            'payment_id': p.payment_id,
+            'enrollment_id': p.enrollment_id,
+        }
+        for p in queryset
+    ]
+
+    return Response({'success': True, 'count': len(data), 'data': data})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsStaffAccountantOrAdmin])
+@transaction.atomic
+def offline_request_accept(request, request_id: int):
+    """Alias API: accept pending offline request and generate PDFs."""
+    payment = get_object_or_404(Payment, pk=request_id, is_deleted=False, payment_mode='CASH')
+
+    try:
+        result = _confirm_offline_cash_payment(payment, request.user)
+    except ValueError as val_err:
+        return Response({'success': False, 'error': {'message': str(val_err)}}, status=status.HTTP_400_BAD_REQUEST)
+
+    confirmed_payment = result['payment']
+    enrollment = result['enrollment']
+
+    return Response({
+        'success': True,
+        'message': f'Request accepted for {enrollment.student.name}.',
+        'data': {
+            'request_id': confirmed_payment.id,
+            'student_id': enrollment.student_id,
+            'student_name': enrollment.student.name,
+            'status': 'COMPLETED',
+            'payment_status': confirmed_payment.status,
+            'payment_mode': confirmed_payment.payment_mode,
+            'amount': float(confirmed_payment.amount),
+            'payment_id': confirmed_payment.id,
+            'enrollment_id': enrollment.id,
+            'receipt_url': result['receipt_url'],
+            'id_card_url': result['id_card_url'],
+            'receipt_download_url': result['receipt_download_url'],
+            'id_card_download_url': result['id_card_download_url'],
+        }
+    })
