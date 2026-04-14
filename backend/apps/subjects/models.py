@@ -39,7 +39,7 @@ class Subject(models.Model):
         max_length=20,
         choices=ACTIVITY_TYPE_CHOICES,
         default='SUMMER_CAMP',
-        help_text='Type of activity - Summer Camp or Year-Round'
+        help_text='Type of activity'
     )
     
     # Year-round activity specific fields

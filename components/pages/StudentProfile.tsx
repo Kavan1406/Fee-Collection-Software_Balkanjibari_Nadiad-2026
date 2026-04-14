@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { User, Mail, Phone, MapPin, Calendar, BookOpen, Loader2, AlertCircle, Edit2, Save, X, Camera } from 'lucide-react'
-import { studentsApi, Student } from '@/lib/api'
+import { studentsApi, Student, paymentsApi } from '@/lib/api'
 import { API_BASE_URL, getMediaUrl } from '@/lib/api/client'
 import { useNotifications } from '@/hooks/useNotifications'
 

@@ -11,6 +11,8 @@ interface Subject {
   category: string
   activity_type: string
   instructor_name: string
+  default_batch_timing?: string
+  timing_schedule?: string
   current_fee: {
     amount: string
     duration: string
@@ -39,13 +41,14 @@ export default function SubjectsPage({ userRole, canEdit }: SubjectsPageProps) {
     instructor_name: '',
     fee_amount: 0,
     fee_duration: '1_MONTH',
-    default_batch_timing: '7-8 AM',
+    default_batch_timing: '7:00 AM - 8:00 AM',
+    timing_schedule: '',
     activity_type: 'SUMMER_CAMP',
     max_seats: 50
   })
   const [formLoading, setFormLoading] = useState(false)
 
-  const canAdd = userRole === 'admin' || (userRole === 'staff' && canEdit)
+  const canAdd = userRole === 'admin' || userRole === 'staff' || userRole === 'accountant'
   const canDelete = userRole === 'admin'
 
   // Fetch subjects
@@ -74,7 +77,8 @@ export default function SubjectsPage({ userRole, canEdit }: SubjectsPageProps) {
       instructor_name: '',
       fee_amount: 0,
       fee_duration: '1_MONTH',
-      default_batch_timing: '7-8 AM',
+      default_batch_timing: '7:00 AM - 8:00 AM',
+      timing_schedule: '',
       activity_type: 'SUMMER_CAMP',
       max_seats: 50
     })
@@ -97,7 +101,19 @@ export default function SubjectsPage({ userRole, canEdit }: SubjectsPageProps) {
       resetForm()
     } catch (err: any) {
       console.error(err)
-      setError(err.response?.data?.error?.message || 'Failed to save subject. Ensure all fields are valid.')
+      const responseData = err?.response?.data
+      let detailedMessage = err?.response?.data?.error?.message
+
+      if (!detailedMessage && responseData && typeof responseData === 'object') {
+        detailedMessage = Object.entries(responseData)
+          .map(([field, value]) => {
+            const normalized = Array.isArray(value) ? value.join(', ') : String(value)
+            return `${field}: ${normalized}`
+          })
+          .join(' | ')
+      }
+
+      setError(detailedMessage || 'Failed to save subject. Ensure all fields are valid.')
     } finally {
       setFormLoading(false)
     }
@@ -112,7 +128,8 @@ export default function SubjectsPage({ userRole, canEdit }: SubjectsPageProps) {
       instructor_name: subject.instructor_name || '',
       fee_amount: parseFloat(subject.current_fee?.amount || '0'),
       fee_duration: subject.current_fee?.duration || '1_MONTH',
-      default_batch_timing: subject.default_batch_timing || '7-8 AM',
+      default_batch_timing: subject.default_batch_timing || '7:00 AM - 8:00 AM',
+      timing_schedule: subject.timing_schedule || '',
       activity_type: subject.activity_type || 'SUMMER_CAMP',
       max_seats: subject.max_seats || 50
     })
@@ -244,6 +261,7 @@ export default function SubjectsPage({ userRole, canEdit }: SubjectsPageProps) {
                   className="w-full input-standard h-10 text-[11px] font-medium font-inter"
                   required
                 >
+                  <option value="EDUCATION">Education</option>
                   <option value="MUSIC">Music</option>
                   <option value="ART">Art</option>
                   <option value="SPORTS">Sports</option>
@@ -292,7 +310,6 @@ export default function SubjectsPage({ userRole, canEdit }: SubjectsPageProps) {
                   required
                 >
                   <option value="SUMMER_CAMP">Summer Camp</option>
-                  <option value="YEAR_ROUND">Year-Round</option>
                 </select>
               </div>
               <div>
@@ -306,6 +323,27 @@ export default function SubjectsPage({ userRole, canEdit }: SubjectsPageProps) {
                   min="1"
                 />
               </div>
+              <div>
+                <label className="block text-[9px] font-medium text-gray-400 uppercase mb-0.5 ml-1 font-inter">Default Batch Time *</label>
+                <input
+                  type="text"
+                  value={formData.default_batch_timing}
+                  onChange={(e) => setFormData({ ...formData, default_batch_timing: e.target.value })}
+                  className="w-full input-standard h-10 text-[11px] font-medium font-inter"
+                  required
+                  placeholder="e.g. 11:00 AM - 12:00 PM"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-[9px] font-medium text-gray-400 uppercase mb-0.5 ml-1 font-inter">All Batch Timings</label>
+              <textarea
+                value={formData.timing_schedule}
+                onChange={(e) => setFormData({ ...formData, timing_schedule: e.target.value })}
+                className="w-full px-4 py-3 rounded-xl bg-white/40 dark:bg-black/10 border border-white/20 dark:border-white/5 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900 dark:text-white text-[11px] font-medium font-inter resize-none shadow-inner"
+                rows={2}
+                placeholder="Use | to separate timings. Example: Batch A: 7:00 AM - 8:00 AM | Batch B: 6:00 PM - 7:00 PM"
+              />
             </div>
             <div>
               <label className="block text-[9px] font-medium text-gray-400 uppercase mb-0.5 ml-1 font-inter">Description</label>

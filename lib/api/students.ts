@@ -8,6 +8,8 @@ import { ApiResponse } from './auth';
 export interface Student {
     id: number;
     student_id: string;
+    login_username?: string;
+    login_password_hint?: string;
     name: string;
     age?: number;
     gender?: 'MALE' | 'FEMALE' | 'OTHER';

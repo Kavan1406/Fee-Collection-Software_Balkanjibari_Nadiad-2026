@@ -34,6 +34,49 @@ const SUBJECT_BATCH_TIMINGS: Record<string, string[]> = {
   'Mind Power Mastery': ['8:00 AM – 9:00 AM'],
 }
 
+const normalizeBatchTime = (value: string) =>
+  (value || '')
+    .replace(/[\u2013\u2014]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+
+const extractTimeRangeKey = (value: string) => {
+  const normalized = normalizeBatchTime(value)
+  const rangeMatch = normalized.match(/\d{1,2}:\d{2}\s*(?:am|pm)\s*-\s*\d{1,2}:\d{2}\s*(?:am|pm)/)
+  return rangeMatch ? rangeMatch[0] : normalized
+}
+
+const getUniqueBatchTimings = (subject: any): string[] => {
+  const fromSchedule = (subject?.timing_schedule || '')
+    .split('|')
+    .map((part: string) => part.trim())
+    .filter(Boolean)
+  const fromDefault = subject?.default_batch_timing ? [subject.default_batch_timing] : []
+  const fromBackend = [...fromSchedule, ...fromDefault]
+  const fallback = SUBJECT_BATCH_TIMINGS[subject?.name || ''] || []
+  const merged = fromBackend.length > 0 ? fromBackend : fallback
+
+  const bestByRange = new Map<string, string>()
+  for (const item of merged) {
+    const text = (item || '').trim()
+    if (!text) continue
+
+    const rangeKey = extractTimeRangeKey(text)
+    const current = bestByRange.get(rangeKey)
+
+    // Prefer labeled variants like "Batch A: ..." over plain timing duplicates.
+    const isLabeled = /batch\s*[a-z0-9]+\s*:/i.test(text)
+    const currentIsLabeled = current ? /batch\s*[a-z0-9]+\s*:/i.test(current) : false
+
+    if (!current || (isLabeled && !currentIsLabeled)) {
+      bestByRange.set(rangeKey, text)
+    }
+  }
+
+  return Array.from(bestByRange.values())
+}
+
 interface StudentsPageProps {
   userRole: 'admin' | 'staff' | 'student' | 'accountant'
   canEdit?: boolean
@@ -135,8 +178,8 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
   const [formLoading, setFormLoading] = useState(false)
   const [countryCode, setCountryCode] = useState('+91')
 
-  const canAdd = userRole === 'admin' || (userRole === 'staff' && canEdit) || userRole === 'accountant'
-  const canUpdate = userRole === 'admin' || (userRole === 'staff' && canEdit) || userRole === 'accountant'
+  const canAdd = userRole === 'admin' || userRole === 'staff' || userRole === 'accountant'
+  const canUpdate = userRole === 'admin' || userRole === 'staff' || userRole === 'accountant'
   const canDelete = userRole === 'admin'
 
   // Fetch subjects for enrollment
@@ -310,10 +353,11 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
 
           if (paymentMethod === 'CASH') {
             // After successful creation, set credentials for the display
+            const createdStudent: any = result.data
             setSubmittedCredentials({
-              studentId: result.data.student_id,
-              username: result.data.login_username,
-              password: result.data.login_password_hint
+              studentId: createdStudent.student_id,
+              username: createdStudent.login_username,
+              password: createdStudent.login_password_hint
             });
             notifySuccess('Registration Successful. Fees are pending in cash mode.');
           } else {
@@ -472,7 +516,7 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
       const sub = availableSubjects.find(s => s.id === value)
       if (sub) {
         // Auto-select first available batch time
-        const timings = SUBJECT_BATCH_TIMINGS[sub.name] || []
+        const timings = getUniqueBatchTimings(sub)
         newEnrollments[index] = { 
           ...newEnrollments[index], 
           [field]: value,
@@ -892,7 +936,7 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
                             <option value="">Select Time</option>
                             {(() => {
                                 const sub = availableSubjects.find(s => s.id === enr.subject_id)
-                                const timings = SUBJECT_BATCH_TIMINGS[sub?.name || ''] || (sub?.default_batch_timing ? [sub.default_batch_timing] : [])
+                                const timings = sub ? getUniqueBatchTimings(sub) : []
                                 return timings.map(t => (
                                     <option key={t} value={t}>{t}</option>
                                 ))

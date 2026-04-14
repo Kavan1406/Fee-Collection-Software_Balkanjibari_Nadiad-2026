@@ -4,34 +4,70 @@ from django.utils import timezone
 from decimal import Decimal
 
 class Command(BaseCommand):
-    help = 'Syncs the database with the official 23 Summer Camp subjects and cleans up extras.'
+    help = 'Syncs the database with the official Summer Camp subjects and cleans up extras.'
 
     def handle(self, *args, **options):
-        # 23 Official Subjects with Fees
+        # Official Summer Camp subjects with fees, timing and age limits
         official_subjects = [
-            {"name": "Music", "fee": 500, "category": "MUSIC", "age": "10 to 16"},
-            {"name": "Tabla", "fee": 500, "category": "MUSIC", "age": "10 to 16"},
-            {"name": "Drum Class", "fee": 500, "category": "MUSIC", "age": "12 to 16"},
-            {"name": "Keyboard (Casio)", "fee": 500, "category": "MUSIC", "age": "10 to 16"},
-            {"name": "YouTube", "fee": 600, "category": "COMPUTER", "age": "10 to 16"},
-            {"name": "Spoken English", "fee": 600, "category": "EDUCATION", "age": "12 to 16"},
-            {"name": "Skating", "fee": 600, "category": "SPORTS", "age": "4 to 16"},
-            {"name": "Badminton", "fee": 1000, "category": "SPORTS", "age": "12 to 16"},
-            {"name": "Table Tennis", "fee": 600, "category": "SPORTS", "age": "10 to 16"},
-            {"name": "Karate", "fee": 500, "category": "SPORTS", "age": "10 to 16"},
-            {"name": "Western Dance", "fee": 700, "category": "DANCE", "age": "10 to 16"},
-            {"name": "Yogasan", "fee": 300, "category": "SPORTS", "age": "5 to 15"},
-            {"name": "Mehendi", "fee": 500, "category": "ART", "age": "10 to 16"},
-            {"name": "Pencil Sketch", "fee": 600, "category": "ART", "age": "7 to 16"},
-            {"name": "Calligraphy", "fee": 500, "category": "ART", "age": "9 to 16"},
-            {"name": "Guitar", "fee": 500, "category": "MUSIC", "age": "9 to 16"},
-            {"name": "Bharat Natyam", "fee": 500, "category": "DANCE", "age": "10 to 16"},
-            {"name": "Abacus and Brain Development", "fee": 700, "category": "EDUCATION", "age": "7 to 16"},
-            {"name": "Vedic Maths", "fee": 500, "category": "EDUCATION", "age": "9 to 16"},
-            {"name": "Kathak Dance", "fee": 500, "category": "DANCE", "age": "6 to 16"},
-            {"name": "Zumba", "fee": 500, "category": "DANCE", "age": "6 to 16"},
-            {"name": "Karaoke", "fee": 500, "category": "MUSIC", "age": "10 to 16"},
-            {"name": "Mind Power Mastery", "fee": 500, "category": "EDUCATION", "age": "14 to 17"},
+            {"name": "Music", "fee": 500, "category": "MUSIC", "age": "10 to 16", "default_batch_timing": "9:00 AM - 10:00 AM"},
+            {"name": "Tabla", "fee": 500, "category": "MUSIC", "age": "10 to 16", "default_batch_timing": "5:00 PM - 6:00 PM"},
+            {"name": "Drum Class", "fee": 500, "category": "MUSIC", "age": "12 to 16", "default_batch_timing": "6:00 PM - 7:00 PM"},
+            {"name": "Keyboard (Casio)", "fee": 500, "category": "MUSIC", "age": "10 to 16", "default_batch_timing": "6:00 PM - 7:00 PM"},
+            {"name": "YouTube", "fee": 600, "category": "COMPUTER", "age": "10 to 16", "default_batch_timing": "9:00 AM - 10:00 AM"},
+            {"name": "Spoken English", "fee": 600, "category": "EDUCATION", "age": "12 to 16", "default_batch_timing": "7:00 PM - 8:00 PM"},
+            {
+                "name": "Skating",
+                "fee": 600,
+                "category": "SPORTS",
+                "age": "4 to 16",
+                "default_batch_timing": "7:00 AM - 8:00 AM",
+                "timing_schedule": "Batch A: 7:00 AM - 8:00 AM | Batch B: 6:00 PM - 7:00 PM | Batch C: 7:00 PM - 8:00 PM | Batch D: 8:00 PM - 9:00 PM",
+            },
+            {"name": "Badminton", "fee": 1000, "category": "SPORTS", "age": "12 to 16", "default_batch_timing": "6:00 PM - 7:00 PM"},
+            {
+                "name": "Table Tennis",
+                "fee": 600,
+                "category": "SPORTS",
+                "age": "10 to 16",
+                "default_batch_timing": "7:00 AM - 8:00 AM",
+                "timing_schedule": "Batch A: 7:00 AM - 8:00 AM | Batch B: 6:00 PM - 7:00 PM",
+            },
+            {"name": "Karate", "fee": 500, "category": "SPORTS", "age": "10 to 16", "default_batch_timing": "7:00 PM - 8:00 PM"},
+            {"name": "Western Dance", "fee": 700, "category": "DANCE", "age": "10 to 16", "default_batch_timing": "10:00 AM - 11:00 AM"},
+            {"name": "Yogasan", "fee": 300, "category": "SPORTS", "age": "5 to 15", "default_batch_timing": "7:00 AM - 8:00 AM"},
+            {
+                "name": "Mehendi",
+                "fee": 500,
+                "category": "ART",
+                "age": "10 to 16",
+                "default_batch_timing": "5:00 PM - 6:00 PM",
+                "timing_schedule": "Batch A: 5:00 PM - 6:00 PM | Batch B: 6:00 PM - 7:00 PM",
+            },
+            {
+                "name": "Pencil Sketch",
+                "fee": 600,
+                "category": "ART",
+                "age": "7 to 16",
+                "default_batch_timing": "5:00 PM - 6:00 PM",
+                "timing_schedule": "Batch A: 5:00 PM - 6:00 PM (Ages 7 to 12) | Batch B: 6:00 PM - 7:00 PM (Ages 7 to 16)",
+            },
+            {
+                "name": "Calligraphy",
+                "fee": 500,
+                "category": "ART",
+                "age": "9 to 16",
+                "description": "15 days course",
+                "default_batch_timing": "10:00 AM - 11:00 AM (15 to 30 May)",
+                "timing_schedule": "10:00 AM - 11:00 AM (15 to 30 May)",
+            },
+            {"name": "Guitar", "fee": 500, "category": "MUSIC", "age": "9 to 16", "default_batch_timing": "8:00 AM - 9:00 AM"},
+            {"name": "Bharat Natyam", "fee": 500, "category": "DANCE", "age": "10 to 16", "default_batch_timing": "11:00 AM - 12:00 PM"},
+            {"name": "Abacus and Brain Development", "fee": 700, "category": "EDUCATION", "age": "7 to 16", "default_batch_timing": "11:00 AM - 12:00 PM"},
+            {"name": "Vedic Maths", "fee": 500, "category": "EDUCATION", "age": "9 to 16", "default_batch_timing": "5:00 PM - 6:00 PM"},
+            {"name": "Kathak Dance", "fee": 500, "category": "DANCE", "age": "6 to 16", "default_batch_timing": "5:00 PM - 6:00 PM"},
+            {"name": "Zumba", "fee": 500, "category": "DANCE", "age": "6 to 16", "default_batch_timing": "6:00 PM - 7:00 PM"},
+            {"name": "Karaoke", "fee": 500, "category": "MUSIC", "age": "10 to 16", "default_batch_timing": "10:00 AM - 11:00 AM"},
+            {"name": "Mind Power Mastery", "fee": 500, "category": "EDUCATION", "age": "14 to 17", "default_batch_timing": "8:00 AM - 9:00 AM"},
         ]
 
         official_names = [s["name"] for s in official_subjects]
@@ -41,16 +77,23 @@ class Command(BaseCommand):
 
         # 1. Update/Create Official Subjects
         for sub_data in official_subjects:
+            defaults = {
+                "category": sub_data["category"],
+                "age_limit": sub_data.get("age", ""),
+                "default_batch_timing": sub_data.get("default_batch_timing", "7:00 AM - 8:00 AM"),
+                "timing_schedule": sub_data.get("timing_schedule", ""),
+                "is_active": True,
+                "is_deleted": False,
+                "max_seats": 50,
+                "activity_type": "SUMMER_CAMP"
+            }
+
+            if "description" in sub_data:
+                defaults["description"] = sub_data["description"]
+
             subject, created = Subject.objects.update_or_create(
                 name=sub_data["name"],
-                defaults={
-                    "category": sub_data["category"],
-                    "age_limit": sub_data.get("age", ""),
-                    "is_active": True,
-                    "is_deleted": False,
-                    "max_seats": 50,
-                    "activity_type": "SUMMER_CAMP"
-                }
+                defaults=defaults
             )
             
             # Upsert Fee Structure
@@ -73,4 +116,4 @@ class Command(BaseCommand):
             is_deleted=True
         )
 
-        self.stdout.write(self.style.SUCCESS(f'Successfully synced 23 subjects. Deactivated {deleted_count} extra subjects.'))
+        self.stdout.write(self.style.SUCCESS(f'Successfully synced {len(official_subjects)} subjects. Deactivated {deleted_count} extra subjects.'))

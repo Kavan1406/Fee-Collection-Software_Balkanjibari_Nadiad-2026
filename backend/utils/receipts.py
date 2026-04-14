@@ -28,7 +28,6 @@ class ReceiptCanvasWithBorder(canvas.Canvas):
         canvas.Canvas.showPage(self)
 
     def save(self):
-        self._draw_page_decoration()
         canvas.Canvas.save(self)
 
     def _draw_page_decoration(self):

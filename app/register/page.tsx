@@ -14,6 +14,7 @@ interface Subject {
   name: string
   activity_type: 'SUMMER_CAMP' | 'YEAR_ROUND'
   timing_schedule?: string
+  default_batch_timing?: string
   monthly_fee?: string | null
   current_fee?: { amount: string; duration: string } | null
   max_seats: number
@@ -70,6 +71,48 @@ const SUBJECT_BATCH_TIMINGS: Record<string, string[]> = {
   'Zumba': ['6:00 PM – 7:00 PM'],
   'Karaoke': ['10:00 AM – 11:00 AM'],
   'Mind Power Mastery': ['8:00 AM – 9:00 AM'],
+}
+
+const normalizeBatchTime = (value: string) =>
+  (value || '')
+    .replace(/[\u2013\u2014]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+
+const extractTimeRangeKey = (value: string) => {
+  const normalized = normalizeBatchTime(value)
+  const rangeMatch = normalized.match(/\d{1,2}:\d{2}\s*(?:am|pm)\s*-\s*\d{1,2}:\d{2}\s*(?:am|pm)/)
+  return rangeMatch ? rangeMatch[0] : normalized
+}
+
+const getUniqueBatchTimings = (subject: Subject | undefined): string[] => {
+  const fromSchedule = (subject?.timing_schedule || '')
+    .split('|')
+    .map((part) => part.trim())
+    .filter(Boolean)
+  const fromDefault = subject?.default_batch_timing ? [subject.default_batch_timing] : []
+  const fromBackend = [...fromSchedule, ...fromDefault]
+  const fallback = SUBJECT_BATCH_TIMINGS[subject?.name || ''] || []
+  const merged = fromBackend.length > 0 ? fromBackend : fallback
+
+  const bestByRange = new Map<string, string>()
+  for (const item of merged) {
+    const text = (item || '').trim()
+    if (!text) continue
+
+    const rangeKey = extractTimeRangeKey(text)
+    const current = bestByRange.get(rangeKey)
+
+    const isLabeled = /batch\s*[a-z0-9]+\s*:/i.test(text)
+    const currentIsLabeled = current ? /batch\s*[a-z0-9]+\s*:/i.test(current) : false
+
+    if (!current || (isLabeled && !currentIsLabeled)) {
+      bestByRange.set(rangeKey, text)
+    }
+  }
+
+  return Array.from(bestByRange.values())
 }
 
 // Load Razorpay script dynamically
@@ -312,7 +355,7 @@ export default function RegisterPage() {
           return prev;
         }
         // Auto-select first available batch time for this subject
-        const timings = SUBJECT_BATCH_TIMINGS[sub?.name || ''] || []
+        const timings = getUniqueBatchTimings(sub)
         updated[idx] = { 
           ...updated[idx], 
           subject_id: Number(value), 
@@ -444,9 +487,13 @@ export default function RegisterPage() {
     payment_ids: number[]
   ) => {
     try {
+      const verifyController = new AbortController()
+      const verifyTimeout = setTimeout(() => verifyController.abort(), 45000)
+
       const verifyRes = await fetch(`${API_BASE}/api/v1/students/confirm-registration-payment/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: verifyController.signal,
         body: JSON.stringify({
           razorpay_order_id: response.razorpay_order_id,
           razorpay_payment_id: response.razorpay_payment_id,
@@ -455,6 +502,7 @@ export default function RegisterPage() {
           payment_ids,
         }),
       })
+      clearTimeout(verifyTimeout)
       const verifyData = await verifyRes.json()
 
       if (verifyData.success) {
@@ -462,8 +510,12 @@ export default function RegisterPage() {
       } else {
         toast.error(verifyData.error || 'Payment verification failed. Please contact the office.')
       }
-    } catch {
-      toast.error('Payment was received but verification failed. Please contact the office with your payment ID.')
+    } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        toast.error('Verification timed out. Please check your internet and retry. If payment was debited, contact office with payment ID.')
+      } else {
+        toast.error('Payment was received but verification failed. Please contact the office with your payment ID.')
+      }
     } finally {
       setIsPaymentLoading(false)
     }
@@ -894,12 +946,7 @@ export default function RegisterPage() {
                                 onChange={e => updateSubject(idx, 'batch_time', e.target.value)}
                               >
                                 {(() => {
-                                  const hardcoded = SUBJECT_BATCH_TIMINGS[sub.subject_name] || []
-                                  const current = subData?.default_batch_timing
-                                  const options = [...hardcoded]
-                                  if (current && !options.includes(current)) {
-                                    options.push(current)
-                                  }
+                                  const options = getUniqueBatchTimings(subData)
                                   return options.length > 0 ? options.map(t => (
                                     <option key={t} value={t}>{t}</option>
                                   )) : (
