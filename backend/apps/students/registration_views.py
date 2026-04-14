@@ -21,7 +21,7 @@ from django.db import OperationalError
 from django.contrib.auth import get_user_model
 from django.conf import settings
 from django.http import HttpResponse
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from django.utils import timezone
 
 from rest_framework.decorators import api_view, permission_classes
@@ -62,6 +62,27 @@ def _generate_password(student_id: str, phone: str) -> str:
 def _generate_username(student_id: str) -> str:
     """Generate username: lowercase student_id e.g. stu042"""
     return student_id.lower()
+
+
+def _allocate_unique_username(base_username: str, current_user_id: int | None = None) -> str:
+    """Pick a unique username, adding a numeric suffix only if needed."""
+    qs = User.objects.filter(username=base_username)
+    if current_user_id is not None:
+        qs = qs.exclude(id=current_user_id)
+    if not qs.exists():
+        return base_username
+
+    # Fallback: stu069 -> stu0691, stu0692, ...
+    for idx in range(1, 1000):
+        candidate = f"{base_username}{idx}"
+        qs = User.objects.filter(username=candidate)
+        if current_user_id is not None:
+            qs = qs.exclude(id=current_user_id)
+        if not qs.exists():
+            return candidate
+
+    # Last resort should be practically unreachable.
+    return f"{base_username}{secrets.token_hex(2)}"
 
 
 def _parse_date(val: str):
@@ -266,11 +287,29 @@ def _handle_registration_logic(request):
     )
 
     # --- Update user username to final student_id-based username ---
-    final_username = _generate_username(student.student_id)
+    base_username = _generate_username(student.student_id)
+    final_username = _allocate_unique_username(base_username, current_user_id=user.id)
     raw_password = _generate_password(student.student_id, phone)
-    user.username = final_username
-    user.set_password(raw_password)
-    user.save()
+
+    username_saved = False
+    # Handle rare race conditions where another request claims the same username
+    # between availability check and save.
+    for _ in range(5):
+        try:
+            user.username = final_username
+            user.set_password(raw_password)
+            user.save()
+            username_saved = True
+            break
+        except IntegrityError:
+            final_username = _allocate_unique_username(base_username, current_user_id=user.id)
+
+    if not username_saved:
+        transaction.set_rollback(True)
+        return Response({
+            'success': False,
+            'error': 'Could not allocate a unique username. Please retry registration.'
+        }, status=409)
 
     # Store login hints on student
     student.login_username = final_username
