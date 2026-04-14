@@ -50,14 +50,19 @@ DATABASES = {
     'default': {
         **dj_database_url.parse(
             config('DATABASE_URL', default=None),
-            conn_max_age=600,
+            # Supabase pooler is more stable with short-lived Django DB connections.
+            conn_max_age=0,
             ssl_require=True
         ),
         'OPTIONS': {
-            'connect_timeout': 5, # 5 seconds max to try connecting to DB
+            # Avoid false-negative DB outages during transient cold-start/network latency.
+            'connect_timeout': 30,
         }
     }
 }
+
+# Validate stale/broken DB sockets before use.
+DATABASES['default']['CONN_HEALTH_CHECKS'] = True
 
 # Static file handling with WhiteNoise
 STATIC_ROOT = BASE_DIR / 'staticfiles'
