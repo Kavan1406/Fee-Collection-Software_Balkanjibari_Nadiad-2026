@@ -170,30 +170,39 @@ class Payment(models.Model):
             self.payment_id = f'PAY-{year}-{new_num:03d}'
         
         # Auto-generate receipt_number only if status is SUCCESS and not already set
+        # ONE RECEIPT PER STUDENT: Use the same receipt number for all payments of a student
         if self.status == 'SUCCESS' and not self.receipt_number:
             from datetime import datetime
             year = datetime.now().year
             
-            # Collision-resistant receipt number generation
-            max_retries = 5
-            for attempt in range(max_retries):
-                try:
+            # Check if this student already has a receipt number from an earlier payment
+            student = self.enrollment.student if self.enrollment else None
+            if student:
+                existing_receipt = Payment.objects.filter(
+                    enrollment__student=student,
+                    receipt_number__isnull=False,
+                    status='SUCCESS',
+                    is_deleted=False
+                ).first()
+                
+                if existing_receipt and existing_receipt.receipt_number:
+                    # Use the existing receipt number for this student
+                    self.receipt_number = existing_receipt.receipt_number
+                    print(f"DEBUG: Reusing receipt number {self.receipt_number} for student {student.student_id}")
+                else:
+                    # Generate a new receipt number for this student's first payment
                     last_receipt = Payment.objects.filter(
-                        receipt_number__startswith=f'RCP-{year}'
+                        receipt_number__startswith=f'REC-{year}'
                     ).order_by('receipt_number').last()
                     
                     if last_receipt:
                         last_num = int(last_receipt.receipt_number.split('-')[2])
-                        new_num = last_num + 1 + attempt # Add attempt to avoid same-transaction collision
+                        new_num = last_num + 1
                     else:
                         new_num = 1
                     
-                    self.receipt_number = f'RCP-{year}-{new_num:04d}'
-                    # We can't actually stay here if we want to be truly safe, but this is better.
-                    # In a real system, we'd use a sequence or a separate table.
-                    break
-                except Exception:
-                    continue
+                    self.receipt_number = f'REC-{year}-{new_num:04d}'
+                    print(f"DEBUG: Generated new receipt number {self.receipt_number} for student {student.student_id}")
         
         super().save(*args, **kwargs)
 

@@ -54,10 +54,31 @@ def generate_receipt_pdf(payment=None, student=None, order_id=None):
     Can generate for a single payment OR a consolidated student registration (order_id).
     """
     if payment:
+        # When a single payment is passed, show ALL successful payments for that student
         enrollment = getattr(payment, 'enrollment', None)
         student = student or (getattr(enrollment, 'student', None) if enrollment else None)
-        payments = [payment]
-        enrollments = [enrollment] if enrollment else []
+        
+        # Get all successful payments for this student
+        if student:
+            from apps.payments.models import Payment as PaymentModel
+            # Get latest successful payment per enrollment to show all subjects
+            latest_successful_by_enrollment = {}
+            successful_payments = PaymentModel.objects.filter(
+                enrollment__student=student,
+                enrollment__is_deleted=False,
+                is_deleted=False,
+                status='SUCCESS',
+            ).select_related('enrollment__subject').order_by('enrollment_id', '-created_at')
+
+            for p in successful_payments:
+                if p.enrollment_id not in latest_successful_by_enrollment:
+                    latest_successful_by_enrollment[p.enrollment_id] = p
+
+            payments = list(latest_successful_by_enrollment.values())
+            enrollments = [p.enrollment for p in payments]
+        else:
+            payments = [payment]
+            enrollments = [enrollment] if enrollment else []
     elif student and order_id:
         from apps.payments.models import Payment
         payments = list(Payment.objects.filter(enrollment__student=student, razorpay_order_id=order_id, status='SUCCESS'))
@@ -155,9 +176,11 @@ def generate_receipt_pdf(payment=None, student=None, order_id=None):
     val_s = ParagraphStyle('Value', fontSize=8.5, fontName='Helvetica-Bold', textColor=dark)
 
     receipt_date = timezone.now().strftime('%d %B %Y')
-    if payment:
-        receipt_no = payment.receipt_number or f"REC-{payment.id:04d}"
-        pay_mode = payment.payment_mode
+    if payments and len(payments) > 0:
+        # Use the first (earliest) payment's receipt number for the student
+        first_payment = payments[0]
+        receipt_no = first_payment.receipt_number or f"REC-{first_payment.id:04d}"
+        pay_mode = first_payment.payment_mode if len(payments) == 1 else "MULTIPLE"
     elif order_id:
         receipt_no = f"REG-2026-{student.id:04d}"
         pay_mode = "ONLINE"
@@ -188,21 +211,10 @@ def generate_receipt_pdf(payment=None, student=None, order_id=None):
     fee_data = [['Sr no.', 'Subject', 'Batch Time', 'SubFee', 'LibFee', 'Total']]
     grand_total = 0
     
-    # Match payments to enrollments if we have both
+    # Always use all collected payments to show all student's enrollments
     items = []
-    if payment and enrollment:
-        items = [(enrollment, payment.amount)]
-    elif student and order_id:
-        # Show all enrollments linked to this order
-        for p in payments:
-            items.append((p.enrollment, p.amount))
-    elif payments:
-        # Show one row per paid enrollment in consolidated mode.
-        for p in payments:
-            items.append((p.enrollment, p.amount))
-    else:
-        for enr in enrollments:
-            items.append((enr, enr.total_fee))
+    for p in payments:
+        items.append((p.enrollment, p.amount))
 
     for i, (enr, amount) in enumerate(items, 1):
         # Correctly calculate sub_fee and lib_fee based on include_library_fee
@@ -248,7 +260,7 @@ def generate_receipt_pdf(payment=None, student=None, order_id=None):
 
     # Payment Status
     status_s = ParagraphStyle('PS', fontSize=9, fontName='Helvetica-Bold', textColor=green)
-    display_status = payment.get_status_display() if payment else "PAID"
+    display_status = (payments[0].get_status_display() if payments else "PAID") if payments else "PAID"
     story.append(Paragraph(f"✅  PAYMENT STATUS: {display_status}", status_s))
     story.append(Spacer(1, 0.1 * cm))
 
