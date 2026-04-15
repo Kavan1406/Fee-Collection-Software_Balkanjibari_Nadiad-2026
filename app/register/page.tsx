@@ -372,6 +372,7 @@ export default function RegisterPage() {
 
 
   // Validate form before payment
+  // NOTE: Email is required for all registrations. The same email can be used for multiple student registrations.
   const validate = (): string => {
     if (!form.name.trim()) return 'Full name is required.'
     if (!form.date_of_birth || form.date_of_birth.length < 10) return 'Valid date of birth is required (DD-MM-YYYY).'
@@ -818,10 +819,11 @@ export default function RegisterPage() {
                 </div>
                 <div>
                   <label className={labelCls}>Email Address <span className="text-red-500">*</span></label>
+                  {/* Email is required. The same email can be used for multiple student registrations. */}
                   <input
                     type="email"
                     className={inputCls}
-                    placeholder="Used for login & confirmation"
+                    placeholder="Used for login & confirmation (can be shared across registrations)"
                     value={form.email}
                     onChange={e => setForm({ ...form, email: e.target.value })}
                   />
