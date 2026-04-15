@@ -23,8 +23,21 @@ ALLOWED_HOSTS = [
 ]
 
 # CORS Configuration - PERMANENT FIX
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://.*\.vercel\.app$",
+    r"^https://.*\.onrender\.com$",
+]
+CORS_ALLOWED_ORIGINS = [
+    'https://www.balkanjibari.org',
+    'https://balkanjibari.org',
+    'https://balkanji-bari-dashboard.vercel.app',
+    'https://fee-collection-software-balkanjibari-nadiad-2026.vercel.app',
+    'https://fee-collection-software-balkanjibar.vercel.app',
+    'https://admin-student-dashboard-ui.vercel.app',
+    'https://balkanji-backend-ai5a.onrender.com',
+]
 CORS_ALLOW_METHODS = [
     "DELETE",
     "GET",

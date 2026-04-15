@@ -37,14 +37,18 @@ CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^https://.*\.vercel\.app$",
+    r"^https://.*\.onrender\.com$",
 ]
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:3000',
     'http://127.0.0.1:3000',
+    'https://www.balkanjibari.org',
+    'https://balkanjibari.org',
     'https://fee-collection-software-balkanjibar.vercel.app',
     'https://balkanji-bari-dashboard.vercel.app',
     'https://balkan-ji-ni-bari-nadiad.vercel.app',
     'https://admin-student-dashboard-ui.vercel.app',
+    'https://balkanji-backend-ai5a.onrender.com',
 ]
 
 # CSRF Trusted Origins
@@ -53,9 +57,12 @@ CSRF_TRUSTED_ORIGINS = [
     'http://127.0.0.1:3000',
     'http://localhost:3001',
     'http://127.0.0.1:3001',
+    'https://www.balkanjibari.org',
+    'https://balkanjibari.org',
     'https://balkanji-bari-dashboard.vercel.app',
     'https://balkan-ji-ni-bari-nadiad.vercel.app',
     'https://admin-student-dashboard-ui.vercel.app',
+    'https://balkanji-backend-ai5a.onrender.com',
     'https://*.vercel.app',
     'https://*.onrender.com',
 ]
