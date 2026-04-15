@@ -299,3 +299,168 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
             'message': f'Successfully backfilled roll numbers for {updated_count} enrollments.'
         })
 
+    @action(detail=False, methods=['get'], url_path='subject-wise-report')
+    def subject_wise_report(self, request):
+        """Get subject-wise student list with enrollment and payment status."""
+        from apps.subjects.models import Subject
+        from django.db.models import Count, Q, Sum, Case, When, DecimalField
+        
+        if request.user.role not in ['ADMIN', 'STAFF', 'ACCOUNTANT']:
+            return Response({'error': 'Access denied'}, status=403)
+        
+        subjects = Subject.objects.filter(
+            is_active=True,
+            is_deleted=False,
+            enrollments__isnull=False
+        ).distinct().order_by('name')
+        
+        report_data = []
+        
+        for subject in subjects:
+            enrollments = Enrollment.objects.filter(
+                subject=subject,
+                is_deleted=False,
+                status='ACTIVE'
+            ).select_related('student', 'student__user').order_by('student__name')
+            
+            subject_total_students = enrollments.count()
+            subject_total_fee = enrollments.aggregate(
+                total=Sum('total_fee', default=0)
+            )['total']
+            subject_paid = enrollments.aggregate(
+                paid=Sum('paid_amount', default=0)
+            )['paid']
+            
+            students = []
+            for enr in enrollments:
+                students.append({
+                    'student_name': enr.student.name,
+                    'student_id': enr.student.student_id,
+                    'enrollment_id': enr.enrollment_id,
+                    'batch_time': enr.batch_time,
+                    'total_fee': str(enr.total_fee),
+                    'paid_amount': str(enr.paid_amount),
+                    'pending_amount': str(enr.pending_amount),
+                    'payment_status': enr.payment_status,
+                    'enrollment_date': enr.enrollment_date.isoformat(),
+                })
+            
+            report_data.append({
+                'subject_name': subject.name,
+                'subject_fee': str(subject.current_fee.fee_amount if subject.current_fee else 0),
+                'total_students': subject_total_students,
+                'total_fees': str(subject_total_fee),
+                'total_paid': str(subject_paid),
+                'total_pending': str(subject_total_fee - subject_paid),
+                'students': students
+            })
+        
+        return Response({
+            'success': True,
+            'total_subjects': len(report_data),
+            'report': report_data
+        })
+
+    @action(detail=False, methods=['get'], url_path='id-cards-report')
+    def id_cards_report(self, request):
+        """Get all registered students with ID card download data, organized by date."""
+        if request.user.role not in ['ADMIN', 'STAFF', 'ACCOUNTANT']:
+            return Response({'error': 'Access denied'}, status=403)
+        
+        enrollments = Enrollment.objects.filter(
+            is_deleted=False,
+            status='ACTIVE'
+        ).select_related('student', 'subject', 'student__user').order_by('-created_at')
+        
+        report_data = []
+        for enr in enrollments:
+            # Determine payment type
+            payment = enr.payments.filter(status__in=['SUCCESS', 'PENDING_CONFIRMATION']).first()
+            payment_mode = 'OFFLINE' if payment and payment.payment_mode in ['CASH', 'CHEQUE'] else 'ONLINE'
+            
+            report_data.append({
+                'student_name': enr.student.name,
+                'student_id': enr.student.student_id,
+                'enrollment_id': enr.enrollment_id,
+                'phone': enr.student.phone or 'N/A',
+                'subject': enr.subject.name,
+                'batch_time': enr.batch_time,
+                'payment_mode': payment_mode,
+                'payment_status': enr.payment_status,
+                'enrollment_date': enr.enrollment_date.isoformat(),
+                'created_at': enr.created_at.isoformat(),
+                'download_url': f'/api/v1/enrollments/{enr.id}/download-id-card/'
+            })
+        
+        return Response({
+            'success': True,
+            'total_records': len(report_data),
+            'report': report_data
+        })
+
+    @action(detail=False, methods=['get'], url_path='fee-receipts-report')
+    def fee_receipts_report(self, request):
+        """Get all student-wise fee receipts with detailed payment information."""
+        if request.user.role not in ['ADMIN', 'STAFF', 'ACCOUNTANT']:
+            return Response({'error': 'Access denied'}, status=403)
+        
+        from apps.students.models import Student
+        
+        students = Student.objects.filter(
+            is_deleted=False
+        ).prefetch_related(
+            'enrollments__subject',
+            'enrollments__payments'
+        ).order_by('name')
+        
+        report_data = []
+        for student in students:
+            enrollments = student.enrollments.filter(
+                is_deleted=False,
+                status='ACTIVE'
+            ).select_related('subject').order_by('created_at')
+            
+            if not enrollments.exists():
+                continue
+            
+            student_total_fee = sum(float(e.total_fee) for e in enrollments)
+            student_total_paid = sum(float(e.paid_amount) for e in enrollments)
+            
+            enrollments_list = []
+            for enr in enrollments:
+                payment = enr.payments.filter(
+                    status__in=['SUCCESS', 'PENDING_CONFIRMATION']
+                ).order_by('-created_at').first()
+                
+                enrollments_list.append({
+                    'subject': enr.subject.name,
+                    'enrollment_id': enr.enrollment_id,
+                    'batch_time': enr.batch_time,
+                    'total_fee': str(enr.total_fee),
+                    'paid_amount': str(enr.paid_amount),
+                    'pending_amount': str(enr.pending_amount),
+                    'payment_status': enr.payment_status,
+                    'payment_date': payment.created_at.date().isoformat() if payment else None,
+                    'payment_mode': payment.payment_mode if payment else 'PENDING',
+                })
+            
+            report_data.append({
+                'student_name': student.name,
+                'student_id': student.student_id,
+                'phone': student.phone or 'N/A',
+                'email': student.email or 'N/A',
+                'total_subjects': len(enrollments_list),
+                'total_fees': str(student_total_fee),
+                'total_paid': str(student_total_paid),
+                'total_pending': str(student_total_fee - student_total_paid),
+                'enrollment_date': student.enrollment_date.isoformat(),
+                'enrollments': enrollments_list,
+                'receipt_download_url': f'/api/v1/students/{student.id}/download-consolidated-receipt/'
+            })
+        
+        return Response({
+            'success': True,
+            'total_students': len(report_data),
+            'report': report_data
+        })
+

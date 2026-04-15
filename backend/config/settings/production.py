@@ -11,6 +11,7 @@ from decouple import config
 DEBUG = config('DEBUG', default=False, cast=bool)
 ALLOWED_HOSTS = [
     '*',
+    'www.balkanjibari.org',
     'balkanjibari.org',
     'balkanji-backend-ai5a.onrender.com',
     'balkanji-bari-dashboard.vercel.app',

@@ -342,6 +342,30 @@ class StudentViewSet(viewsets.ModelViewSet):
             }
         }, status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=['get'], url_path='download-consolidated-receipt')
+    def download_consolidated_receipt(self, request, pk=None):
+        """Download consolidated fee receipt for a student with all enrollments."""
+        from django.http import HttpResponse
+        from utils.receipts import generate_receipt_pdf
+        
+        student = self.get_object()
+        
+        # Security check
+        if request.user.role == 'STUDENT':
+            user_student = getattr(request.user, 'student_profile', None)
+            if not user_student or student != user_student:
+                return Response({'error': 'Access denied'}, status=403)
+        
+        # Generate receipt for all student enrollments
+        try:
+            pdf_content = generate_receipt_pdf(student=student)
+            filename = f"receipt_{student.student_id}.pdf"
+            response = HttpResponse(pdf_content, content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            return response
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
+
 
 class StudentRegistrationRequestViewSet(viewsets.ModelViewSet):
     """
