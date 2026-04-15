@@ -41,13 +41,14 @@ export default function UserRolesPage() {
   const fetchUsers = async () => {
     try {
       setLoading(true)
-      const response = await usersApi.getAll({ page: currentPage, page_size: 20 })
+      // Load all users at once - no pagination
+      const response = await usersApi.getAll({ page: 1, page_size: 1000 })
       const usersData = response.data || (Array.isArray(response) ? response : [])
       setUsers(usersData)
       
       // Set pagination info
-      setTotalPages(response?.total_pages || Math.ceil(usersData.length / 20) || 1)
-      setTotalCount(response?.count || usersData.length || 0)
+      setTotalPages(1)
+      setTotalCount(usersData.length || 0)
     } catch (err: any) {
       setError('Failed to load users')
     } finally {
@@ -57,7 +58,7 @@ export default function UserRolesPage() {
 
   useEffect(() => {
     fetchUsers()
-  }, [currentPage])
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

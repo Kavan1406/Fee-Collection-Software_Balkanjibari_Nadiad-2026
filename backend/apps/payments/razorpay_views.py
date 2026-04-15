@@ -135,7 +135,6 @@ def create_razorpay_order(request):
         
         # Create payment record with CREATED status
         from decimal import Decimal
-        from django.utils import timezone
         
         payment = Payment.objects.create(
             enrollment=enrollment,
@@ -505,7 +504,6 @@ def sync_razorpay_payments(request):
                 # Send confirmation email
                 try:
                     from apps.students.registration_views import _send_registration_email
-                    from django.utils import timezone
                     
                     payment_subjects = [{
                         'subject': enrollment.subject.name,
@@ -529,7 +527,6 @@ def sync_razorpay_payments(request):
                 errors.append(error_msg)
                 logger.error(f'[RAZORPAY_SYNC] ✗ Failed to process payment: {error_msg}')
         
-        from django.utils import timezone
         logger.info(f'[RAZORPAY_SYNC] Sync complete - Matched: {matched}, Confirmed: {confirmed}, Failed: {failed}')
         
         return Response({
