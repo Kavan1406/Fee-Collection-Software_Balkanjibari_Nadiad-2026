@@ -220,30 +220,10 @@ def _handle_registration_logic(request):
             'error': 'Timing conflict: Multiple subjects cannot be scheduled at the same time.'
         }, status=400)
 
-    # --- Check email uniqueness (only if provided) ---
-    if email and User.objects.filter(email=email).exists():
-        # Optimization: If student already exists but has not completed payment,
-        # allow them to "re-register" to get a new order_id and finish the process.
-        try:
-            user = User.objects.get(email=email)
-            student = Student.objects.get(user=user)
-            # Find the most recent unpaid enrollment/payment
-            pending_pay = Payment.objects.filter(
-                enrollment__student=student,
-                status='CREATED'
-            ).order_by('-created_at').first()
-            
-            if pending_pay:
-                # User exists and has a pending payment. Return success so they can pay.
-                # We reuse the existing student info but generate a new order if needed.
-                return _return_registration_success(student, user, pending_pay.razorpay_order_id)
-        except (User.DoesNotExist, Student.DoesNotExist):
-            pass
-
-        return Response({
-            'success': False,
-            'error': 'An account with this email already exists. Please use a different email or login.'
-        }, status=400)
+    # --- Email is optional and can be duplicated across registrations ---
+    # Multiple students can register with the same email address.
+    # Each student gets a unique student_id and username.
+    # Email is used only for notifications but does not enforce uniqueness.
 
     # --- Parse optional fields ---
     dob = _parse_date(data.get('date_of_birth', ''))

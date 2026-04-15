@@ -62,24 +62,20 @@ def import_students_csv(request):
                 if not email:
                     email = f"{phone}@balkanjibari.local"
 
-                # 1. Handle User Account
-                user_qs = User.objects.filter(email=email)
-                user_created = False
-                if user_qs.exists():
-                    user = user_qs.first()
-                else:
-                    user_created = True
-                    username = f"stu{get_random_string(5).lower()}"
-                    user = User.objects.create(
-                        email=email,
-                        username=username,
-                        role='student',
-                        is_active=True
-                    )
-                    # Set a secure password: STU + last 4 digits of phone + random
-                    password = f"STU{phone[-4:] if len(phone) >= 4 else '0000'}{get_random_string(4)}"
-                    user.set_password(password)
-                    user.save()
+                # Each student gets a unique User account (email can be duplicated)
+                # This allows multiple students to register with the same email address
+                user_created = True
+                username = f"stu{get_random_string(5).lower()}"
+                user = User.objects.create(
+                    email=email,
+                    username=username,
+                    role='student',
+                    is_active=True
+                )
+                # Set a secure password: STU + last 4 digits of phone + random
+                password = f"STU{phone[-4:] if len(phone) >= 4 else '0000'}{get_random_string(4)}"
+                user.set_password(password)
+                user.save()
 
                 # 2. Handle Student Profile
                 dob_str = row.get('date_of_birth', '').strip()

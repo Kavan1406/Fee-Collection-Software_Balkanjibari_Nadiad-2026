@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { AlertCircle, Users, Download, CreditCard, Trash2, CheckCircle, Loader2 } from 'lucide-react'
+import { AlertCircle, Users, Download, CreditCard, Trash2, CheckCircle, Loader2, Search, X } from 'lucide-react'
 import { enrollmentsApi, subjectsApi } from '@/lib/api'
 
 interface Enrollment {
@@ -35,6 +35,7 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
   const [subjects, setSubjects] = useState<any[]>([])
   const [selectedSubject, setSelectedSubject] = useState<number>(0)
   const [activityType, setActivityType] = useState<'SUMMER_CAMP' | 'YEAR_ROUND' | 'ALL'>('ALL')
+  const [searchTerm, setSearchTerm] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
@@ -89,16 +90,28 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
     fetchData()
   }, [activityType, currentPage])
 
-  // Filter enrollments by subject
+  // Filter enrollments by subject and search term
   useEffect(() => {
-    if (selectedSubject === 0) {
-      setFilteredEnrollments(enrollments)
-    } else {
-      setFilteredEnrollments(
-        enrollments.filter(enrollment => enrollment.subject.id === selectedSubject)
+    let filtered = enrollments;
+    
+    // Filter by subject
+    if (selectedSubject !== 0) {
+      filtered = filtered.filter(enrollment => enrollment.subject.id === selectedSubject)
+    }
+    
+    // Filter by search term (student name, student ID, enrollment ID)
+    if (searchTerm.trim()) {
+      const search = searchTerm.toLowerCase().trim()
+      filtered = filtered.filter(enrollment => 
+        enrollment.student?.name?.toLowerCase().includes(search) ||
+        enrollment.student?.student_id?.toLowerCase().includes(search) ||
+        enrollment.enrollment_id?.toLowerCase().includes(search) ||
+        enrollment.subject?.name?.toLowerCase().includes(search)
       )
     }
-  }, [selectedSubject, enrollments])
+    
+    setFilteredEnrollments(filtered)
+  }, [selectedSubject, enrollments, searchTerm])
 
   // Handle refund confirmation
   const handleRefundClick = (enrollment: Enrollment) => {
@@ -173,7 +186,32 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
           <p className="text-slate-500 text-[10px] sm:text-sm mt-1 font-medium font-inter uppercase tracking-widest">Record Count: {filteredEnrollments.length}</p>
         </div>
 
-        <div className="flex items-center gap-4 w-full sm:w-auto">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full sm:w-auto">
+          {/* Search Bar */}
+          <div className="flex-1 sm:flex-none relative w-full sm:w-64">
+            <div className="relative">
+              <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Search by name, ID, subject..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full h-11 pl-10 pr-8 input-standard text-xs sm:text-sm font-medium uppercase tracking-wider font-inter"
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-2 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                  title="Clear search"
+                >
+                  <X size={18} />
+                </button>
+              )}
+            </div>
+            <p className="text-[9px] text-slate-400 mt-1 font-inter">{filteredEnrollments.length} result{filteredEnrollments.length !== 1 ? 's' : ''}</p>
+          </div>
+
+          {/* Subject Filter */}
           <label className="text-[10px] sm:text-xs font-medium text-slate-400 uppercase tracking-widest shrink-0 font-inter">
             Subject:
           </label>
@@ -380,69 +418,112 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
               ))}
             </div>
 
-            {/* Pagination Controls */}
+            {/* Enhanced Pagination Controls */}
             {totalPages > 1 && (
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 sm:p-6 bg-white dark:bg-gray-800 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-sm">
-                <div className="flex-1">
-                  <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">
-                    Showing {((currentPage - 1) * 20) + 1} to {Math.min(currentPage * 20, totalCount)} of {totalCount} enrollments
-                  </p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                    Page {currentPage} of {totalPages}
-                  </p>
+              <div className="space-y-4 bg-white dark:bg-gray-800 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-sm p-4 sm:p-6">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">
+                      📊 Showing {((currentPage - 1) * 20) + 1} to {Math.min(currentPage * 20, totalCount)} of {totalCount} enrollments
+                    </p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                      Page {currentPage} of {totalPages}
+                    </p>
+                  </div>
                 </div>
-                
-                <div className="flex gap-2 items-center">
+
+                {/* Navigation Controls */}
+                <div className="flex flex-col sm:flex-row gap-4 items-center justify-center sm:justify-between">
                   {/* Previous Button */}
                   <button
                     onClick={() => setCurrentPage(currentPage - 1)}
                     disabled={currentPage === 1}
-                    className="px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed font-medium text-sm uppercase tracking-widest active:scale-95"
-                    title="Previous page"
+                    className="px-5 py-2.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-xl transition-all disabled:opacity-30 disabled:cursor-not-allowed font-bold text-xs uppercase tracking-widest active:scale-95 shadow-sm"
+                    title="Go to previous page"
                   >
-                    ← Prev
+                    ⬅️ Previous
                   </button>
 
-                  {/* Page Numbers - Show 3 pages max */}
-                  <div className="flex gap-1">
-                    {Array.from({ length: Math.min(3, totalPages) }, (_, i) => {
-                      let pageNum;
-                      if (totalPages <= 3) {
-                        pageNum = i + 1;
-                      } else if (currentPage <= 2) {
-                        pageNum = i + 1;
-                      } else if (currentPage >= totalPages - 1) {
-                        pageNum = totalPages - 2 + i;
+                  {/* Page Numbers - Show up to 7 pages */}
+                  <div className="flex gap-1 flex-wrap justify-center">
+                    {(() => {
+                      const visiblePages: number[] = [];
+                      const maxVisible = Math.min(7, totalPages);
+                      
+                      if (totalPages <= 7) {
+                        // Show all pages if 7 or less
+                        for (let i = 1; i <= totalPages; i++) visiblePages.push(i);
                       } else {
-                        pageNum = currentPage - 1 + i;
+                        // Always show first page
+                        visiblePages.push(1);
+                        
+                        // Calculate window around current page
+                        const windowStart = Math.max(2, currentPage - 2);
+                        const windowEnd = Math.min(totalPages - 1, currentPage + 2);
+                        
+                        if (windowStart > 2) visiblePages.push(-1); // Ellipsis
+                        for (let i = windowStart; i <= windowEnd; i++) visiblePages.push(i);
+                        if (windowEnd < totalPages - 1) visiblePages.push(-1); // Ellipsis
+                        
+                        // Always show last page
+                        visiblePages.push(totalPages);
                       }
                       
-                      return (
-                        <button
-                          key={pageNum}
-                          onClick={() => setCurrentPage(pageNum)}
-                          className={`w-10 h-10 rounded-lg font-bold text-sm transition-all active:scale-95 ${
-                            currentPage === pageNum
-                              ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20'
-                              : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                          }`}
-                          title={`Go to page ${pageNum}`}
-                        >
-                          {pageNum}
-                        </button>
-                      );
-                    })}
+                      return visiblePages.map((pageNum, idx) => {
+                        if (pageNum === -1) {
+                          return <span key={`ellipsis-${idx}`} className="px-1 text-gray-400">...</span>;
+                        }
+                        
+                        return (
+                          <button
+                            key={pageNum}
+                            onClick={() => setCurrentPage(pageNum)}
+                            className={`w-10 h-10 rounded-lg font-bold text-xs transition-all active:scale-95 ${
+                              currentPage === pageNum
+                                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30'
+                                : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                            }`}
+                            title={`Go to page ${pageNum}`}
+                          >
+                            {pageNum}
+                          </button>
+                        );
+                      });
+                    })()}
                   </div>
 
                   {/* Next Button */}
                   <button
                     onClick={() => setCurrentPage(currentPage + 1)}
                     disabled={currentPage === totalPages}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-30 disabled:cursor-not-allowed font-medium text-sm uppercase tracking-widest active:scale-95"
-                    title="Next page"
+                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg shadow-indigo-500/30 transition-all disabled:opacity-30 disabled:cursor-not-allowed font-bold text-xs uppercase tracking-widest active:scale-95"
+                    title="Go to next page"
                   >
-                    Next →
+                    Next ➡️
                   </button>
+                </div>
+
+                {/* Quick Jump Input */}
+                <div className="flex items-center justify-center gap-2 border-t border-gray-100 dark:border-gray-700 pt-4">
+                  <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">
+                    Jump to page:
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={totalPages}
+                    value={currentPage}
+                    onChange={(e) => {
+                      const pageNum = parseInt(e.target.value);
+                      if (pageNum >= 1 && pageNum <= totalPages) {
+                        setCurrentPage(pageNum);
+                      }
+                    }}
+                    className="w-16 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white font-bold text-center text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  />
+                  <span className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">
+                    of {totalPages}
+                  </span>
                 </div>
               </div>
             )}

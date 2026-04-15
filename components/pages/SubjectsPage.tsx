@@ -401,20 +401,20 @@ export default function SubjectsPage({ userRole, canEdit }: SubjectsPageProps) {
         )}
         
         {subjects.length === 0 ? (
-        <div className="text-center py-20 bg-white dark:bg-gray-800 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-sm">
-          <div className="w-20 h-20 bg-gray-50 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
-            <BookOpen className="text-gray-300" size={32} />
+          <div className="text-center py-20 bg-white dark:bg-gray-800 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-sm">
+            <div className="w-20 h-20 bg-gray-50 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
+              <BookOpen className="text-gray-300" size={32} />
+            </div>
+            <p className="text-gray-500 font-medium font-inter uppercase tracking-widest text-xs">No subjects found</p>
+            <p className="text-gray-400 text-sm mt-1 font-inter">Get started by creating a new subject.</p>
           </div>
-          <p className="text-gray-500 font-medium font-inter uppercase tracking-widest text-xs">No subjects found</p>
-          <p className="text-gray-400 text-sm mt-1 font-inter">Get started by creating a new subject.</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-          {subjects.map((subject: any) => (
-            <div
-              key={subject.id}
-              className="group relative bg-white dark:bg-slate-900 rounded-2xl overflow-hidden border border-slate-200/60 shadow-sm hover:shadow-xl hover:border-indigo-200/50 transition-all duration-300 ring-1 ring-slate-900/[0.02]"
-            >
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+            {subjects.map((subject: any) => (
+              <div
+                key={subject.id}
+                className="group relative bg-white dark:bg-slate-900 rounded-2xl overflow-hidden border border-slate-200/60 shadow-sm hover:shadow-xl hover:border-indigo-200/50 transition-all duration-300 ring-1 ring-slate-900/[0.02]"
+              >
               <div className="p-4 sm:p-5">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex-1 min-w-0">
