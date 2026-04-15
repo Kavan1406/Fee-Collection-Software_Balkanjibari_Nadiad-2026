@@ -71,45 +71,45 @@ class LoginSerializer(serializers.Serializer):
         username_or_email = data.get('username')
         password = data.get('password')
         
-        if username_or_email and password:
-            # 1. Try standard Django authentication
-            request = self.context.get('request')
-            user = authenticate(request=request, username=username_or_email, password=password)
-            if user:
-                print(f"[DEBUG] Login successful via Standard Authentication for {user.username}")
-            
-            # 2. Try email authentication fallback if direct authenticate fails
-            if not user:
-                from .models import User
-                user_obj = User.objects.filter(email__iexact=username_or_email).first()
-                if user_obj:
-                    user = authenticate(request=request, username=user_obj.username, password=password)
-                    if user:
-                        print(f"[DEBUG] Login successful via Email Authentication for {user_obj.username}")
-            
-            # 3. ROBUST FALLBACK (The Permanent Fix)
-            # If still not authenticated, do a direct lookup and check_password
-            if not user:
-                from .models import User
-                # Optimize with select_related to pre-fetch photo/role data in one query
-                user_obj = (
-                    User.objects.select_related('student_profile')
-                    .filter(username__iexact=username_or_email).first() or 
-                    User.objects.select_related('student_profile')
-                    .filter(email__iexact=username_or_email).first()
-                )
-                if user_obj and user_obj.check_password(password):
-                    user = user_obj
-                    print(f"DEBUG: Login successful via robust fallback for {user_obj.username}")
-
-            if user:
-                if not user.is_active:
-                    raise serializers.ValidationError('User account is disabled.')
-                data['user'] = user
-            else:
-                raise serializers.ValidationError('Invalid username or password.')
-        else:
+        if not username_or_email or not password:
             raise serializers.ValidationError('Must include username and password.')
+        
+        request = self.context.get('request')
+        
+        # OPTIMIZED: Single query path using Django's authenticate (most efficient)
+        # Tries username first, then falls back to email matching
+        user = authenticate(request=request, username=username_or_email, password=password)
+        
+        # Fallback: Try email authentication with single optimized query
+        if not user:
+            from .models import User
+            try:
+                # Single query with select_related to avoid N+1 on serializer
+                user = User.objects.select_related('student_profile').get(
+                    email__iexact=username_or_email
+                )
+                # Verify password manually
+                if not user.check_password(password):
+                    user = None
+                    print(f"[DEBUG] Password mismatch for email {username_or_email}")
+                else:
+                    print(f"[DEBUG] Login successful via email authentication for {user.username}")
+            except User.DoesNotExist:
+                print(f"[DEBUG] User not found with email {username_or_email}")
+                user = None
+        else:
+            # If authenticate() found the user, ensure student_profile is loaded
+            # to avoid extra queries when UserSerializer accesses it
+            if user:
+                user = User.objects.select_related('student_profile').get(pk=user.pk)
+                print(f"[DEBUG] Login successful via standard authentication for {user.username}")
+
+        if user:
+            if not user.is_active:
+                raise serializers.ValidationError('User account is disabled.')
+            data['user'] = user
+        else:
+            raise serializers.ValidationError('Invalid username or password.')
         
         return data
 

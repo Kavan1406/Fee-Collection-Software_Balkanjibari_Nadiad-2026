@@ -29,9 +29,9 @@ from .serializers import (
 def login_view(request):
     """
     Login endpoint with JWT token generation.
-    Rate limited to 5 requests per minute per IP.
+    Rate limited to 30 requests per minute per IP.
     """
-    serializer = LoginSerializer(data=request.data)
+    serializer = LoginSerializer(data=request.data, context={'request': request})
     if not serializer.is_valid():
         print(f"[DIAGNOSTIC] Login Validation Failed: {serializer.errors}")
         return Response({
@@ -148,8 +148,13 @@ def refresh_token_view(request):
 def current_user_view(request):
     """
     Get current authenticated user details.
+    Optimized with select_related to avoid N+1 queries.
     """
-    serializer = UserSerializer(request.user)
+    # OPTIMIZATION: Refetch user with student_profile prefetched
+    # This ensures UserSerializer.get_photo() doesn't trigger extra queries
+    user = User.objects.select_related('student_profile').get(pk=request.user.pk)
+    
+    serializer = UserSerializer(user)
     response = Response({
         'success': True,
         'data': serializer.data
