@@ -391,8 +391,15 @@ class StudentCreateSerializer(serializers.ModelSerializer):
                     
                 subject = Subject.objects.get(id=subject_id, is_deleted=False)
                 
-                # Base subject fee
-                subject_fee = 500.00
+                # Get actual subject fee from current_fee or fee_structures
+                subject_fee = 0.00
+                if subject.current_fee and subject.current_fee.fee_amount:
+                    subject_fee = float(subject.current_fee.fee_amount)
+                elif subject.monthly_fee:
+                    subject_fee = float(subject.monthly_fee)
+                else:
+                    subject_fee = 0.00
+                
                 library_fee = 10.00 if include_library_fee else 0.00
                 total_fee = subject_fee + library_fee
                 
@@ -599,8 +606,14 @@ class StudentUpdateSerializer(serializers.ModelSerializer):
                     if created:
                         # Initialize fees for new enrollment
                         subject = Subject.objects.get(id=sid)
-                        # Default fee logic (matches StudentCreateSerializer)
-                        subject_fee = 500.00
+                        # Get actual subject fee from current_fee or fee_structures
+                        subject_fee = 0.00
+                        if subject.current_fee and subject.current_fee.fee_amount:
+                            subject_fee = float(subject.current_fee.fee_amount)
+                        elif subject.monthly_fee:
+                            subject_fee = float(subject.monthly_fee)
+                        else:
+                            subject_fee = 0.00
                         library_fee = 10.00 if lib else 0.00
                         enr.total_fee = subject_fee + library_fee
                         enr.paid_amount = 0.00 # Default to unpaid for admin-added subjects
