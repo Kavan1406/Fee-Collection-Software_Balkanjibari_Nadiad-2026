@@ -215,23 +215,32 @@ def update_profile_view(request):
 
 from rest_framework import viewsets
 from utils.permissions import IsAdmin, IsStaffAccountantOrAdmin
+from utils.pagination import StandardResultsSetPagination
 from .serializers import UserCreateSerializer
 
 class UserViewSet(viewsets.ModelViewSet):
     """
     ViewSet for Admin-only user management.
     """
-    queryset = User.objects.all()
+    queryset = User.objects.all().only(
+        'id', 'username', 'email', 'full_name', 'role', 'is_active', 'created_at'
+    ).order_by('-created_at')
     serializer_class = UserCreateSerializer
     permission_classes = [IsAuthenticated, IsStaffAccountantOrAdmin]
+    pagination_class = StandardResultsSetPagination
 
     def get_queryset(self):
-        # Admins see everyone, Staff see only Students and themselves?
-        # Let's keep it simple: Admin sees all, Staff see all (for now)
-        return super().get_queryset()
+        # Admins see everyone, Staff see only Students and themselves
+        return self.queryset
 
     def list(self, request, *args, **kwargs):
+        """List users with pagination (optimized)."""
         queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = UserSerializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        
         serializer = UserSerializer(queryset, many=True)
         return Response({
             'success': True,

@@ -38,34 +38,39 @@ export default function UserRolesPage() {
   })
   const [formLoading, setFormLoading] = useState(false)
 
-  const fetchUsers = async () => {
+  const fetchUsers = async (page: number = 1) => {
     try {
       setLoading(true)
-      // Load all users at once - no pagination
-      const response = await usersApi.getAll({ page: 1, page_size: 1000 })
+      // Load users with pagination (20 per page max)
+      const response = await usersApi.getAll({ page, page_size: 20 })
       
-      // Handle API response: could be array directly or wrapped in response object
+      // Handle API response structure
       let usersData: User[] = []
+      let total = 0
+      let pages = 1
       
       if (Array.isArray(response)) {
-        // Direct array response
         usersData = response
+        total = response.length
+        pages = 1
+      } else if (response?.results && Array.isArray(response.results)) {
+        // DRF paginated response
+        usersData = response.results
+        total = response.count || 0
+        pages = Math.ceil(total / 20)
       } else if (response?.data && Array.isArray(response.data)) {
-        // Response object with data array
         usersData = response.data
-      } else if (response?.data && Array.isArray(response.data.data)) {
-        // Nested response object
-        usersData = response.data.data
+        total = usersData.length
+        pages = 1
       }
       
       setUsers(usersData)
-      
-      // Set pagination info
-      setTotalPages(1)
-      setTotalCount(usersData.length || 0)
+      setTotalPages(pages)
+      setTotalCount(total)
+      setCurrentPage(page)
     } catch (err: any) {
       console.error('Failed to load users:', err)
-      setError('Failed to load users')
+      setError('Failed to load users. Please check your connection.')
     } finally {
       setLoading(false)
     }
