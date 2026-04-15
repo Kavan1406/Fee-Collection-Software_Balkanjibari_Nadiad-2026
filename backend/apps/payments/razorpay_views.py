@@ -432,7 +432,7 @@ def sync_razorpay_payments(request):
         logger.info(f'[RAZORPAY_SYNC] Starting sync with limit={limit}, auto_confirm={auto_confirm}')
         
         # Fetch recent payments from Razorpay
-        razorpay_payments = razorpay_client.payment.all(count=limit)
+        razorpay_payments = razorpay_client.payment.all({'skip': 0, 'count': limit})
         razorpay_items = razorpay_payments.get('items', [])
         
         logger.info(f'[RAZORPAY_SYNC] Fetched {len(razorpay_items)} payments from Razorpay')
@@ -554,5 +554,226 @@ def sync_razorpay_payments(request):
         return Response({
             'success': False,
             'error': f'Payment sync failed: {str(e)}',
+            'timestamp': timezone.now().isoformat()
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def reconciliation_report(request):
+    """
+    Generate a reconciliation report comparing Razorpay payments with local database.
+    
+    Query params:
+        - start_date: ISO format date (e.g., 2026-01-01)
+        - end_date: ISO format date (e.g., 2026-01-31)
+    
+    Returns:
+        {
+            'success': bool,
+            'summary': {
+                'total_razorpay': int,
+                'total_local': int,
+                'matched_and_confirmed': int,
+                'local_pending': int,
+                'orphaned_razorpay': int,
+                'amount_verified': float,
+                'amount_pending': float,
+                'amount_orphaned': float
+            },
+            'discrepancies': {
+                'orphaned_razorpay': [...],  # In Razorpay but not in local DB
+                'local_pending': [...],      # In DB but not confirmed in Razorpay
+                'amount_mismatches': [...]   # Amount differences
+            }
+        }
+    """
+    # RBAC: Only admin/staff can view reports
+    user_role = request.user.profile.role if hasattr(request.user, 'profile') else None
+    if user_role not in ['admin', 'staff']:
+        return Response({
+            'success': False,
+            'error': 'Permission denied. Admin/Staff access required.'
+        }, status=status.HTTP_403_FORBIDDEN)
+
+    try:
+        from datetime import datetime, timedelta
+        
+        # Get date range from query params
+        start_date_str = request.query_params.get('start_date')
+        end_date_str = request.query_params.get('end_date')
+
+        # Default to last 30 days if not specified
+        end_date = datetime.now().date()
+        start_date = end_date - timedelta(days=30)
+
+        if start_date_str:
+            try:
+                start_date = datetime.fromisoformat(start_date_str).date()
+            except ValueError:
+                return Response({
+                    'success': False,
+                    'error': 'Invalid start_date format. Use ISO format (YYYY-MM-DD).'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+        if end_date_str:
+            try:
+                end_date = datetime.fromisoformat(end_date_str).date()
+            except ValueError:
+                return Response({
+                    'success': False,
+                    'error': 'Invalid end_date format. Use ISO format (YYYY-MM-DD).'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+        if start_date > end_date:
+            return Response({
+                'success': False,
+                'error': 'start_date must be before or equal to end_date.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if not razorpay_client:
+            return Response({
+                'success': False,
+                'error': 'Razorpay client not initialized. Check credentials.'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # Fetch recent payments from Razorpay
+        razorpay_payments = razorpay_client.payment.all({'skip': 0, 'count': 500})
+        razorpay_items = razorpay_payments.get('items', [])
+
+        # Filter to date range and successful payments
+        razorpay_by_order_id = {}
+        total_razorpay_amount = 0
+        for rzp_payment in razorpay_items:
+            created_at = rzp_payment.get('created_at')
+            if not created_at:
+                continue
+                
+            payment_date = datetime.fromtimestamp(created_at).date()
+            if start_date <= payment_date <= end_date:
+                status_val = rzp_payment.get('status')
+                if status_val in ['captured', 'authorized']:
+                    order_id = rzp_payment.get('order_id')
+                    if order_id:
+                        amount = rzp_payment.get('amount', 0) / 100
+                        razorpay_by_order_id[order_id] = {
+                            'payment_id': rzp_payment.get('id'),
+                            'amount': amount,
+                            'status': status_val,
+                            'created_at': created_at
+                        }
+                        total_razorpay_amount += amount
+
+        # Get local payments in date range
+        local_payments = Payment.objects.filter(
+            created_at__date__gte=start_date,
+            created_at__date__lte=end_date
+        ).select_related('enrollment__student')
+
+        local_by_order_id = {}
+        total_local_amount = 0
+        pending_amount = 0
+        confirmed_amount = 0
+
+        for payment in local_payments:
+            order_id = payment.razorpay_order_id
+            amount = float(payment.amount)
+            total_local_amount += amount
+
+            if payment.status == 'SUCCESS':
+                confirmed_amount += amount
+            elif payment.status == 'CREATED':
+                pending_amount += amount
+
+            local_by_order_id[order_id] = {
+                'payment_id': payment.id,
+                'razorpay_payment_id': payment.razorpay_payment_id,
+                'amount': amount,
+                'status': payment.status,
+                'student_id': payment.enrollment.student.student_id if payment.enrollment else None,
+                'created_at': payment.created_at.isoformat()
+            }
+
+        # Identify discrepancies
+        orphaned_razorpay = []  # In Razorpay but not in local DB
+        local_pending = []       # In DB as pending but exists in Razorpay
+        amount_mismatches = []   # Amount differences
+
+        for order_id, rzp_info in razorpay_by_order_id.items():
+            if order_id not in local_by_order_id:
+                # Orphaned in Razorpay
+                orphaned_razorpay.append({
+                    'order_id': order_id,
+                    'razorpay_payment_id': rzp_info['payment_id'],
+                    'amount': rzp_info['amount'],
+                    'status': rzp_info['status'],
+                    'created_at': datetime.fromtimestamp(rzp_info['created_at']).isoformat()
+                })
+            else:
+                local_info = local_by_order_id[order_id]
+                
+                # Check for amount mismatch
+                if abs(rzp_info['amount'] - local_info['amount']) > 0.01:
+                    amount_mismatches.append({
+                        'order_id': order_id,
+                        'razorpay_amount': rzp_info['amount'],
+                        'local_amount': local_info['amount'],
+                        'difference': rzp_info['amount'] - local_info['amount']
+                    })
+                
+                # Check for pending status in local but confirmed in Razorpay
+                if local_info['status'] == 'CREATED' and rzp_info['status'] in ['captured', 'authorized']:
+                    local_pending.append({
+                        'order_id': order_id,
+                        'razorpay_status': rzp_info['status'],
+                        'local_status': local_info['status'],
+                        'amount': local_info['amount'],
+                        'student_id': local_info['student_id']
+                    })
+
+        # Count matched and confirmed
+        matched_and_confirmed = sum(
+            1 for order_id in local_by_order_id 
+            if order_id in razorpay_by_order_id and local_by_order_id[order_id]['status'] == 'SUCCESS'
+        )
+
+        return Response({
+            'success': True,
+            'date_range': {
+                'start_date': start_date.isoformat(),
+                'end_date': end_date.isoformat()
+            },
+            'summary': {
+                'total_razorpay_payments': len(razorpay_by_order_id),
+                'total_local_payments': len(local_by_order_id),
+                'matched_and_confirmed': matched_and_confirmed,
+                'local_pending': len([p for p in local_by_order_id.values() if p['status'] == 'CREATED']),
+                'orphaned_razorpay': len(orphaned_razorpay),
+                'amount_verified': round(confirmed_amount, 2),
+                'amount_pending': round(pending_amount, 2),
+                'amount_orphaned': round(sum(p['amount'] for p in orphaned_razorpay), 2),
+                'total_razorpay_amount': round(total_razorpay_amount, 2),
+                'total_local_amount': round(total_local_amount, 2)
+            },
+            'discrepancies': {
+                'orphaned_razorpay': orphaned_razorpay,
+                'local_pending': local_pending,
+                'amount_mismatches': amount_mismatches
+            },
+            'health_check': {
+                'status': 'healthy' if not amount_mismatches and not orphaned_razorpay else 'attention_needed',
+                'critical_issues': len(orphaned_razorpay) + len(amount_mismatches)
+            },
+            'timestamp': timezone.now().isoformat()
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.exception('[RECONCILIATION] Report generation failed')
+
+        return Response({
+            'success': False,
+            'error': f'Report generation failed: {str(e)}',
             'timestamp': timezone.now().isoformat()
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, Search, AlertCircle, Calendar, Loader2, CreditCard } from 'lucide-react'
+import { Plus, Search, AlertCircle, Calendar, Loader2, CreditCard, RefreshCw } from 'lucide-react'
 import { paymentsApi, enrollmentsApi, Payment, CreatePaymentData } from '@/lib/api'
+import { API_BASE_URL } from '@/lib/api/client'
 
 interface PaymentsPageProps {
   userRole: 'admin' | 'staff' | 'student' | 'accountant'
@@ -15,6 +16,13 @@ export default function PaymentsPage({ userRole, canEdit }: PaymentsPageProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [showForm, setShowForm] = useState(false)
+  const [isSyncing, setIsSyncing] = useState(false)
+  const [syncResult, setSyncResult] = useState<any>(null)
+  const [showReconciliation, setShowReconciliation] = useState(false)
+  const [reconLoadingLoading, setReconLoading] = useState(false)
+  const [reconResult, setReconResult] = useState<any>(null)
+  const [reconStartDate, setReconStartDate] = useState('')
+  const [reconEndDate, setReconEndDate] = useState('')
 
   const canAdd = userRole === 'admin' || (userRole === 'staff' && canEdit) || userRole === 'accountant'
 
@@ -198,6 +206,87 @@ export default function PaymentsPage({ userRole, canEdit }: PaymentsPageProps) {
     }
   }
 
+  // Sync payments from Razorpay
+  const handleSyncPayments = async () => {
+    if (!confirm('Sync pending payments from Razorpay? This will auto-confirm any completed payments.')) return
+
+    setIsSyncing(true)
+    setError('')
+    setSyncResult(null)
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/payments/razorpay/sync-payments/`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('access_token') || ''}`,
+          'Content-Type': 'application/json',
+        },
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to sync payments')
+      }
+
+      setSyncResult({
+        success: true,
+        message: data.message,
+        summary: data.summary,
+        errors: data.errors
+      })
+
+      // Refresh payments list after sync
+      fetchPayments()
+    } catch (err: any) {
+      setError(err.message || 'Failed to sync payments from Razorpay')
+      setSyncResult({
+        success: false,
+        message: err.message
+      })
+    } finally {
+      setIsSyncing(false)
+    }
+  }
+
+  // Generate reconciliation report
+  const handleGenerateReport = async () => {
+    setReconLoading(true)
+    setError('')
+    setReconResult(null)
+
+    try {
+      const params = new URLSearchParams()
+      if (reconStartDate) params.append('start_date', reconStartDate)
+      if (reconEndDate) params.append('end_date', reconEndDate)
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/v1/payments/razorpay/reconciliation-report/?${params.toString()}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('access_token') || ''}`,
+          },
+        }
+      )
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to generate report')
+      }
+
+      setReconResult(data)
+    } catch (err: any) {
+      setError(err.message || 'Failed to generate reconciliation report')
+      setReconResult({
+        success: false,
+        error: err.message
+      })
+    } finally {
+      setReconLoading(false)
+    }
+  }
+
   const getStatusBadge = (status?: string) => {
     switch (status) {
       case 'SUCCESS':
@@ -219,15 +308,37 @@ export default function PaymentsPage({ userRole, canEdit }: PaymentsPageProps) {
           <h1 className="text-xl sm:text-3xl font-bold text-slate-900 font-poppins uppercase tracking-tight">Payments Management</h1>
           <p className="text-slate-500 text-[10px] sm:text-sm mt-1 font-medium font-inter uppercase tracking-widest">Track and manage institution fee collections</p>
         </div>
-        {canAdd && (
-          <button
-            onClick={() => setShowForm(!showForm)}
-            className="w-full sm:w-auto h-11 px-6 rounded-xl font-medium font-poppins flex items-center justify-center gap-2 transition-all active:scale-[0.98] text-xs uppercase tracking-widest bg-blue-600 text-white shadow-lg shadow-blue-500/20"
-          >
-            <Plus size={18} />
-            <span>Record Payment</span>
-          </button>
-        )}
+        <div className="flex gap-2 w-full sm:w-auto">
+          {(userRole === 'admin' || userRole === 'staff') && (
+            <button
+              onClick={handleSyncPayments}
+              disabled={isSyncing}
+              className="h-11 px-4 sm:px-6 rounded-xl font-medium font-poppins flex items-center justify-center gap-2 transition-all active:scale-[0.98] text-xs uppercase tracking-widest bg-emerald-600 text-white shadow-lg shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed flex-1 sm:flex-none"
+              title="Sync pending payments from Razorpay"
+            >
+              {isSyncing ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  <span>Syncing...</span>
+                </>
+              ) : (
+                <>
+                  <RefreshCw size={16} />
+                  <span>Sync Payments</span>
+                </>
+              )}
+            </button>
+          )}
+          {canAdd && (
+            <button
+              onClick={() => setShowForm(!showForm)}
+              className="h-11 px-4 sm:px-6 rounded-xl font-medium font-poppins flex items-center justify-center gap-2 transition-all active:scale-[0.98] text-xs uppercase tracking-widest bg-blue-600 text-white shadow-lg shadow-blue-500/20 flex-1 sm:flex-none"
+            >
+              <Plus size={18} />
+              <span>Record Payment</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Summary Stats */}
@@ -254,6 +365,253 @@ export default function PaymentsPage({ userRole, canEdit }: PaymentsPageProps) {
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center gap-2">
           <AlertCircle className="text-red-600" size={20} />
           <p className="text-red-800">{error}</p>
+        </div>
+      )}
+
+      {/* Sync Result Message */}
+      {syncResult && (
+        <div className={`rounded-lg p-4 border ${syncResult.success ? 'bg-emerald-50 border-emerald-200' : 'bg-orange-50 border-orange-200'}`}>
+          <h3 className={`font-bold mb-2 ${syncResult.success ? 'text-emerald-900' : 'text-orange-900'}`}>
+            {syncResult.success ? '✓ Sync Completed' : '⚠ Sync Failed'}
+          </h3>
+          <p className={`text-sm ${syncResult.success ? 'text-emerald-800' : 'text-orange-800'}`}>{syncResult.message}</p>
+          {syncResult.summary && (
+            <div className={`mt-3 grid grid-cols-4 gap-2 text-xs ${syncResult.success ? 'text-emerald-700' : 'text-orange-700'}`}>
+              <div>
+                <p className="font-semibold">Fetched</p>
+                <p className="text-lg font-bold">{syncResult.summary.total_fetched}</p>
+              </div>
+              <div>
+                <p className="font-semibold">Matched</p>
+                <p className="text-lg font-bold">{syncResult.summary.matched}</p>
+              </div>
+              <div>
+                <p className="font-semibold">Confirmed</p>
+                <p className="text-lg font-bold">{syncResult.summary.confirmed}</p>
+              </div>
+              <div>
+                <p className="font-semibold">Failed</p>
+                <p className="text-lg font-bold">{syncResult.summary.failed}</p>
+              </div>
+            </div>
+          )}
+          {syncResult.errors && syncResult.errors.length > 0 && (
+            <div className="mt-3 bg-white/50 rounded p-2">
+              <p className="text-[10px] font-semibold mb-1">Errors:</p>
+              <ul className="text-[10px] space-y-1">
+                {syncResult.errors.map((err: string, i: number) => (
+                  <li key={i} className="text-red-700">• {err}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Reconciliation Report Section */}
+      {(userRole === 'admin' || userRole === 'staff') && (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white">Payment Reconciliation Report</h3>
+            <button
+              onClick={() => setShowReconciliation(!showReconciliation)}
+              className="text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors"
+            >
+              {showReconciliation ? '▼' : '▶'}
+            </button>
+          </div>
+
+          {showReconciliation && (
+            <div className="space-y-4 border-t border-slate-200 dark:border-slate-800 pt-4">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Compare Razorpay account payments with your local database to identify discrepancies and orphaned transactions.
+              </p>
+
+              {/* Date Range Picker */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                    Start Date
+                  </label>
+                  <input
+                    type="date"
+                    value={reconStartDate}
+                    onChange={(e) => setReconStartDate(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-slate-800 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                    End Date
+                  </label>
+                  <input
+                    type="date"
+                    value={reconEndDate}
+                    onChange={(e) => setReconEndDate(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-slate-800 dark:text-white"
+                  />
+                </div>
+              </div>
+
+              {/* Generate Button */}
+              <button
+                onClick={handleGenerateReport}
+                disabled={reconLoadingLoading}
+                className="w-full px-4 py-2 rounded-lg font-medium font-poppins flex items-center justify-center gap-2 transition-all active:scale-[0.98] text-xs uppercase tracking-widest bg-blue-600 text-white shadow-lg shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {reconLoadingLoading ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    <span>Generating...</span>
+                  </>
+                ) : (
+                  <>
+                    <Calendar size={16} />
+                    <span>Generate Report</span>
+                  </>
+                )}
+              </button>
+
+              {/* Report Results */}
+              {reconResult && (
+                <div className="mt-4 border-t border-slate-200 dark:border-slate-800 pt-4">
+                  {reconResult.success ? (
+                    <>
+                      {/* Summary Cards */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                        <div className="bg-blue-50 dark:bg-blue-950 rounded-lg p-3 border border-blue-200 dark:border-blue-800">
+                          <p className="text-[10px] font-semibold text-blue-700 dark:text-blue-300 uppercase tracking-widest">
+                            Razorpay
+                          </p>
+                          <p className="text-lg font-bold text-blue-900 dark:text-blue-100">
+                            {reconResult.summary.total_razorpay_payments}
+                          </p>
+                        </div>
+                        <div className="bg-purple-50 dark:bg-purple-950 rounded-lg p-3 border border-purple-200 dark:border-purple-800">
+                          <p className="text-[10px] font-semibold text-purple-700 dark:text-purple-300 uppercase tracking-widest">
+                            Local DB
+                          </p>
+                          <p className="text-lg font-bold text-purple-900 dark:text-purple-100">
+                            {reconResult.summary.total_local_payments}
+                          </p>
+                        </div>
+                        <div className="bg-emerald-50 dark:bg-emerald-950 rounded-lg p-3 border border-emerald-200 dark:border-emerald-800">
+                          <p className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 uppercase tracking-widest">
+                            Matched
+                          </p>
+                          <p className="text-lg font-bold text-emerald-900 dark:text-emerald-100">
+                            {reconResult.summary.matched_and_confirmed}
+                          </p>
+                        </div>
+                        <div className={`rounded-lg p-3 border ${
+                          reconResult.health_check?.critical_issues > 0
+                            ? 'bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-800'
+                            : 'bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800'
+                        }`}>
+                          <p className={`text-[10px] font-semibold uppercase tracking-widest ${
+                            reconResult.health_check?.critical_issues > 0
+                              ? 'text-red-700 dark:text-red-300'
+                              : 'text-green-700 dark:text-green-300'
+                          }`}>
+                            Issues
+                          </p>
+                          <p className={`text-lg font-bold ${
+                            reconResult.health_check?.critical_issues > 0
+                              ? 'text-red-900 dark:text-red-100'
+                              : 'text-green-900 dark:text-green-100'
+                          }`}>
+                            {reconResult.health_check?.critical_issues || 0}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Amount Summary */}
+                      <div className="grid grid-cols-3 gap-3 mb-4 text-xs">
+                        <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3">
+                          <p className="text-slate-600 dark:text-slate-400 font-semibold mb-1">Verified</p>
+                          <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
+                            ₹{reconResult.summary.amount_verified?.toLocaleString('en-IN') || '0'}
+                          </p>
+                        </div>
+                        <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3">
+                          <p className="text-slate-600 dark:text-slate-400 font-semibold mb-1">Pending</p>
+                          <p className="text-lg font-bold text-orange-600 dark:text-orange-400">
+                            ₹{reconResult.summary.amount_pending?.toLocaleString('en-IN') || '0'}
+                          </p>
+                        </div>
+                        <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3">
+                          <p className="text-slate-600 dark:text-slate-400 font-semibold mb-1">Orphaned</p>
+                          <p className="text-lg font-bold text-red-600 dark:text-red-400">
+                            ₹{reconResult.summary.amount_orphaned?.toLocaleString('en-IN') || '0'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Discrepancies Section */}
+                      {reconResult.discrepancies?.orphaned_razorpay?.length > 0 && (
+                        <div className="mb-4 p-3 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg">
+                          <h4 className="text-xs font-bold text-red-900 dark:text-red-100 mb-2 uppercase tracking-widest">
+                            ⚠️ Orphaned Razorpay Payments ({reconResult.discrepancies.orphaned_razorpay.length})
+                          </h4>
+                          <div className="space-y-2">
+                            {reconResult.discrepancies.orphaned_razorpay.slice(0, 5).map((p: any, i: number) => (
+                              <div key={i} className="text-xs bg-white dark:bg-slate-900 p-2 rounded">
+                                <p className="text-red-700 dark:text-red-400">
+                                  <strong>{p.razorpay_payment_id}</strong> • ₹{p.amount} • {p.status}
+                                </p>
+                                <p className="text-slate-500 dark:text-slate-400 text-[10px]">
+                                  Order: {p.order_id}
+                                </p>
+                              </div>
+                            ))}
+                            {reconResult.discrepancies.orphaned_razorpay.length > 5 && (
+                              <p className="text-[10px] text-red-600 dark:text-red-400">
+                                +{reconResult.discrepancies.orphaned_razorpay.length - 5} more
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {reconResult.discrepancies?.amount_mismatches?.length > 0 && (
+                        <div className="p-3 bg-orange-50 dark:bg-orange-950 border border-orange-200 dark:border-orange-800 rounded-lg">
+                          <h4 className="text-xs font-bold text-orange-900 dark:text-orange-100 mb-2 uppercase tracking-widest">
+                            🔍 Amount Mismatches ({reconResult.discrepancies.amount_mismatches.length})
+                          </h4>
+                          <div className="space-y-2">
+                            {reconResult.discrepancies.amount_mismatches.slice(0, 3).map((m: any, i: number) => (
+                              <div key={i} className="text-xs bg-white dark:bg-slate-900 p-2 rounded">
+                                <p className="text-orange-700 dark:text-orange-400">
+                                  <strong>{m.order_id}</strong>
+                                </p>
+                                <p className="text-slate-600 dark:text-slate-400">
+                                  Razorpay: ₹{m.razorpay_amount} | Local: ₹{m.local_amount} | Diff: ₹{m.difference.toFixed(2)}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {reconResult.health_check?.status === 'healthy' && (
+                        <div className="p-3 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg">
+                          <p className="text-xs text-green-900 dark:text-green-100 font-semibold">
+                            ✓ All payments are reconciled! No discrepancies found.
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="p-3 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg">
+                      <p className="text-xs text-red-900 dark:text-red-100">
+                        <strong>Error:</strong> {reconResult.error}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
