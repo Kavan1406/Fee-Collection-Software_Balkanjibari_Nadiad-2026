@@ -68,11 +68,10 @@ class Payment(models.Model):
     )
     receipt_number = models.CharField(
         max_length=20,
-        unique=True,
         null=True,
         blank=True,
         editable=False,
-        help_text='Auto-generated receipt number'
+        help_text='Auto-generated receipt number - shared by all payments of same student'
     )
     
     recorded_by = models.ForeignKey(
