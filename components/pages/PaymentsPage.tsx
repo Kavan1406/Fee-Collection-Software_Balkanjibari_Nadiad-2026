@@ -19,7 +19,7 @@ export default function PaymentsPage({ userRole, canEdit }: PaymentsPageProps) {
   const [isSyncing, setIsSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState<any>(null)
   const [showReconciliation, setShowReconciliation] = useState(false)
-  const [reconLoadingLoading, setReconLoading] = useState(false)
+  const [reconLoading, setReconLoading] = useState(false)
   const [reconResult, setReconResult] = useState<any>(null)
   const [reconStartDate, setReconStartDate] = useState('')
   const [reconEndDate, setReconEndDate] = useState('')
@@ -456,10 +456,10 @@ export default function PaymentsPage({ userRole, canEdit }: PaymentsPageProps) {
               {/* Generate Button */}
               <button
                 onClick={handleGenerateReport}
-                disabled={reconLoadingLoading}
+                disabled={reconLoading}
                 className="w-full px-4 py-2 rounded-lg font-medium font-poppins flex items-center justify-center gap-2 transition-all active:scale-[0.98] text-xs uppercase tracking-widest bg-blue-600 text-white shadow-lg shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {reconLoadingLoading ? (
+                {reconLoading ? (
                   <>
                     <Loader2 size={16} className="animate-spin" />
                     <span>Generating...</span>

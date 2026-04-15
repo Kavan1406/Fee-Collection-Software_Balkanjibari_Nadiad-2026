@@ -589,8 +589,8 @@ def reconciliation_report(request):
         }
     """
     # RBAC: Only admin/staff can view reports
-    user_role = request.user.profile.role if hasattr(request.user, 'profile') else None
-    if user_role not in ['admin', 'staff']:
+    user_role = request.user.role if hasattr(request.user, 'role') else None
+    if user_role not in ['ADMIN', 'STAFF']:
         return Response({
             'success': False,
             'error': 'Permission denied. Admin/Staff access required.'
