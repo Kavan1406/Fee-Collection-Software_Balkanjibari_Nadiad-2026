@@ -215,25 +215,17 @@ export default function PaymentsPage({ userRole, canEdit }: PaymentsPageProps) {
     setSyncResult(null)
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/payments/razorpay/sync-payments/`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('access_token') || ''}`,
-          'Content-Type': 'application/json',
-        },
-      })
+      const response = await paymentsApi.syncRazorpayPayments({ limit: 100, auto_confirm: true })
 
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to sync payments')
+      if (!response.success) {
+        throw new Error(response.data?.message || 'Failed to sync payments')
       }
 
       setSyncResult({
         success: true,
-        message: data.message,
-        summary: data.summary,
-        errors: data.errors
+        message: response.data?.message || 'Sync completed successfully',
+        summary: response.data?.summary,
+        errors: response.data?.errors
       })
 
       // Refresh payments list after sync
@@ -256,26 +248,16 @@ export default function PaymentsPage({ userRole, canEdit }: PaymentsPageProps) {
     setReconResult(null)
 
     try {
-      const params = new URLSearchParams()
-      if (reconStartDate) params.append('start_date', reconStartDate)
-      if (reconEndDate) params.append('end_date', reconEndDate)
+      const response = await paymentsApi.getRazorpayReconciliationReport({
+        start_date: reconStartDate || undefined,
+        end_date: reconEndDate || undefined,
+      })
 
-      const response = await fetch(
-        `${API_BASE_URL}/api/v1/payments/razorpay/reconciliation-report/?${params.toString()}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('access_token') || ''}`,
-          },
-        }
-      )
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to generate report')
+      if (!response.success) {
+        throw new Error(response.data?.error || 'Failed to generate report')
       }
 
-      setReconResult(data)
+      setReconResult(response.data)
     } catch (err: any) {
       setError(err.message || 'Failed to generate reconciliation report')
       setReconResult({
@@ -297,6 +279,17 @@ export default function PaymentsPage({ userRole, canEdit }: PaymentsPageProps) {
         return <span className="px-2 py-1 bg-rose-50 text-rose-600 rounded-lg text-[10px] font-bold uppercase tracking-widest">FAILED</span>
       default:
         return <span className="px-2 py-1 bg-slate-50 text-slate-600 rounded-lg text-[10px] font-bold uppercase tracking-widest">{status || 'CREATED'}</span>
+    }
+  }
+
+  const getPaymentModeBadge = (mode: string) => {
+    switch (mode) {
+      case 'ONLINE':
+        return <span className="px-2 py-1 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-bold uppercase tracking-widest">💳 Online</span>
+      case 'CASH':
+        return <span className="px-2 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[10px] font-bold uppercase tracking-widest">💵 Cash</span>
+      default:
+        return <span className="px-2 py-1 bg-slate-50 text-slate-600 rounded-lg text-[10px] font-bold uppercase tracking-widest">{mode}</span>
     }
   }
 
@@ -359,6 +352,60 @@ export default function PaymentsPage({ userRole, canEdit }: PaymentsPageProps) {
           <p className="text-[8px] font-bold text-blue-600 mt-1 uppercase tracking-tighter sm:tracking-tight font-inter">Total entries</p>
         </div>
       </div>
+
+      {/* Payment Mode Summary Stats */}
+      {!loading && payments.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 px-1 sm:px-0">
+          <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 rounded-2xl p-4 border border-blue-200 dark:border-blue-800 shadow-lg shadow-blue-500/10">
+            <p className="text-[9px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest mb-2">Online Payments</p>
+            <p className="text-lg sm:text-xl font-bold text-blue-900 dark:text-blue-100">
+              {payments.filter(p => p.payment_mode === 'ONLINE').length}
+            </p>
+            <p className="text-[8px] text-blue-700 dark:text-blue-300 mt-1">
+              {formatCurrency(
+                payments
+                  .filter(p => p.payment_mode === 'ONLINE')
+                  .reduce((sum, p) => sum + Number(p.amount), 0)
+              )}
+            </p>
+          </div>
+          <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950 dark:to-emerald-900 rounded-2xl p-4 border border-emerald-200 dark:border-emerald-800 shadow-lg shadow-emerald-500/10">
+            <p className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-2">Cash Payments</p>
+            <p className="text-lg sm:text-xl font-bold text-emerald-900 dark:text-emerald-100">
+              {payments.filter(p => p.payment_mode === 'CASH').length}
+            </p>
+            <p className="text-[8px] text-emerald-700 dark:text-emerald-300 mt-1">
+              {formatCurrency(
+                payments
+                  .filter(p => p.payment_mode === 'CASH')
+                  .reduce((sum, p) => sum + Number(p.amount), 0)
+              )}
+            </p>
+          </div>
+          <div className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-950 dark:to-orange-900 rounded-2xl p-4 border border-orange-200 dark:border-orange-800 shadow-lg shadow-orange-500/10">
+            <p className="text-[9px] font-bold text-orange-600 dark:text-orange-400 uppercase tracking-widest mb-2">Pending Confirmation</p>
+            <p className="text-lg sm:text-xl font-bold text-orange-900 dark:text-orange-100">
+              {payments.filter(p => p.status === 'PENDING_CONFIRMATION').length}
+            </p>
+            <p className="text-[8px] text-orange-700 dark:text-orange-300 mt-1">
+              {formatCurrency(
+                payments
+                  .filter(p => p.status === 'PENDING_CONFIRMATION')
+                  .reduce((sum, p) => sum + Number(p.amount), 0)
+              )}
+            </p>
+          </div>
+          <div className="bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-lg shadow-slate-500/10">
+            <p className="text-[9px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest mb-2">Success Rate</p>
+            <p className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100">
+              {payments.length > 0 
+                ? Math.round((payments.filter(p => p.status === 'SUCCESS').length / payments.length) * 100) 
+                : 0}%
+            </p>
+            <p className="text-[8px] text-slate-700 dark:text-slate-300 mt-1">Confirmed</p>
+          </div>
+        </div>
+      )}
 
       {/* Error Message */}
       {error && (
@@ -882,6 +929,7 @@ export default function PaymentsPage({ userRole, canEdit }: PaymentsPageProps) {
                       <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">Receipt</th>
                       <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">Student & Subject</th>
                       <th className="px-6 py-4 text-right text-xs font-bold text-gray-400 uppercase tracking-wider">Amount</th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">Mode</th>
                       <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">Status</th>
                       <th className="px-6 py-4 text-right text-xs font-bold text-gray-400 uppercase tracking-wider">Actions</th>
                     </tr>
@@ -900,6 +948,9 @@ export default function PaymentsPage({ userRole, canEdit }: PaymentsPageProps) {
                         </td>
                         <td className="px-6 py-4 text-right">
                           <p className="text-sm font-semibold text-green-600 dark:text-green-400 font-inter">{formatCurrency(Number(payment.amount))}</p>
+                        </td>
+                        <td className="px-6 py-4">
+                          {getPaymentModeBadge(payment.payment_mode)}
                         </td>
                         <td className="px-6 py-4">
                           {getStatusBadge(payment.status)}
@@ -949,14 +1000,18 @@ export default function PaymentsPage({ userRole, canEdit }: PaymentsPageProps) {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl mb-5 border border-slate-100 dark:border-slate-700">
+                  <div className="grid grid-cols-3 gap-3 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl mb-5 border border-slate-100 dark:border-slate-700">
                     <div>
                       <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Mode</p>
-                      <p className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 tracking-tight uppercase">{payment.payment_mode}</p>
+                      {getPaymentModeBadge(payment.payment_mode)}
                     </div>
                     <div>
                       <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Reference</p>
                       <p className="text-[11px] font-bold text-slate-700 dark:text-slate-200 truncate uppercase tracking-tight">{payment.transaction_id || 'OFFLINE'}</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Date</p>
+                      <p className="text-[11px] font-bold text-slate-700 dark:text-slate-200 tracking-tight">{new Date(payment.payment_date).toLocaleDateString('en-IN')}</p>
                     </div>
                   </div>
 

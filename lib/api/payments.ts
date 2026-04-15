@@ -467,6 +467,52 @@ export const paymentsApi = {
             throw error;
         }
     },
+
+    /**
+     * Sync payments from Razorpay
+     * Fetches recent payments from Razorpay, matches with pending payments,
+     * verifies signatures, and auto-confirms if validation passes.
+     */
+    syncRazorpayPayments: async (options?: {
+        limit?: number;
+        auto_confirm?: boolean;
+    }): Promise<ApiResponse<{
+        success: boolean;
+        message: string;
+        summary: {
+            total_fetched: number;
+            matched: number;
+            confirmed: number;
+            failed: number;
+        };
+        errors?: string[];
+    }>> => {
+        const params = new URLSearchParams();
+        if (options?.limit) params.append('limit', options.limit.toString());
+        if (options?.auto_confirm !== undefined) params.append('auto_confirm', options.auto_confirm.toString());
+
+        const response = await apiClient.post<ApiResponse<any>>(
+            '/api/v1/payments/razorpay/sync-payments/',
+            {},
+            { params: Object.fromEntries(params) }
+        );
+        return response.data;
+    },
+
+    /**
+     * Get Razorpay reconciliation report
+     * Compares Razorpay payments with local database
+     */
+    getRazorpayReconciliationReport: async (options?: {
+        start_date?: string;
+        end_date?: string;
+    }): Promise<ApiResponse<any>> => {
+        const response = await apiClient.get<ApiResponse<any>>(
+            '/api/v1/payments/razorpay/reconciliation-report/',
+            { params: options }
+        );
+        return response.data;
+    },
 };
 
 export interface PendingFee {
