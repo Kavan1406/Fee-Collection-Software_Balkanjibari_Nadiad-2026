@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { AlertCircle, CheckCircle2, CreditCard, Loader2, RefreshCw } from 'lucide-react'
-import { paymentsApi, enrollmentsApi, OfflineRequestItem } from '@/lib/api'
+import { paymentsApi, enrollmentsApi, subjectsApi, OfflineRequestItem, Subject } from '@/lib/api'
 import { useNotifications } from '@/hooks/useNotifications'
 
 interface RequestAcceptancePageProps {
@@ -18,6 +18,7 @@ type RequestFilter = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'ALL'
 export default function RequestAcceptancePage({ userRole }: RequestAcceptancePageProps) {
   const { notifySuccess, notifyError, notifyInfo } = useNotifications()
   const [loading, setLoading] = useState(true)
+  const [subjects, setSubjects] = useState<Subject[]>([])
   const [processingId, setProcessingId] = useState<number | null>(null)
   const [rows, setRows] = useState<OfflineRequestItem[]>([])
   const [requestFilter, setRequestFilter] = useState<RequestFilter>('PENDING')
@@ -35,6 +36,55 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
   const rejectedCashRows = useMemo(() => {
     return rows.filter((p) => p.payment_mode === 'CASH' && REJECTED_STATUSES.has((p.status || '').toUpperCase()))
   }, [rows])
+
+  const normalizedSubjectFeeMap = useMemo(() => {
+    const normalize = (value: string) =>
+      value
+        .replace(/\([^)]*\)/g, '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+    const map = new Map<string, number>()
+
+    for (const subject of subjects.filter((s) => s.is_active)) {
+      const fee = Number(subject.current_fee?.amount ?? subject.fee_structure?.fee_amount ?? subject.monthly_fee ?? 0)
+      if (!Number.isFinite(fee)) continue
+      map.set(normalize(subject.name), fee)
+    }
+
+    return {
+      map,
+      normalize,
+    }
+  }, [subjects])
+
+  const getActualFeeForSubjectLabel = (label?: string): number | null => {
+    if (!label) return null
+
+    const normalized = normalizedSubjectFeeMap.normalize(label)
+    const exact = normalizedSubjectFeeMap.map.get(normalized)
+    if (typeof exact === 'number') return exact
+
+    // If the label contains multiple subjects, sum what we can match.
+    const parts = label
+      .split(/\s*(?:\+|&|,|\/|\|)\s*/g)
+      .map((p) => p.trim())
+      .filter(Boolean)
+
+    if (parts.length <= 1) return null
+
+    let sum = 0
+    let matched = 0
+    for (const part of parts) {
+      const fee = normalizedSubjectFeeMap.map.get(normalizedSubjectFeeMap.normalize(part))
+      if (typeof fee === 'number') {
+        sum += fee
+        matched += 1
+      }
+    }
+
+    return matched > 0 ? sum : null
+  }
 
   const visibleRows = useMemo(() => {
     if (requestFilter === 'ACCEPTED') return acceptedCashRows
@@ -75,8 +125,18 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
     }
   }
 
+  const fetchSubjects = async () => {
+    try {
+      const res = await subjectsApi.getAll()
+      setSubjects(res?.data || [])
+    } catch (err: any) {
+      notifyError(err?.response?.data?.error?.message || 'Failed to fetch subjects')
+    }
+  }
+
   useEffect(() => {
     fetchPendingCashRequests()
+    fetchSubjects()
   }, [])
 
   const handleAcceptPayment = async (payment: OfflineRequestItem) => {
@@ -186,6 +246,34 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
       </div>
 
       <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-200 bg-slate-50">
+          <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Current Subject Fees ({subjects.filter((s) => s.is_active).length})</p>
+          <p className="text-[10px] text-slate-400 font-medium uppercase tracking-widest mt-1">Source: Subjects → Current Fee</p>
+        </div>
+        <div className="p-6">
+          {subjects.filter((s) => s.is_active).length === 0 ? (
+            <p className="text-xs text-slate-500">Subject fee list is unavailable right now.</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {subjects
+                .slice()
+                .filter((s) => s.is_active)
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .map((s) => {
+                  const fee = Number(s.current_fee?.amount ?? s.fee_structure?.fee_amount ?? s.monthly_fee ?? 0)
+                  return (
+                    <div key={s.id} className="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-200 bg-white">
+                      <span className="text-xs font-semibold text-slate-700 truncate">{s.name}</span>
+                      <span className="text-xs font-bold text-slate-900">₹{Number.isFinite(fee) ? fee.toLocaleString('en-IN') : '-'}</span>
+                    </div>
+                  )
+                })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
         {loading ? (
           <div className="py-16 flex flex-col items-center justify-center text-slate-500">
             <Loader2 className="animate-spin mb-3" size={28} />
@@ -210,10 +298,22 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {visibleRows.map((payment) => (
+                  (() => {
+                    const actualFee = getActualFeeForSubjectLabel(payment.subject)
+                    const requestedAmount = Number(payment.total_fees || 0)
+                    const displayAmount = actualFee ?? requestedAmount
+                    const showMismatch = actualFee !== null && Math.round(actualFee) !== Math.round(requestedAmount)
+
+                    return (
                   <tr key={payment.request_id} className="hover:bg-slate-50/70">
                     <td className="px-6 py-4 text-sm font-semibold text-slate-900">{payment.student_name}</td>
                     <td className="px-6 py-4 text-sm text-slate-700">{payment.subject}</td>
-                    <td className="px-6 py-4 text-sm font-semibold text-right text-slate-900">₹{Number(payment.total_fees || 0).toLocaleString('en-IN')}</td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="text-sm font-semibold text-slate-900">₹{Number(displayAmount || 0).toLocaleString('en-IN')}</div>
+                      {showMismatch && (
+                        <div className="text-[10px] font-bold uppercase tracking-widest text-rose-600">Requested: ₹{requestedAmount.toLocaleString('en-IN')}</div>
+                      )}
+                    </td>
                     <td className="px-6 py-4">
                       <span className={`inline-flex items-center px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest ${getStatusClassName(payment.status || payment.payment_status)}`}>
                         {getStatusLabel(payment.status)}
@@ -234,6 +334,8 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
                       )}
                     </td>
                   </tr>
+                    )
+                  })()
                 ))}
               </tbody>
             </table>
