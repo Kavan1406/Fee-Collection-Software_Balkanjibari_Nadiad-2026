@@ -849,6 +849,15 @@ export default function PaymentsPage({ userRole, canEdit }: PaymentsPageProps) {
 
       {/* Payments List Container */}
       <div className="space-y-4">
+        {/* Page Info Header */}
+        {!loading && payments.length > 0 && totalPages > 1 && (
+          <div className="p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-xl">
+            <p className="text-xs font-semibold text-blue-900 dark:text-blue-100 uppercase tracking-widest">
+              📄 Page {currentPage} of {totalPages} • Showing {((currentPage - 1) * 20) + 1}-{Math.min(currentPage * 20, totalCount)} of {totalCount} payments
+            </p>
+          </div>
+        )}
+        
         {loading ? (
           <div className="flex flex-col items-center justify-center py-16 bg-white dark:bg-gray-800 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-sm">
             <Loader2 className="animate-spin text-blue-600 mb-4" size={40} />
@@ -975,24 +984,66 @@ export default function PaymentsPage({ userRole, canEdit }: PaymentsPageProps) {
 
             {/* Pagination Controls */}
             {totalPages > 1 && (
-              <div className="flex items-center justify-between p-4 sm:p-6 bg-white dark:bg-gray-800 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-sm">
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">
-                  Page {currentPage} / {totalPages}
-                </p>
-                <div className="flex gap-3">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 sm:p-6 bg-white dark:bg-gray-800 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-sm">
+                <div className="flex-1">
+                  <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">
+                    Showing {((currentPage - 1) * 20) + 1} to {Math.min(currentPage * 20, totalCount)} of {totalCount} payments
+                  </p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                    Page {currentPage} of {totalPages}
+                  </p>
+                </div>
+                
+                <div className="flex gap-2 items-center">
+                  {/* Previous Button */}
                   <button
                     onClick={() => setCurrentPage(currentPage - 1)}
                     disabled={currentPage === 1}
-                    className="p-3 bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 text-gray-700 dark:text-gray-300 rounded-2xl transition-all disabled:opacity-30 disabled:grayscale active:scale-90"
+                    className="px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed font-medium text-sm uppercase tracking-widest active:scale-95"
+                    title="Previous page"
                   >
-                    <Loader2 size={20} className={currentPage === 1 ? '' : 'rotate-180'} />
+                    ← Prev
                   </button>
+
+                  {/* Page Numbers - Show 3 pages max */}
+                  <div className="flex gap-1">
+                    {Array.from({ length: Math.min(3, totalPages) }, (_, i) => {
+                      let pageNum;
+                      if (totalPages <= 3) {
+                        pageNum = i + 1;
+                      } else if (currentPage <= 2) {
+                        pageNum = i + 1;
+                      } else if (currentPage >= totalPages - 1) {
+                        pageNum = totalPages - 2 + i;
+                      } else {
+                        pageNum = currentPage - 1 + i;
+                      }
+                      
+                      return (
+                        <button
+                          key={pageNum}
+                          onClick={() => setCurrentPage(pageNum)}
+                          className={`w-10 h-10 rounded-lg font-bold text-sm transition-all active:scale-95 ${
+                            currentPage === pageNum
+                              ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20'
+                              : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                          }`}
+                          title={`Go to page ${pageNum}`}
+                        >
+                          {pageNum}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Next Button */}
                   <button
                     onClick={() => setCurrentPage(currentPage + 1)}
                     disabled={currentPage === totalPages}
-                    className="p-3 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-500/20 active:scale-90 transition-all disabled:opacity-30"
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-30 disabled:cursor-not-allowed font-medium text-sm uppercase tracking-widest active:scale-95"
+                    title="Next page"
                   >
-                    <Plus size={24} className="rotate-45" />
+                    Next →
                   </button>
                 </div>
               </div>
