@@ -22,6 +22,7 @@ interface Enrollment {
   paid_amount: string
   pending_amount: string
   payment_status: string
+  payment_mode?: string
 }
 
 interface EnrollmentsPageProps {
@@ -303,30 +304,40 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
                           </div>
                         </td>
                         <td className="px-5 py-4">
-                          <span className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest font-inter ${enrollment.payment_status === 'PAID'
-                            ? 'bg-emerald-50 text-emerald-600'
-                            : enrollment.payment_status === 'PARTIAL'
-                              ? 'bg-blue-50 text-blue-600'
-                              : 'bg-rose-50 text-rose-600'
-                            }`}>
-                            {enrollment.payment_status}
-                          </span>
+                          <div className="flex flex-col gap-2">
+                            <span className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest font-inter w-fit ${enrollment.payment_status === 'PAID'
+                              ? 'bg-emerald-50 text-emerald-600'
+                              : enrollment.payment_status === 'PARTIAL'
+                                ? 'bg-blue-50 text-blue-600'
+                                : 'bg-rose-50 text-rose-600'
+                              }`}>
+                              {enrollment.payment_status}
+                            </span>
+                            <span className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest font-inter w-fit ${enrollment.payment_mode === 'OFFLINE'
+                              ? 'bg-purple-50 text-purple-600'
+                              : enrollment.payment_mode === 'ONLINE'
+                                ? 'bg-cyan-50 text-cyan-600'
+                                : 'bg-slate-50 text-slate-600'
+                              }`}>
+                              {enrollment.payment_mode || 'Unknown'}
+                            </span>
+                          </div>
                         </td>
                         <td className="px-5 py-4 text-right">
                           <div className="flex items-center justify-end gap-2">
-                            {enrollment.payment_status === 'PAID' && (
+                            {(enrollment.payment_status === 'PAID' || enrollment.payment_mode === 'OFFLINE') && (
                               <>
                                 <button
                                   onClick={() => enrollmentsApi.downloadReceipt(enrollment.id)}
                                   className="p-2 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl transition-all active:scale-90"
-                                  title="Receipt"
+                                  title="Download Receipt"
                                 >
                                   <Download size={18} />
                                 </button>
                                 <button
                                   onClick={() => enrollmentsApi.downloadIdCard(enrollment.id)}
-                                  className="p-2 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl transition-all active:scale-90"
-                                  title="ID Card"
+                                  className="p-2 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl transition-all active:scale-90"
+                                  title="Download ID Card"
                                 >
                                   <CreditCard size={18} />
                                 </button>
@@ -364,7 +375,7 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
                         {enrollment.subject?.name}
                       </p>
                     </div>
-                    <div className="text-right flex flex-col items-end shrink-0">
+                    <div className="text-right flex flex-col items-end shrink-0 gap-2">
                        <span className={`px-2.5 py-0.5 rounded-lg text-[10px] sm:text-[11px] font-bold uppercase tracking-widest shadow-sm ${enrollment.payment_status === 'PAID'
                         ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600'
                         : enrollment.payment_status === 'PARTIAL'
@@ -372,6 +383,14 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
                           : 'bg-rose-50 dark:bg-rose-900/30 text-rose-600'
                         }`}>
                         {enrollment.payment_status}
+                      </span>
+                      <span className={`px-2.5 py-0.5 rounded-lg text-[10px] sm:text-[11px] font-bold uppercase tracking-widest shadow-sm ${enrollment.payment_mode === 'OFFLINE'
+                        ? 'bg-purple-50 dark:bg-purple-900/30 text-purple-600'
+                        : enrollment.payment_mode === 'ONLINE'
+                          ? 'bg-cyan-50 dark:bg-cyan-900/30 text-cyan-600'
+                          : 'bg-slate-50 dark:bg-slate-900/30 text-slate-600'
+                        }`}>
+                        {enrollment.payment_mode || 'Unknown'}
                       </span>
                       <p className="text-base font-semibold text-slate-900 dark:text-white mt-2 leading-none font-poppins">₹{Number(enrollment.total_fee || 0).toLocaleString()}</p>
                     </div>
@@ -389,7 +408,7 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
                   </div>
 
                   <div className="flex flex-col gap-3">
-                    {enrollment.payment_status === 'PAID' && (
+                    {(enrollment.payment_status === 'PAID' || enrollment.payment_mode === 'OFFLINE') && (
                       <div className="flex gap-3">
                         <button
                           onClick={() => enrollmentsApi.downloadReceipt(enrollment.id)}

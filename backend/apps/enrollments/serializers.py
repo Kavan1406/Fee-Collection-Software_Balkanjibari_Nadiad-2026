@@ -14,6 +14,7 @@ class EnrollmentSerializer(serializers.ModelSerializer):
     student = StudentSimpleSerializer(read_only=True)
     subject = SubjectSerializer(read_only=True)
     payment_status = serializers.SerializerMethodField()
+    payment_mode = serializers.SerializerMethodField()
     id_card = serializers.SerializerMethodField()
     
     class Meta:
@@ -21,7 +22,7 @@ class EnrollmentSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'enrollment_id', 'roll_number', 'student', 'subject',
             'enrollment_date', 'batch_time', 'status', 'total_fee', 'paid_amount',
-            'pending_amount', 'payment_status', 'id_card', 'created_at'
+            'pending_amount', 'payment_status', 'payment_mode', 'id_card', 'created_at'
         ]
         read_only_fields = ['id', 'enrollment_id', 'enrollment_date', 'created_at']
     
@@ -58,6 +59,17 @@ class EnrollmentSerializer(serializers.ModelSerializer):
     def get_payment_status(self, obj):
         """Get payment status from model property."""
         return obj.payment_status
+    
+    def get_payment_mode(self, obj):
+        """Get payment mode (ONLINE/OFFLINE/CASH/CHEQUE) from related Payment object."""
+        from apps.payments.models import Payment
+        payment = obj.payments.filter(status__in=['SUCCESS', 'PENDING_CONFIRMATION', 'CREATED']).first()
+        if payment:
+            if payment.payment_mode in ['CASH', 'CHEQUE']:
+                return 'OFFLINE'
+            else:
+                return payment.payment_mode
+        return 'NOT RECORDED'
 
 
 class EnrollmentCreateSerializer(serializers.Serializer):

@@ -138,3 +138,52 @@ class FeeStructure(models.Model):
     
     def __str__(self):
         return f"{self.subject.name} - ₹{self.fee_amount} ({self.duration})"
+
+
+class SubjectBatch(models.Model):
+    """
+    Batch-specific configuration for subjects with multiple batches.
+    Stores capacity limits for each batch of a subject.
+    """
+    
+    subject = models.ForeignKey(
+        Subject,
+        on_delete=models.CASCADE,
+        related_name='batch_configs'
+    )
+    batch_time = models.CharField(
+        max_length=200,
+        help_text='Batch timing (e.g., "Batch A: 7:00 AM - 8:00 AM")'
+    )
+    capacity_limit = models.IntegerField(
+        default=50,
+        help_text='Maximum number of students for this batch'
+    )
+    is_active = models.BooleanField(default=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'subject_batches'
+        unique_together = ('subject', 'batch_time')
+        ordering = ['subject', 'batch_time']
+    
+    def __str__(self):
+        return f"{self.subject.name} - {self.batch_time} (Limit: {self.capacity_limit})"
+    
+    @property
+    def enrolled_count(self):
+        """Get current enrollment count for this batch."""
+        from apps.enrollments.models import Enrollment
+        return Enrollment.objects.filter(
+            subject=self.subject,
+            batch_time=self.batch_time,
+            is_deleted=False,
+            status='ACTIVE'
+        ).count()
+    
+    @property
+    def available_seats(self):
+        """Get available seats in this batch."""
+        return max(0, self.capacity_limit - self.enrolled_count)

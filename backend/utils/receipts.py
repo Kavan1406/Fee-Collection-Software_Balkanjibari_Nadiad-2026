@@ -51,55 +51,73 @@ def _draw_page_decoration(canv, doc):
 def generate_receipt_pdf(payment=None, student=None, order_id=None):
     """
     Standardized design for the entire Balkanjibari system.
-    Can generate for a single payment OR a consolidated student registration (order_id).
+    Shows ALL enrollments for a student with their actual fees from enrollment time.
+    Payment status is indicated per enrollment.
     """
     if payment:
-        # When a single payment is passed, show ALL successful payments for that student
+        # When a single payment is passed, show ALL enrollments for that student
         enrollment = getattr(payment, 'enrollment', None)
         student = student or (getattr(enrollment, 'student', None) if enrollment else None)
         
-        # Get all successful payments for this student
+        # Get all enrollments for this student (not just paid ones)
         if student:
             from apps.payments.models import Payment as PaymentModel
-            # Get latest successful payment per enrollment to show all subjects
-            latest_successful_by_enrollment = {}
-            successful_payments = PaymentModel.objects.filter(
+            # Get all active enrollments for the student
+            all_enrollments = list(student.enrollments.filter(is_deleted=False).select_related('subject').order_by('created_at'))
+            
+            # Build a map of enrollment -> payment info
+            enrollment_payments = {}
+            payments_queryset = PaymentModel.objects.filter(
                 enrollment__student=student,
                 enrollment__is_deleted=False,
                 is_deleted=False,
-                status='SUCCESS',
-            ).select_related('enrollment__subject').order_by('enrollment_id', '-created_at')
-
-            for p in successful_payments:
-                if p.enrollment_id not in latest_successful_by_enrollment:
-                    latest_successful_by_enrollment[p.enrollment_id] = p
-
-            payments = list(latest_successful_by_enrollment.values())
-            enrollments = [p.enrollment for p in payments]
+            ).select_related('enrollment__subject')
+            
+            for p in payments_queryset:
+                if p.enrollment_id not in enrollment_payments:
+                    enrollment_payments[p.enrollment_id] = p
+            
+            # Use all enrollments as the base, with payment info where available
+            enrollments = all_enrollments
+            payments = [enrollment_payments.get(enr.id) for enr in all_enrollments]
         else:
-            payments = [payment]
             enrollments = [enrollment] if enrollment else []
+            payments = [payment]
     elif student and order_id:
         from apps.payments.models import Payment
-        payments = list(Payment.objects.filter(enrollment__student=student, razorpay_order_id=order_id, status='SUCCESS'))
-        enrollments = [p.enrollment for p in payments]
+        from apps.enrollments.models import Enrollment
+        # For registration receipts with order_id, show all enrollments for that order
+        enrollments = list(Enrollment.objects.filter(
+            student=student,
+            is_deleted=False
+        ).select_related('subject').order_by('created_at'))
+        payments_queryset = list(Payment.objects.filter(
+            enrollment__student=student,
+            razorpay_order_id=order_id,
+            is_deleted=False
+        ))
+        payments = [p for p in payments_queryset]
     elif student:
-        # Student-level consolidated receipt: include latest successful payment per enrollment.
+        # Student-level consolidated receipt: show ALL enrollments.
+        from apps.enrollments.models import Enrollment
         from apps.payments.models import Payment
-        latest_successful_by_enrollment = {}
-        successful_payments = Payment.objects.filter(
+        
+        all_enrollments = list(student.enrollments.filter(is_deleted=False).select_related('subject').order_by('created_at'))
+        
+        # Build payment map
+        enrollment_payments = {}
+        payments_queryset = Payment.objects.filter(
             enrollment__student=student,
             enrollment__is_deleted=False,
             is_deleted=False,
-            status='SUCCESS',
-        ).select_related('enrollment__subject').order_by('enrollment_id', '-created_at')
-
-        for paid in successful_payments:
-            if paid.enrollment_id not in latest_successful_by_enrollment:
-                latest_successful_by_enrollment[paid.enrollment_id] = paid
-
-        payments = list(latest_successful_by_enrollment.values())
-        enrollments = [p.enrollment for p in payments]
+        ).select_related('enrollment__subject')
+        
+        for p in payments_queryset:
+            if p.enrollment_id not in enrollment_payments:
+                enrollment_payments[p.enrollment_id] = p
+        
+        enrollments = all_enrollments
+        payments = [enrollment_payments.get(enr.id) for enr in all_enrollments]
     else:
         return _generate_minimal_receipt_pdf()
 
@@ -207,21 +225,39 @@ def generate_receipt_pdf(payment=None, student=None, order_id=None):
     story.append(Table([[t1, t2]], colWidths=[9.5 * cm, 9.5 * cm]))
     story.append(Spacer(1, 0.1 * cm))
 
-    # Enrollments Table
-    fee_data = [['Sr no.', 'Subject', 'Batch Time', 'SubFee', 'LibFee', 'Total']]
+    # Enrollments Table - Show ALL enrollments with payment status
+    fee_data = [['Sr no.', 'Subject', 'Batch\nTime', 'SubFee', 'LibFee', 'Total', 'Status']]
     grand_total = 0
+    total_paid = 0
     
-    # Always use all collected payments to show all student's enrollments
-    items = []
-    for p in payments:
-        items.append((p.enrollment, p.amount))
-
-    for i, (enr, amount) in enumerate(items, 1):
+    # Pair each enrollment with its payment info (if any)
+    for i, enr in enumerate(enrollments, 1):
+        # Find corresponding payment if available
+        payment = None
+        for p in payments:
+            if p and p.enrollment_id == enr.id:
+                payment = p
+                break
+        
         # Correctly calculate sub_fee and lib_fee based on include_library_fee
         lib_fee = 10.0 if enr.include_library_fee else 0.0
         sub_fee = float(enr.total_fee) - lib_fee
-        total = float(amount)
+        total = float(enr.total_fee)
         grand_total += total
+        
+        # Determine payment status
+        if payment and payment.status in ['SUCCESS', 'PENDING_CONFIRMATION', 'COMPLETED']:
+            payment_status = '✓ PAID'
+            total_paid += total
+            status_color = HexColor('#22C55E')  # Green
+        elif payment and payment.status in ['CREATED', 'PENDING']:
+            payment_status = '⏳ PENDING'
+            status_color = HexColor('#F59E0B')  # Amber
+        else:
+            payment_status = '◯ PENDING'
+            status_color = HexColor('#EF4444')  # Red
+        
+        status_para = Paragraph(payment_status, ParagraphStyle('Status', fontSize=7.5, fontName='Helvetica-Bold', textColor=status_color))
         
         fee_data.append([
             str(i),
@@ -230,33 +266,47 @@ def generate_receipt_pdf(payment=None, student=None, order_id=None):
             f"Rs.{sub_fee:,.0f}",
             f"Rs.{lib_fee:,.0f}",
             f"Rs.{total:,.0f}",
+            status_para,
         ])
 
     fee_data.append([
-        '', '', '', '', 'TOTAL PAID', f"Rs.{grand_total:,.0f}"
+        '', '', '', '', '', 
+        Paragraph(f'<b>₹{grand_total:,.0f}</b>', ParagraphStyle('Total', fontSize=8.5, fontName='Helvetica-Bold', textColor=dark)),
+        Paragraph('<b>TOTAL</b>', ParagraphStyle('TotalLabel', fontSize=7, fontName='Helvetica-Bold', textColor=slate))
     ])
 
-    fee_table = Table(fee_data, colWidths=[1.0 * cm, 6.2 * cm, 3.8 * cm, 2.5 * cm, 2.7 * cm, 2.8 * cm])
+    fee_table = Table(fee_data, colWidths=[0.9 * cm, 5.8 * cm, 3.2 * cm, 2.3 * cm, 2.3 * cm, 2.5 * cm, 2.0 * cm])
     fee_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), indigo),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 8.5),
-        ('ALIGN', (3, 0), (-1, -1), 'RIGHT'),
+        ('FONTSIZE', (0, 0), (-1, 0), 7.5),
+        ('FONTSIZE', (0, 1), (-1, -2), 8),
+        ('ALIGN', (3, 0), (5, -1), 'RIGHT'),
         ('ALIGN', (0, 0), (2, -1), 'LEFT'),
+        ('ALIGN', (6, 0), (6, -1), 'CENTER'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('TOPPADDING', (0, 0), (-1, -1), 5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
         ('GRID', (0, 0), (-1, -2), 0.5, HexColor('#CBD5E1')),
         # Total row styling
-        ('FONTNAME', (-2, -1), (-1, -1), 'Helvetica-Bold'),
-        ('BACKGROUND', (-2, -1), (-1, -1), HexColor('#F1F5F9')),
-        ('ALIGN', (-2, -1), (-2, -1), 'RIGHT'),
-        ('BOX', (-2, -1), (-1, -1), 0.5, HexColor('#CBD5E1')),
-        ('SPAN', (0, -1), (3, -1)), # Empty space for total row
+        ('FONTNAME', (4, -1), (-1, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (4, -1), (-1, -1), 8.5),
+        ('BACKGROUND', (0, -1), (-1, -1), HexColor('#F1F5F9')),
+        ('ALIGN', (4, -1), (5, -1), 'RIGHT'),
+        ('BOX', (0, -1), (-1, -1), 0.5, HexColor('#CBD5E1')),
     ]))
     story.append(fee_table)
-    story.append(Spacer(1, 0.2 * cm))
+    story.append(Spacer(1, 0.15 * cm))
+    
+    # Summary with paid vs pending
+    if total_paid > 0 and total_paid < grand_total:
+        summary_para = Paragraph(
+            f"<b>Amount Paid:</b> Rs.{total_paid:,.0f} | <b>Amount Pending:</b> Rs.{grand_total - total_paid:,.0f}",
+            ParagraphStyle('Summary', fontSize=8, fontName='Helvetica-Bold', textColor=slate)
+        )
+        story.append(summary_para)
+        story.append(Spacer(1, 0.1 * cm))
 
     # Payment Status
     status_s = ParagraphStyle('PS', fontSize=9, fontName='Helvetica-Bold', textColor=green)
