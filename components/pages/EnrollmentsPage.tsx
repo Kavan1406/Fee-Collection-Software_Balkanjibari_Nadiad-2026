@@ -70,8 +70,16 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
       console.log('Subjects Response:', subjectsRes);
 
       const enrollmentsData = enrollmentsRes?.results || enrollmentsRes?.data || (Array.isArray(enrollmentsRes) ? enrollmentsRes : []);
-      setEnrollments(enrollmentsData)
-      setFilteredEnrollments(enrollmentsData)
+      
+      // Sort by enrollment ID descending (latest first)
+      const sortedEnrollments = [...enrollmentsData].sort((a, b) => {
+        const aId = parseInt(a.id?.toString() || '0')
+        const bId = parseInt(b.id?.toString() || '0')
+        return bId - aId
+      })
+
+      setEnrollments(sortedEnrollments)
+      setFilteredEnrollments(sortedEnrollments)
       
       // Set pagination info
       setTotalPages(enrollmentsRes?.total_pages || Math.ceil(enrollmentsData.length / 20) || 1)

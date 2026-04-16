@@ -129,6 +129,67 @@ export default function DashboardPage() {
         </Card>
       </div>
 
+      {/* Batch Capacity & Limits Section */}
+      {subjects && subjects.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">Batch Capacity & Limits</h2>
+              <p className="text-sm text-gray-600">Admin Control Active</p>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {subjects.slice(0, 16).map((subject) => {
+              const usedSeats = subject.enrolled_count || 0
+              const totalSeats = subject.max_seats || 30
+              const percentageFilled = totalSeats > 0 ? Math.round((usedSeats / totalSeats) * 100) : 0
+              
+              return (
+                <Card key={subject.id} className="bg-white">
+                  <CardContent className="p-6">
+                    <div className="space-y-4">
+                      {/* Subject name and capacity */}
+                      <div>
+                        <h3 className="text-sm font-bold text-gray-900 uppercase">
+                          {subject.name.length > 18 ? subject.name.substring(0, 18) : subject.name}
+                        </h3>
+                        <div className="mt-2 flex items-center justify-between text-xs">
+                          <span className="text-gray-600">{usedSeats}/{totalSeats}</span>
+                          <span className="font-semibold text-teal-600">{percentageFilled}%</span>
+                        </div>
+                      </div>
+                      
+                      {/* Progress bar */}
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div
+                          className="bg-teal-500 h-2 rounded-full transition-all"
+                          style={{ width: `${percentageFilled}%` }}
+                        />
+                      </div>
+                      
+                      {/* IDS button */}
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-gray-500">IDS</span>
+                        <button className="text-teal-600 hover:text-teal-700 font-semibold">
+                          +10
+                        </button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+          
+          {subjects.length > 16 && (
+            <p className="text-center text-sm text-gray-500 mt-2">
+              And {subjects.length - 16} more subjects...
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Subject-wise Breakdown Table */}
       {subjects && subjects.length > 0 && (
         <Card>

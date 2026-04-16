@@ -218,23 +218,33 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
       }) as any
 
       // Handle both paginated and non-paginated responses
+      let studentList: Student[] = []
       if (response.results) {
-        setStudents(response.results)
+        studentList = response.results
         setTotalPages(response.total_pages || 1)
         setTotalCount(response.count || response.results.length)
       } else if (Array.isArray(response)) {
-        setStudents(response)
+        studentList = response
         setTotalPages(1)
         setTotalCount(response.length)
       } else if (response.data && Array.isArray(response.data)) {
-        setStudents(response.data)
+        studentList = response.data
         setTotalPages(1)
         setTotalCount(response.data.length)
       } else {
-        setStudents([])
+        studentList = []
         setTotalPages(1)
         setTotalCount(0)
       }
+
+      // Sort by ID descending (latest first)
+      studentList.sort((a, b) => {
+        const aId = parseInt(a.student_id?.replace(/\D/g, '') || '0')
+        const bId = parseInt(b.student_id?.replace(/\D/g, '') || '0')
+        return bId - aId
+      })
+
+      setStudents(studentList)
     } catch (err: any) {
       setError(err.response?.data?.error?.message || 'Failed to fetch students')
     } finally {
@@ -1108,9 +1118,28 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
                           <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">{student.area}</p>
                         </td>
                         <td className="px-6 py-4 font-inter text-right">
-                          <div className="flex flex-col items-end">
-                            <p className="text-[13px] font-semibold text-gray-900 dark:text-white font-inter">₹{parseFloat(student.total_fees?.toString() || '0').toLocaleString()}</p>
-                            <p className="text-[12px] font-medium text-red-500 uppercase font-inter">Pending: ₹{parseFloat(student.total_pending?.toString() || '0').toLocaleString()}</p>
+                          <div className="flex flex-col items-end gap-2">
+                            <div>
+                              <p className="text-[13px] font-semibold text-gray-900 dark:text-white font-inter">₹{parseFloat(student.total_fees?.toString() || '0').toLocaleString()}</p>
+                              <p className="text-[12px] font-medium text-red-500 uppercase font-inter">Pending: ₹{parseFloat(student.total_pending?.toString() || '0').toLocaleString()}</p>
+                            </div>
+                            {parseFloat(student.total_pending?.toString() || '0') > 0 && (
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    // Mark as paid by updating payment status
+                                    await paymentsApi.update(student.id, { payment_status: 'PAID' })
+                                    notifySuccess(`Fees marked as paid for ${student.name}`)
+                                    fetchStudents()
+                                  } catch (err: any) {
+                                    notifyError(err?.response?.data?.error || 'Failed to mark as paid')
+                                  }
+                                }}
+                                className="px-3 py-1 text-xs font-bold bg-green-500 hover:bg-green-600 text-white rounded transition-all"
+                              >
+                                Mark Paid
+                              </button>
+                            )}
                           </div>
                         </td>
                         <td className="px-6 py-4 font-inter">

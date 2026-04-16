@@ -104,7 +104,16 @@ export default function PaymentsPage({ userRole, canEdit }: PaymentsPageProps) {
         fetchAccurateOutstanding()
       ])
 
-      setPayments(Array.isArray(res?.results) ? res.results : [])
+      let paymentsList = Array.isArray(res?.results) ? res.results : []
+      
+      // Sort by ID descending (latest first)
+      paymentsList.sort((a, b) => {
+        const aId = parseInt(a.id?.toString() || '0')
+        const bId = parseInt(b.id?.toString() || '0')
+        return bId - aId
+      })
+
+      setPayments(paymentsList)
       setTotalPages(Number(res?.total_pages || 1))
       setTotalCount(Number(res?.count || 0))
 
