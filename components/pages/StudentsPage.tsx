@@ -1123,23 +1123,6 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
                               <p className="text-[13px] font-semibold text-gray-900 dark:text-white font-inter">₹{parseFloat(student.total_fees?.toString() || '0').toLocaleString()}</p>
                               <p className="text-[12px] font-medium text-red-500 uppercase font-inter">Pending: ₹{parseFloat(student.total_pending?.toString() || '0').toLocaleString()}</p>
                             </div>
-                            {parseFloat(student.total_pending?.toString() || '0') > 0 && (
-                              <button
-                                onClick={async () => {
-                                  try {
-                                    // Mark as paid by updating payment status
-                                    await paymentsApi.update(student.id, { payment_status: 'PAID' })
-                                    notifySuccess(`Fees marked as paid for ${student.name}`)
-                                    fetchStudents()
-                                  } catch (err: any) {
-                                    notifyError(err?.response?.data?.error || 'Failed to mark as paid')
-                                  }
-                                }}
-                                className="px-3 py-1 text-xs font-bold bg-green-500 hover:bg-green-600 text-white rounded transition-all"
-                              >
-                                Mark Paid
-                              </button>
-                            )}
                           </div>
                         </td>
                         <td className="px-6 py-4 font-inter">

@@ -368,6 +368,23 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
                         </td>
                         <td className="px-5 py-4 text-right">
                           <div className="flex items-center justify-end gap-2">
+                            {enrollment.payment_status !== 'PAID' && parseFloat(enrollment.pending_amount || '0') > 0 && (
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    await enrollmentsApi.update(enrollment.id, { payment_status: 'PAID' })
+                                    toast.success(`Payment marked as paid for ${enrollment.student?.name}`)
+                                    fetchData()
+                                  } catch (err: any) {
+                                    toast.error(err?.response?.data?.error || 'Failed to mark as paid')
+                                  }
+                                }}
+                                className="px-3 py-1.5 text-xs font-bold bg-green-500 hover:bg-green-600 text-white rounded-lg transition-all active:scale-95"
+                                title="Mark Payment as Paid"
+                              >
+                                Mark Paid
+                              </button>
+                            )}
                             {(enrollment.payment_status === 'PAID' || enrollment.payment_mode === 'OFFLINE') && (
                               <>
                                 <button
@@ -455,6 +472,22 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
                   </div>
 
                   <div className="flex flex-col gap-3">
+                    {enrollment.payment_status !== 'PAID' && parseFloat(enrollment.pending_amount || '0') > 0 && (
+                      <button
+                        onClick={async () => {
+                          try {
+                            await enrollmentsApi.update(enrollment.id, { payment_status: 'PAID' })
+                            toast.success(`Payment marked as paid for ${enrollment.student?.name}`)
+                            fetchData()
+                          } catch (err: any) {
+                            toast.error(err?.response?.data?.error || 'Failed to mark as paid')
+                          }
+                        }}
+                        className="w-full h-12 rounded-xl text-[11px] bg-green-500 hover:bg-green-600 text-white font-bold uppercase tracking-widest shadow-xl flex items-center justify-center gap-2 active:scale-95 transition-all"
+                      >
+                        <CheckCircle size={16} /> Mark Paid
+                      </button>
+                    )}
                     {(enrollment.payment_status === 'PAID' || enrollment.payment_mode === 'OFFLINE') && (
                       <div className="flex gap-3">
                         <button
