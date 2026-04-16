@@ -30,8 +30,8 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className="antialiased font-inter bg-slate-50 dark:bg-slate-950">
+    <html lang="en" suppressHydrationWarning style={{ colorScheme: 'light' }}>
+      <body className="antialiased font-inter bg-white text-black">
         <ThemeProvider>
           <AuthProvider>
             <ServerKeepAlive />

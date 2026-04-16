@@ -30,26 +30,9 @@
     --radius: 1rem;
   }
 
+  /* Disable dark theme - Light theme only */
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 221.2 83.2% 53.3%;
+    display: none !important;
   }
 }
 
@@ -65,14 +48,17 @@
     width: 100%;
     height: 100%;
     letter-spacing: 0.2px;
+    color-scheme: light !important;
   }
   
   body {
-    @apply bg-slate-50 text-slate-900 font-inter antialiased;
+    @apply bg-white text-slate-900 font-inter antialiased;
     font-size: 15px; /* Body → 14px–16px range */
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;
     font-weight: 400;
+    background-color: #ffffff !important;
+    color: #000000 !important;
   }
 
   h1, .h1 {

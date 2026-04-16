@@ -238,4 +238,28 @@ export const analyticsApi = {
 
     exportSubjectwiseTotalReportPdf: async () =>
         analyticsApi.downloadFile('/api/v1/analytics/export_subjectwise_total_report_pdf/', 'subjectwise_total_report.pdf'),
+
+    // ===== Session 14: Comprehensive Admin Analytics =====
+
+    /**
+     * Get comprehensive admin dashboard data
+     * Includes all students, fees, subjects, payments data
+     */
+    getAdminDashboardComprehensive: async (): Promise<ApiResponse<any>> => {
+        const response = await apiClient.get<ApiResponse<any>>(
+            '/api/v1/analytics/admin_dashboard_comprehensive/'
+        );
+        return response.data;
+    },
+
+    /**
+     * Get lightweight dashboard summary
+     * Quick load with only key metrics
+     */
+    getAdminDashboardSummary: async (): Promise<ApiResponse<any>> => {
+        const response = await apiClient.get<ApiResponse<any>>(
+            '/api/v1/analytics/admin_dashboard_summary/'
+        );
+        return response.data;
+    },
 };

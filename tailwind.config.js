@@ -1,6 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-    darkMode: "media",
+    darkMode: false, // Disabled - Light theme only (Session 14)
     content: [
         './pages/**/*.{ts,tsx}',
         './components/**/*.{ts,tsx}',
