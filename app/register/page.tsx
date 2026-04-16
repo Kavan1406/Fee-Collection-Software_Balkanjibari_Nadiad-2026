@@ -191,6 +191,28 @@ export default function RegisterPage() {
     pincode: '',
   })
 
+  // Load form from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('registration_form_draft')
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved)
+          setForm(prev => ({ ...prev, ...parsed }))
+        } catch (e) {
+          console.error('[Form] Failed to load draft:', e)
+        }
+      }
+    }
+  }, [])
+
+  // Save form to localStorage whenever it changes
+  useEffect(() => {
+    if (typeof window !== 'undefined' && form.name) {
+      localStorage.setItem('registration_form_draft', JSON.stringify(form))
+    }
+  }, [form])
+
   const [isSubjectsLoading, setIsSubjectsLoading] = useState(true)
   const normalizedEmail = form.email.trim()
 
@@ -520,6 +542,10 @@ export default function RegisterPage() {
       }
 
       if (verifyData.success) {
+        // Clear the draft form after successful registration
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('registration_form_draft')
+        }
         setSuccessData(verifyData)
       } else {
         toast.error(verifyData.error || 'Payment verification failed. Please contact the office.')
