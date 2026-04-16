@@ -172,7 +172,6 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
             {[
               { id: 'ALL', label: 'All Activities' },
               { id: 'SUMMER_CAMP', label: 'Summer Camp' },
-              { id: 'YEAR_ROUND', label: 'Year-Round' },
             ].map((type) => (
               <button
                 key={type.id}

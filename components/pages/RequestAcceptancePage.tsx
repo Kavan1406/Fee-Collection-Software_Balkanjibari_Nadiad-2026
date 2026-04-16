@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { AlertCircle, CheckCircle2, CreditCard, Loader2, RefreshCw, X, Trash2, ChevronLeft, Eye, EyeOff } from 'lucide-react'
-import { paymentsApi, enrollmentsApi, subjectsApi, OfflineRequestItem, Subject } from '@/lib/api'
+import { AlertCircle, CheckCircle2, CreditCard, Loader2, RefreshCw, X, Trash2, ChevronLeft, Eye, EyeOff, Search } from 'lucide-react'
+import { paymentsApi, enrollmentsApi, subjectsApi, studentsApi, OfflineRequestItem, Subject, Student } from '@/lib/api'
 import { useNotifications } from '@/hooks/useNotifications'
 
 interface RequestAcceptancePageProps {
@@ -32,6 +32,7 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
   const [processingId, setProcessingId] = useState<number | null>(null)
   const [rows, setRows] = useState<OfflineRequestItem[]>([])
   const [requestFilter, setRequestFilter] = useState<RequestFilter>('PENDING')
+  const [searchTerm, setSearchTerm] = useState('')
   const [rejectConfirm, setRejectConfirm] = useState<{ show: boolean; request: OfflineRequestItem | null; reason: string }>({
     show: false,
     request: null,
@@ -40,6 +41,7 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
 
   const [showSlider, setShowSlider] = useState(false)
   const [acceptedCredentials, setAcceptedCredentials] = useState<AcceptedCredential[]>([])
+  const [syncing, setSyncing] = useState(false)
 
   const canAccept = userRole === 'admin' || userRole === 'staff' || userRole === 'accountant'
 
@@ -105,13 +107,26 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
   }
 
   const visibleRows = useMemo(() => {
-    if (requestFilter === 'ACCEPTED') return acceptedCashRows
-    if (requestFilter === 'REJECTED') return rejectedCashRows
-    if (requestFilter === 'ALL') {
-      return rows.filter((p) => p.payment_mode === 'CASH')
+    let filtered = rows
+    
+    // Filter by status
+    if (requestFilter === 'ACCEPTED') filtered = filtered.filter((p) => p.payment_mode === 'CASH' && ACCEPTED_STATUSES.has((p.status || '').toUpperCase()))
+    else if (requestFilter === 'REJECTED') filtered = filtered.filter((p) => p.payment_mode === 'CASH' && REJECTED_STATUSES.has((p.status || '').toUpperCase()))
+    else if (requestFilter === 'ALL') filtered = filtered.filter((p) => p.payment_mode === 'CASH')
+    else filtered = filtered.filter((p) => p.payment_mode === 'CASH' && PENDING_STATUSES.has((p.status || '').toUpperCase()))
+    
+    // Filter by search term
+    if (searchTerm.trim()) {
+      const search = searchTerm.toLowerCase().trim()
+      filtered = filtered.filter(payment =>
+        payment.student_name?.toLowerCase().includes(search) ||
+        payment.student_id?.toLowerCase().includes(search) ||
+        payment.subject?.toLowerCase().includes(search)
+      )
     }
-    return pendingCashRows
-  }, [requestFilter, acceptedCashRows, rejectedCashRows, rows, pendingCashRows])
+    
+    return filtered
+  }, [requestFilter, rows, searchTerm])
 
   const getStatusLabel = (status?: string) => {
     const normalized = (status || '').toUpperCase()
@@ -149,6 +164,30 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
       setSubjects(res?.data || [])
     } catch (err: any) {
       notifyError(err?.response?.data?.error?.message || 'Failed to fetch subjects')
+    }
+  }
+
+  const handleSyncPayments = async () => {
+    try {
+      setSyncing(true)
+      notifyInfo('Syncing payments from Razorpay...')
+      const result = await paymentsApi.syncRazorpayPayments({
+        limit: 100,
+        auto_confirm: false
+      })
+      if (result?.success) {
+        const summary = (result as any)?.summary
+        notifySuccess(
+          `Sync complete: ${summary?.matched || 0} matched, ${summary?.confirmed || 0} confirmed`
+        )
+      } else {
+        notifyError(result?.message || 'Sync failed')
+      }
+      await fetchPendingCashRequests()
+    } catch (err: any) {
+      notifyError(err?.response?.data?.error?.message || 'Failed to sync payments')
+    } finally {
+      setSyncing(false)
     }
   }
 
@@ -205,8 +244,9 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
 
       // Fetch student credentials and add to slider
       try {
-        const studentRes = await studentsApi.getById(payment.student_id)
-        const student = studentRes?.data || {}
+        const studentId = parseInt(payment.student_id, 10)
+        const studentRes = await studentsApi.getById(studentId)
+        const student = (studentRes?.data || {}) as Student
         setAcceptedCredentials(prev => [{
           student_id: payment.student_id || '',
           student_name: payment.student_name || '',
@@ -292,6 +332,28 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
           <p className="text-slate-500 text-[10px] sm:text-sm mt-1 font-medium font-inter uppercase tracking-widest">Offline cash registrations awaiting counter confirmation</p>
         </div>
         <div className="w-full sm:w-auto flex flex-col sm:flex-row gap-2">
+          {/* Search Bar */}
+          <div className="flex-1 sm:flex-none relative w-full sm:w-64">
+            <div className="relative">
+              <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Search by name, ID, subject..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full h-11 pl-10 pr-8 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs font-bold uppercase tracking-widest placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-2 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                  title="Clear search"
+                >
+                  <X size={18} />
+                </button>
+              )}
+            </div>
+          </div>
           <select
             value={requestFilter}
             onChange={(e) => setRequestFilter(e.target.value as RequestFilter)}
@@ -302,6 +364,15 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
             <option value="REJECTED">Rejected Requests</option>
             <option value="ALL">All Requests</option>
           </select>
+          <button
+            onClick={handleSyncPayments}
+            disabled={syncing || loading}
+            className="h-11 px-6 rounded-xl font-medium font-poppins flex items-center justify-center gap-2 transition-all active:scale-[0.98] text-xs uppercase tracking-widest bg-purple-600 text-white shadow-lg shadow-purple-500/20 disabled:opacity-60"
+            title="Sync pending payments from Razorpay"
+          >
+            <Loader2 size={16} className={syncing ? 'animate-spin' : ''} />
+            {syncing ? 'Syncing...' : 'Sync Payments'}
+          </button>
           <button
             onClick={fetchPendingCashRequests}
             disabled={loading}
