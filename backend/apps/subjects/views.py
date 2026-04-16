@@ -8,8 +8,8 @@ from rest_framework import status, viewsets
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 
-from .models import Subject
-from .serializers import SubjectSerializer, SubjectCreateSerializer
+from .models import Subject, SubjectBatch
+from .serializers import SubjectSerializer, SubjectCreateSerializer, SubjectDetailSerializer, SubjectBatchSerializer
 from utils.permissions import IsStaffAccountantOrAdmin
 from utils.id_cards import generate_bulk_id_cards_pdf
 from django.http import HttpResponse
@@ -177,3 +177,106 @@ class SubjectViewSet(viewsets.ModelViewSet):
             
         except Exception as e:
             return Response({'success': False, 'error': {'message': str(e)}}, status=500)
+
+
+class SubjectBatchViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing Subject Batches with capacity limits.
+    Nested under SubjectViewSet with routes like /subjects/{subject_id}/batches/
+    """
+    
+    queryset = SubjectBatch.objects.all()
+    serializer_class = SubjectBatchSerializer
+    permission_classes = [IsAuthenticated, IsStaffAccountantOrAdmin]
+    
+    def get_queryset(self):
+        """Filter batches by subject from URL parameter or query params."""
+        queryset = SubjectBatch.objects.all()
+        subject_id = self.kwargs.get('subject_pk') or self.request.query_params.get('subject_id')
+        
+        if subject_id:
+            queryset = queryset.filter(subject_id=subject_id)
+        
+        return queryset
+    
+    def perform_create(self, serializer):
+        """Automatically set the subject from URL parameter."""
+        subject_id = self.kwargs.get('subject_pk')
+        if subject_id:
+            serializer.save(subject_id=subject_id)
+        else:
+            serializer.save()
+    
+    def create(self, request, *args, **kwargs):
+        """Create a new batch for a subject."""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        batch = serializer.save()
+        
+        return Response({
+            'success': True,
+            'message': 'Batch created successfully.',
+            'data': SubjectBatchSerializer(batch).data
+        }, status=status.HTTP_201_CREATED)
+    
+    def update(self, request, *args, **kwargs):
+        """Update batch capacity or status."""
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        batch = serializer.save()
+        
+        return Response({
+            'success': True,
+            'message': 'Batch updated successfully.',
+            'data': SubjectBatchSerializer(batch).data
+        }, status=status.HTTP_200_OK)
+    
+    def destroy(self, request, *args, **kwargs):
+        """Delete a batch."""
+        instance = self.get_object()
+        instance.delete()
+        
+        return Response({
+            'success': True,
+            'message': 'Batch deleted successfully.'
+        }, status=status.HTTP_204_NO_CONTENT)
+    
+    @action(detail=False, methods=['get'], url_path='get-by-subject')
+    def get_by_subject(self, request):
+        """Get all batches for a specific subject."""
+        subject_id = request.query_params.get('subject_id') or self.kwargs.get('subject_pk')
+        
+        if not subject_id:
+            return Response({
+                'success': False,
+                'error': {'message': 'subject_id parameter is required'}
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            batches = SubjectBatch.objects.filter(subject_id=subject_id)
+            serializer = SubjectBatchSerializer(batches, many=True)
+            
+            return Response({
+                'success': True,
+                'data': serializer.data
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': {'message': str(e)}
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=True, methods=['patch'], url_path='toggle-status')
+    def toggle_status(self, request, pk=None):
+        """Toggle batch active/inactive status."""
+        batch = self.get_object()
+        batch.is_active = not batch.is_active
+        batch.save()
+        
+        return Response({
+            'success': True,
+            'message': f'Batch is now {"active" if batch.is_active else "inactive"}.',
+            'data': SubjectBatchSerializer(batch).data
+        }, status=status.HTTP_200_OK)

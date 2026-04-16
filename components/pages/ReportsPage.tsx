@@ -1,3 +1,5 @@
+'use client'
+
 import { Download, FileText, Loader2, Calendar, BarChart3, BookOpen, Users, Info, Upload, CheckCircle, AlertCircle } from 'lucide-react'
 import { useState, useRef } from 'react'
 import { analyticsApi, paymentsApi, studentsApi } from '@/lib/api'

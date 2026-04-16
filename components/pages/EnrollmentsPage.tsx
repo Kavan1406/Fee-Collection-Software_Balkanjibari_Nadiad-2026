@@ -32,11 +32,13 @@ interface EnrollmentsPageProps {
 }
 
 export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPageProps) {
+  const [allEnrollments, setAllEnrollments] = useState<Enrollment[]>([])
   const [enrollments, setEnrollments] = useState<Enrollment[]>([])
   const [filteredEnrollments, setFilteredEnrollments] = useState<Enrollment[]>([])
   const [subjects, setSubjects] = useState<any[]>([])
   const [selectedSubject, setSelectedSubject] = useState<number>(0)
   const [activityType, setActivityType] = useState<'SUMMER_CAMP' | 'YEAR_ROUND' | 'ALL'>('ALL')
+  const [classMode, setClassMode] = useState<'ONLINE' | 'OFFLINE' | 'ALL'>('ALL')
   const [searchTerm, setSearchTerm] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -49,6 +51,33 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
   const [totalPages, setTotalPages] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
 
+  // Fetch ALL enrollments for search (no pagination)
+  const fetchAllEnrollments = async () => {
+    try {
+      const enrollmentParams = {
+        ...(activityType !== 'ALL' && { activity_type: activityType }),
+        page_size: 10000  // Fetch all enrollments at once for search functionality
+      }
+
+      const enrollmentsRes = await enrollmentsApi.getAll(enrollmentParams)
+      const enrollmentsData = enrollmentsRes?.results || enrollmentsRes?.data || (Array.isArray(enrollmentsRes) ? enrollmentsRes : [])
+      
+      // Sort by enrollment_date descending (latest first)
+      const sortedEnrollments = [...enrollmentsData].sort((a, b) => {
+        const aDate = new Date(a.enrollment_date || 0).getTime()
+        const bDate = new Date(b.enrollment_date || 0).getTime()
+        return bDate - aDate
+      })
+
+      setAllEnrollments(sortedEnrollments)
+      return sortedEnrollments
+    } catch (err: any) {
+      console.error('Fetch All Enrollments Error:', err)
+      setError(err.message || 'Failed to load enrollments for search')
+      return []
+    }
+  }
+
   // Fetch all data
   const fetchData = async () => {
     try {
@@ -58,7 +87,7 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
       const enrollmentParams = {
         ...(activityType !== 'ALL' && { activity_type: activityType }),
         page: currentPage,
-        page_size: 25  // Optimized page size for better performance
+        page_size: 25  // Page size for pagination display
       }
       const subjectParams = activityType === 'ALL' ? {} : { activity_type: activityType }
 
@@ -98,11 +127,12 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
 
   useEffect(() => {
     fetchData()
+    fetchAllEnrollments() // Fetch all enrollments for search functionality
   }, [activityType, currentPage])
 
-  // Filter enrollments by subject and search term
+  // Filter enrollments by subject and search term (using ALL enrollments for search)
   useEffect(() => {
-    let filtered = enrollments;
+    let filtered = allEnrollments.length > 0 ? allEnrollments : enrollments;
     
     // Filter by subject
     if (selectedSubject !== 0) {
@@ -121,7 +151,7 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
     }
     
     setFilteredEnrollments(filtered)
-  }, [selectedSubject, enrollments, searchTerm])
+  }, [selectedSubject, allEnrollments, enrollments, searchTerm])
 
   // Sync with Payments page: Auto-refresh when a payment is marked as paid
   useEffect(() => {
@@ -218,10 +248,35 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
         </div>
       </div>
 
+      {/* Class Mode Filter */}
+      <div className="card-standard p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-1">
+          <h3 className="text-xs font-medium text-slate-400 uppercase tracking-widest font-inter">Class Mode:</h3>
+          <div className="flex flex-wrap gap-2">
+            {[
+              { id: 'ALL', label: 'Both Online & Offline' },
+              { id: 'ONLINE', label: 'Online Only' },
+              { id: 'OFFLINE', label: 'Offline Only' },
+            ].map((mode) => (
+              <button
+                key={mode.id}
+                onClick={() => setClassMode(mode.id as any)}
+                className={`h-11 px-6 rounded-xl font-medium font-poppins flex items-center justify-center gap-2 transition-all active:scale-[0.98] text-xs uppercase tracking-widest ${classMode === mode.id
+                  ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/20'
+                  : 'bg-slate-50 text-slate-500 border border-slate-100 hover:bg-slate-100'
+                  }`}
+              >
+                {mode.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-4 sm:p-6 rounded-xl border border-slate-200 shadow-sm">
         <div>
           <h1 className="text-xl sm:text-3xl font-bold text-slate-900 font-poppins uppercase tracking-tight">Active Enrollments</h1>
-          <p className="text-slate-500 text-[10px] sm:text-sm mt-1 font-medium font-inter uppercase tracking-widest">Total Enrolled: {enrollments.length} • Filtered: {filteredEnrollments.length}</p>
+          <p className="text-slate-500 text-[10px] sm:text-sm mt-1 font-medium font-inter uppercase tracking-widest">Total Enrolled: {allEnrollments.length || enrollments.length} • Filtered: {filteredEnrollments.length}</p>
         </div>
 
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full sm:w-auto">
@@ -247,7 +302,7 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
               )}
             </div>
             <p className="text-[9px] text-slate-400 mt-1 font-inter">
-              {searchTerm ? `${filteredEnrollments.length} of ${enrollments.length} results` : `Showing all ${enrollments.length} enrollments`}
+              {searchTerm ? `${filteredEnrollments.length} of ${allEnrollments.length || enrollments.length} results` : `Showing all ${allEnrollments.length || enrollments.length} enrollments`}
             </p>
           </div>
 

@@ -109,6 +109,7 @@ INSTALLED_APPS = [
     'apps.analytics',
     'apps.audit',
     'apps.notifications',
+    'apps.reports',
     
     # TOTP 2FA
     'django_otp',

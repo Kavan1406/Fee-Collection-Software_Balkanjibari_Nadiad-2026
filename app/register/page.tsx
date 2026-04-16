@@ -138,9 +138,39 @@ export default function RegisterPage() {
   ])
   const [successData, setSuccessData] = useState<SuccessData | null>(null)
   const [isDownloadingReceipt, setIsDownloadingReceipt] = useState(false)
+  const [batchData, setBatchData] = useState<Record<number, any[]>>({})  // Store batch data by subject ID
 
   const [todayDisplay, setTodayDisplay] = useState('')
   const [currentIST, setCurrentIST] = useState('')
+
+  // Fetch batches for a subject
+  const fetchBatchesForSubject = async (subjectId: number) => {
+    if (!subjectId || batchData[subjectId]) return
+    
+    try {
+      const response = await fetch(`${API_BASE}/api/v1/subjects/${subjectId}/batches/`)
+      if (response.ok) {
+        const data = await response.json()
+        const batches = data.data || []
+        setBatchData(prev => ({ ...prev, [subjectId]: batches }))
+      }
+    } catch (err) {
+      console.error('Failed to fetch batches:', err)
+    }
+  }
+
+  // Check if a batch is full
+  const isBatchFull = (subjectId: number, batchTime: string): boolean => {
+    const batches = batchData[subjectId] || []
+    const batch = batches.find(b => b.batch_time === batchTime)
+    return batch ? batch.is_full : false
+  }
+
+  // Get batch availability info
+  const getBatchInfo = (subjectId: number, batchTime: string) => {
+    const batches = batchData[subjectId] || []
+    return batches.find(b => b.batch_time === batchTime)
+  }
 
   useEffect(() => {
     setIsMounted(true)
@@ -358,6 +388,8 @@ export default function RegisterPage() {
           })
           return prev
         }
+        // Fetch batches for this subject
+        fetchBatchesForSubject(val)
         updated[idx] = { ...updated[idx], subject_id: val, subject_name: subInfo?.name || '', batch_time: subInfo?.default_batch_timing || '' }
       } else if (field === 'batch_time') {
         const valClean = (value || '').trim().toLowerCase()
@@ -368,6 +400,14 @@ export default function RegisterPage() {
         if (conflict) { 
           toast.error(`Time slot "${value}" is already occupied by another selected subject.`) 
           return prev 
+        }
+        // Check if selected batch is full
+        const currentSubjectId = updated[idx].subject_id
+        if (isBatchFull(currentSubjectId, value)) {
+          toast.error(`Sorry, batch "${value}" is full. Please select another batch.`, {
+            icon: <AlertCircle className="text-rose-500" />
+          })
+          return prev
         }
       }
       // No need for setError('') here anymore
@@ -993,13 +1033,41 @@ export default function RegisterPage() {
                               >
                                 {(() => {
                                   const options = getUniqueBatchTimings(subData)
-                                  return options.length > 0 ? options.map(t => (
-                                    <option key={t} value={t}>{t}</option>
-                                  )) : (
+                                  return options.length > 0 ? options.map(t => {
+                                    const batchInfo = getBatchInfo(sub.subject_id, t)
+                                    const isFull = batchInfo?.is_full
+                                    const enrolled = batchInfo?.enrolled_count || 0
+                                    const capacity = batchInfo?.capacity_limit || 0
+                                    const isDisabled = !batchInfo?.is_active || isFull
+                                    
+                                    return (
+                                      <option key={t} value={t} disabled={isDisabled}>
+                                        {t} {batchInfo ? `(${enrolled}/${capacity})` : ''} {isFull ? '🔴 FULL' : !batchInfo?.is_active ? '🔒 CLOSED' : ''}
+                                      </option>
+                                    )
+                                  }) : (
                                     <option value="">No timings available</option>
                                   )
                                 })()}
                               </select>
+                              {(() => {
+                                const batchInfo = getBatchInfo(sub.subject_id, sub.batch_time)
+                                if (batchInfo && batchInfo.is_full) {
+                                  return (
+                                    <p className="text-[10px] text-rose-500 font-bold mt-1.5 flex items-center gap-1">
+                                      <AlertCircle size={14} /> This batch is full. Please select another batch.
+                                    </p>
+                                  )
+                                }
+                                if (batchInfo && !batchInfo.is_active) {
+                                  return (
+                                    <p className="text-[10px] text-yellow-600 font-bold mt-1.5 flex items-center gap-1">
+                                      <Lock size={14} /> This batch is currently closed for enrollments.
+                                    </p>
+                                  )
+                                }
+                                return null
+                              })()}
                             </div>
                           ) : (
                             <div className="flex items-center justify-center h-full pt-4">

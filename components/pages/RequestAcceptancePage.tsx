@@ -444,6 +444,7 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="px-6 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-widest">Student Name</th>
+                  <th className="px-6 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-widest">Student ID</th>
                   <th className="px-6 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-widest">Subject</th>
                   <th className="px-6 py-3 text-right text-[11px] font-bold text-slate-500 uppercase tracking-widest">Total Fees</th>
                   <th className="px-6 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-widest">Payment Status</th>
@@ -473,6 +474,9 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
                           )}
                         </div>
                       </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <p className="text-sm font-bold text-slate-900 font-mono">{payment.student_id}</p>
                     </td>
                     <td className="px-6 py-4 text-sm text-slate-700">{payment.subject}</td>
                     <td className="px-6 py-4 text-right">

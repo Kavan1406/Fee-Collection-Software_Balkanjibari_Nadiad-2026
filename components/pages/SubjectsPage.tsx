@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, Edit2, Trash2, AlertCircle, BookOpen, Loader2, Users } from 'lucide-react'
+import { Plus, Edit2, Trash2, AlertCircle, BookOpen, Loader2, Users, Grid3X3, Lock, Unlock, X } from 'lucide-react'
 import { subjectsApi } from '@/lib/api'
+import { toast } from 'sonner'
 
 interface Subject {
   id: number
@@ -20,6 +21,19 @@ interface Subject {
   is_active: boolean
 }
 
+interface SubjectBatch {
+  id: number
+  subject: number
+  batch_time: string
+  capacity_limit: number
+  is_active: boolean
+  enrolled_count: number
+  available_seats: number
+  is_full: boolean
+  created_at: string
+  updated_at: string
+}
+
 interface SubjectsPageProps {
   userRole: 'admin' | 'staff' | 'student' | 'accountant'
   canEdit?: boolean
@@ -31,6 +45,14 @@ export default function SubjectsPage({ userRole, canEdit }: SubjectsPageProps) {
   const [error, setError] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null)
+  const [showBatchManager, setShowBatchManager] = useState(false)
+  const [selectedSubjectForBatch, setSelectedSubjectForBatch] = useState<Subject | null>(null)
+  const [batches, setBatches] = useState<SubjectBatch[]>([])
+  const [batchLoading, setBatchLoading] = useState(false)
+  const [newBatch, setNewBatch] = useState({ batch_time: '', capacity_limit: 50 })
+  const [editingBatch, setEditingBatch] = useState<SubjectBatch | null>(null)
+  const [editingBatchCapacity, setEditingBatchCapacity] = useState<number | null>(null)
+  const [showEditBatchModal, setShowEditBatchModal] = useState(false)
 
   const [formData, setFormData] = useState({
     name: '',
@@ -62,9 +84,30 @@ export default function SubjectsPage({ userRole, canEdit }: SubjectsPageProps) {
     }
   }
 
+  // Fetch batches for a subject
+  const fetchBatches = async (subjectId: number) => {
+    try {
+      setBatchLoading(true)
+      const response = await subjectsApi.getBatches(subjectId)
+      setBatches(response.data || [])
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to load batches')
+      setBatches([])
+    } finally {
+      setBatchLoading(false)
+    }
+  }
+
   useEffect(() => {
     fetchSubjects()
   }, [])
+
+  // Load batches when batch manager is opened
+  useEffect(() => {
+    if (showBatchManager && selectedSubjectForBatch) {
+      fetchBatches(selectedSubjectForBatch.id)
+    }
+  }, [showBatchManager, selectedSubjectForBatch])
 
   const resetForm = () => {
     setFormData({
@@ -88,8 +131,10 @@ export default function SubjectsPage({ userRole, canEdit }: SubjectsPageProps) {
     try {
       if (editingSubject) {
         await subjectsApi.update(editingSubject.id, formData)
+        toast.success('Subject updated successfully')
       } else {
         await subjectsApi.create(formData)
+        toast.success('Subject created successfully')
       }
       await fetchSubjects()
       setShowForm(false)
@@ -124,9 +169,67 @@ export default function SubjectsPage({ userRole, canEdit }: SubjectsPageProps) {
 
     try {
       await subjectsApi.delete(id)
+      toast.success('Subject deleted successfully')
       await fetchSubjects()
     } catch (err: any) {
       setError(err.message || 'Failed to delete subject')
+    }
+  }
+
+  // Batch management handlers
+  const handleOpenBatchManager = (subject: Subject) => {
+    setSelectedSubjectForBatch(subject)
+    setShowBatchManager(true)
+  }
+
+  const handleCreateBatch = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!selectedSubjectForBatch || !newBatch.batch_time) return
+
+    try {
+      await subjectsApi.createBatch({
+        subject: selectedSubjectForBatch.id,
+        batch_time: newBatch.batch_time,
+        capacity_limit: newBatch.capacity_limit,
+        is_active: true
+      })
+      toast.success('Batch created successfully')
+      setNewBatch({ batch_time: '', capacity_limit: 50 })
+      await fetchBatches(selectedSubjectForBatch.id)
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to create batch')
+    }
+  }
+
+  const handleToggleBatchStatus = async (batch: SubjectBatch) => {
+    try {
+      await subjectsApi.toggleBatchStatus(selectedSubjectForBatch!.id, batch.id)
+      toast.success(`Batch ${batch.is_active ? 'disabled' : 'enabled'} successfully`)
+      await fetchBatches(selectedSubjectForBatch!.id)
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update batch')
+    }
+  }
+
+  const handleUpdateBatchCapacity = async (batch: SubjectBatch, newCapacity: number) => {
+    try {
+      await subjectsApi.updateBatch(selectedSubjectForBatch!.id, batch.id, { capacity_limit: newCapacity })
+      toast.success('Batch capacity updated successfully')
+      await fetchBatches(selectedSubjectForBatch!.id)
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update batch capacity')
+    }
+  }
+
+  const handleDeleteBatch = async (batch: SubjectBatch) => {
+    if (!confirm('Are you sure you want to delete this batch?')) return
+
+    try {
+      await subjectsApi.deleteBatch(selectedSubjectForBatch!.id, batch.id)
+      toast.success('Batch deleted successfully')
+      await fetchBatches(selectedSubjectForBatch!.id)
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete batch')
     }
   }
 
@@ -329,6 +432,13 @@ export default function SubjectsPage({ userRole, canEdit }: SubjectsPageProps) {
                   {canAdd && (
                     <div className="flex gap-1.5 shrink-0">
                       <button
+                        onClick={() => handleOpenBatchManager(subject)}
+                        className="w-8 h-8 flex items-center justify-center bg-white/40 dark:bg-black/10 text-gray-400 hover:text-cyan-500 rounded-lg transition-all border border-white/20"
+                        title="Manage Batches"
+                      >
+                        <Grid3X3 size={14} />
+                      </button>
+                      <button
                         onClick={() => handleEdit(subject)}
                         className="w-8 h-8 flex items-center justify-center bg-white/40 dark:bg-black/10 text-gray-400 hover:text-indigo-600 rounded-lg transition-all border border-white/20"
                         title="Edit"
@@ -393,6 +503,245 @@ export default function SubjectsPage({ userRole, canEdit }: SubjectsPageProps) {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Batch Manager Modal */}
+      {showBatchManager && selectedSubjectForBatch && (
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-slate-200 dark:border-slate-700">
+            {/* Header */}
+            <div className="sticky top-0 bg-gradient-to-r from-cyan-50 to-blue-50 dark:from-cyan-900/20 dark:to-blue-900/20 p-6 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
+              <div>
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white font-poppins uppercase tracking-tight">Manage Batches</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-inter uppercase tracking-widest">{selectedSubjectForBatch.name}</p>
+              </div>
+              <button
+                onClick={() => setShowBatchManager(false)}
+                className="w-8 h-8 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+              >
+                <X size={20} className="text-slate-600 dark:text-slate-400" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 space-y-6">
+              {/* Create New Batch Form */}
+              <div className="bg-gradient-to-br from-cyan-50 to-blue-50 dark:from-cyan-900/10 dark:to-blue-900/10 p-5 rounded-xl border border-cyan-200 dark:border-cyan-800">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-4 font-poppins uppercase tracking-widest">Create New Batch</h3>
+                <form onSubmit={handleCreateBatch} className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-2 tracking-widest">Batch Name/Time *</label>
+                      <input
+                        type="text"
+                        placeholder="e.g., Batch A (7-8 AM)"
+                        value={newBatch.batch_time}
+                        onChange={(e) => setNewBatch({ ...newBatch, batch_time: e.target.value })}
+                        className="w-full h-10 px-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-medium text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-2 tracking-widest">Capacity Limit *</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={newBatch.capacity_limit}
+                        onChange={(e) => setNewBatch({ ...newBatch, capacity_limit: parseInt(e.target.value) })}
+                        className="w-full h-10 px-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-medium text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                        required
+                      />
+                    </div>
+                  </div>
+                  <button
+                    type="submit"
+                    className="w-full h-10 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg font-medium text-sm uppercase tracking-widest transition-colors active:scale-95"
+                  >
+                    <Plus size={16} className="inline mr-2" />
+                    Create Batch
+                  </button>
+                </form>
+              </div>
+
+              {/* Batches List */}
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-4 font-poppins uppercase tracking-widest">Existing Batches</h3>
+                {batchLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="animate-spin text-cyan-600" size={32} />
+                  </div>
+                ) : batches.length === 0 ? (
+                  <div className="text-center py-8 bg-slate-50 dark:bg-slate-800 rounded-lg border border-dashed border-slate-300 dark:border-slate-700">
+                    <Grid3X3 className="mx-auto text-slate-300 dark:text-slate-600 mb-3" size={32} />
+                    <p className="text-sm font-medium text-slate-500 dark:text-slate-400">No batches created yet</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {batches.map((batch) => (
+                      <div
+                        key={batch.id}
+                        className={`p-4 rounded-xl border-2 transition-all ${
+                          batch.is_active
+                            ? 'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800'
+                            : 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800 opacity-75'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <h4 className="font-bold text-slate-900 dark:text-white uppercase text-sm font-poppins tracking-tight">
+                                {batch.batch_time}
+                              </h4>
+                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-widest ${
+                                batch.is_active
+                                  ? 'bg-green-200 dark:bg-green-800 text-green-700 dark:text-green-200'
+                                  : 'bg-red-200 dark:bg-red-800 text-red-700 dark:text-red-200'
+                              }`}>
+                                {batch.is_active ? 'Open' : 'Closed'}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-600 dark:text-slate-300 font-medium">
+                              Enrolled: <span className="font-bold">{batch.enrolled_count}</span> / <span className="font-bold">{batch.capacity_limit}</span> 
+                              {batch.is_full && <span className="text-red-600 dark:text-red-400 ml-2">🔴 FULL</span>}
+                            </p>
+                          </div>
+                          <div className="flex gap-2 shrink-0">
+                            <button
+                              onClick={() => handleToggleBatchStatus(batch)}
+                              className={`h-9 px-3 rounded-lg font-medium text-xs uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2 ${
+                                batch.is_active
+                                  ? 'bg-red-500 hover:bg-red-600 text-white'
+                                  : 'bg-green-500 hover:bg-green-600 text-white'
+                              }`}
+                              title={batch.is_active ? 'Stop enrollments' : 'Resume enrollments'}
+                            >
+                              {batch.is_active ? (
+                                <>
+                                  <Lock size={14} />
+                                  Stop
+                                </>
+                              ) : (
+                                <>
+                                  <Unlock size={14} />
+                                  Open
+                                </>
+                              )}
+                            </button>
+                            {batch.available_seats > 0 && (
+                              <button
+                                onClick={() => {
+                                  setEditingBatch(batch)
+                                  setEditingBatchCapacity(batch.capacity_limit)
+                                  setShowEditBatchModal(true)
+                                }}
+                                className="h-9 px-3 rounded-lg font-medium text-xs uppercase tracking-widest transition-all active:scale-95 bg-blue-500 hover:bg-blue-600 text-white"
+                                title="Edit capacity limit"
+                              >
+                                Edit
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleDeleteBatch(batch)}
+                              className="h-9 px-3 rounded-lg font-medium text-xs uppercase tracking-widest transition-all active:scale-95 bg-slate-300 hover:bg-slate-400 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-900 dark:text-white"
+                              title="Delete batch"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Progress Bar */}
+                        <div className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full transition-all duration-300 ${
+                              batch.is_full
+                                ? 'bg-red-500'
+                                : batch.available_seats < batch.capacity_limit * 0.2
+                                ? 'bg-yellow-500'
+                                : 'bg-green-500'
+                            }`}
+                            style={{
+                              width: `${Math.min(100, (batch.enrolled_count / batch.capacity_limit) * 100)}%`
+                            }}
+                          ></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="sticky bottom-0 bg-slate-50 dark:bg-slate-800 p-4 border-t border-slate-200 dark:border-slate-700 flex justify-end">
+              <button
+                onClick={() => setShowBatchManager(false)}
+                className="h-10 px-6 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-900 dark:text-white rounded-lg font-medium text-sm uppercase tracking-widest transition-colors"
+              >
+                Close
+              </button>
+            </div>
+
+            {/* Edit Batch Capacity Modal */}
+            {showEditBatchModal && editingBatch && (
+              <div className="fixed inset-0 bg-black/50 dark:bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+                <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 dark:border-slate-700 p-6">
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4 font-poppins uppercase tracking-tight">
+                    Edit Batch Capacity Limit
+                  </h3>
+                  <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">
+                    <span className="font-semibold">Batch:</span> {editingBatch.batch_time}
+                  </p>
+                  <p className="text-sm text-slate-600 dark:text-slate-300 mb-6">
+                    <span className="font-semibold">Currently Enrolled:</span> {editingBatch.enrolled_count} students
+                  </p>
+                  
+                  <div className="mb-6">
+                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2 uppercase tracking-widest">
+                      New Capacity Limit
+                    </label>
+                    <input
+                      type="number"
+                      min={editingBatch.enrolled_count}
+                      value={editingBatchCapacity || ''}
+                      onChange={(e) => setEditingBatchCapacity(parseInt(e.target.value) || editingBatch.capacity_limit)}
+                      className="w-full h-11 px-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                      Minimum limit: {editingBatch.enrolled_count} (current enrollments)
+                    </p>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => {
+                        setShowEditBatchModal(false)
+                        setEditingBatch(null)
+                        setEditingBatchCapacity(null)
+                      }}
+                      className="flex-1 h-10 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-900 dark:text-white rounded-lg font-medium text-sm uppercase tracking-widest transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (editingBatchCapacity && editingBatchCapacity !== editingBatch.capacity_limit) {
+                          handleUpdateBatchCapacity(editingBatch, editingBatchCapacity)
+                          setShowEditBatchModal(false)
+                          setEditingBatch(null)
+                          setEditingBatchCapacity(null)
+                        }
+                      }}
+                      className="flex-1 h-10 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-sm uppercase tracking-widest transition-colors active:scale-95"
+                    >
+                      Save Changes
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

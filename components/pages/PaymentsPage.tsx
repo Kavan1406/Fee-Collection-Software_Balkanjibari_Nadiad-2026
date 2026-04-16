@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, Search, AlertCircle, Calendar, Loader2, CreditCard, RefreshCw, CheckCircle, Download, FileText } from 'lucide-react'
+import { Plus, Search, AlertCircle, Calendar, Loader2, CreditCard, RefreshCw, CheckCircle, Download, FileText, Trash2 } from 'lucide-react'
 import { paymentsApi, enrollmentsApi, Payment, CreatePaymentData } from '@/lib/api'
 import { API_BASE_URL } from '@/lib/api/client'
 
@@ -23,8 +23,29 @@ export default function PaymentsPage({ userRole, canEdit }: PaymentsPageProps) {
   const [reconResult, setReconResult] = useState<any>(null)
   const [reconStartDate, setReconStartDate] = useState('')
   const [reconEndDate, setReconEndDate] = useState('')
+  const [deletePaymentId, setDeletePaymentId] = useState<number | null>(null)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   const canAdd = userRole === 'admin' || (userRole === 'staff' && canEdit) || userRole === 'accountant'
+
+  // Delete handler
+  const handleDeletePayment = async () => {
+    if (!deletePaymentId) return
+    
+    try {
+      setIsDeleting(true)
+      await paymentsApi.delete(deletePaymentId)
+      setPayments(payments.filter(p => p.id !== deletePaymentId))
+      setShowDeleteDialog(false)
+      setDeletePaymentId(null)
+    } catch (err: any) {
+      console.error('Delete failed:', err)
+      alert(err.message || 'Failed to delete payment')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1)
@@ -953,6 +974,18 @@ export default function PaymentsPage({ userRole, canEdit }: PaymentsPageProps) {
                                   <FileText size={18} />
                                 </button>
                             )}
+                            {canAdd && (
+                              <button
+                                onClick={() => {
+                                  setDeletePaymentId(payment.id)
+                                  setShowDeleteDialog(true)
+                                }}
+                                title="Delete Payment"
+                                className="p-2 hover:bg-red-50 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 rounded-xl transition-all h-9 w-9 flex items-center justify-center shadow-sm"
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -1019,6 +1052,18 @@ export default function PaymentsPage({ userRole, canEdit }: PaymentsPageProps) {
                         className="flex-1 h-12 rounded-xl text-[11px] bg-slate-900 dark:bg-indigo-600 text-white shadow-lg shadow-slate-900/10 dark:shadow-indigo-500/10 font-bold uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95 transition-all"
                       >
                         <FileText size={16} /> Receipt
+                      </button>
+                    )}
+                    {canAdd && (
+                      <button
+                        onClick={() => {
+                          setDeletePaymentId(payment.id)
+                          setShowDeleteDialog(true)
+                        }}
+                        title="Delete Payment"
+                        className="h-12 rounded-xl text-[11px] bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-500/20 uppercase font-bold tracking-widest px-4 flex items-center justify-center gap-2 active:scale-95 transition-all"
+                      >
+                        <Trash2 size={16} /> Delete
                       </button>
                     )}
                   </div>
@@ -1094,6 +1139,48 @@ export default function PaymentsPage({ userRole, canEdit }: PaymentsPageProps) {
             )}
           </>
         )}
+
+      {/* Delete Confirmation Dialog */}
+      {showDeleteDialog && deletePaymentId && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 max-w-md w-full shadow-2xl border border-slate-200 dark:border-slate-800">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center">
+                <AlertCircle className="text-red-600 dark:text-red-400" size={24} />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Delete Payment?</h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400">This action cannot be undone.</p>
+              </div>
+            </div>
+            
+            <p className="text-sm text-slate-600 dark:text-slate-300 mb-6">
+              Are you sure you want to delete this payment record? The payment will be permanently removed from the system.
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowDeleteDialog(false)
+                  setDeletePaymentId(null)
+                }}
+                disabled={isDeleting}
+                className="flex-1 h-10 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white font-medium text-sm uppercase tracking-widest hover:bg-slate-300 dark:hover:bg-slate-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeletePayment}
+                disabled={isDeleting}
+                className="flex-1 h-10 rounded-lg bg-red-600 text-white font-medium text-sm uppercase tracking-widest hover:bg-red-700 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {isDeleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                {isDeleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
     </div>
   )

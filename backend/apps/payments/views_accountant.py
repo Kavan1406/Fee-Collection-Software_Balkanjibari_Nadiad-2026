@@ -81,7 +81,7 @@ class FeeLedgerViewSet(viewsets.ReadOnlyModelViewSet):
             
         return queryset.select_related('student', 'reference_payment', 'created_by')
 
-    @action(detail=False, methods=['get'], url_path='student/(?P<student_id>\d+)')
+    @action(detail=False, methods=['get'], url_path=r'student/(?P<student_id>\d+)')
     def student_ledger(self, request, student_id=None):
         """Get ledger for a specific student with running balance."""
         entries = FeeLedgerEntry.objects.filter(student_id=student_id).order_by('created_at')

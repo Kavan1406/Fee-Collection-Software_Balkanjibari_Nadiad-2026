@@ -28,6 +28,19 @@ export interface Subject {
     created_at: string;
 }
 
+export interface SubjectBatch {
+    id: number;
+    subject: number;
+    batch_time: string;
+    capacity_limit: number;
+    is_active: boolean;
+    enrolled_count: number;
+    available_seats: number;
+    is_full: boolean;
+    created_at: string;
+    updated_at: string;
+}
+
 export interface Enrollment {
     id: number;
     enrollment_id: string;
@@ -115,6 +128,71 @@ export const subjectsApi = {
     delete: async (id: number): Promise<ApiResponse<any>> => {
         const response = await apiClient.delete<ApiResponse<any>>(
             `/api/v1/subjects/${id}/`
+        );
+        return response.data;
+    },
+
+    /**
+     * Batch Management Methods
+     */
+
+    /**
+     * Get all batches for a subject
+     */
+    getBatches: async (subjectId: number): Promise<ApiResponse<SubjectBatch[]>> => {
+        const response = await apiClient.get<ApiResponse<SubjectBatch[]>>(
+            `/api/v1/subjects/${subjectId}/batches/`
+        );
+        return response.data;
+    },
+
+    /**
+     * Create a new batch for a subject
+     */
+    createBatch: async (data: {
+        subject: number;
+        batch_time: string;
+        capacity_limit: number;
+        is_active?: boolean;
+    }): Promise<ApiResponse<SubjectBatch>> => {
+        const response = await apiClient.post<ApiResponse<SubjectBatch>>(
+            `/api/v1/subjects/${data.subject}/batches/`,
+            data
+        );
+        return response.data;
+    },
+
+    /**
+     * Update batch capacity or status
+     */
+    updateBatch: async (subjectId: number, batchId: number, data: {
+        batch_time?: string;
+        capacity_limit?: number;
+        is_active?: boolean;
+    }): Promise<ApiResponse<SubjectBatch>> => {
+        const response = await apiClient.patch<ApiResponse<SubjectBatch>>(
+            `/api/v1/subjects/${subjectId}/batches/${batchId}/`,
+            data
+        );
+        return response.data;
+    },
+
+    /**
+     * Toggle batch active/inactive status
+     */
+    toggleBatchStatus: async (subjectId: number, batchId: number): Promise<ApiResponse<SubjectBatch>> => {
+        const response = await apiClient.patch<ApiResponse<SubjectBatch>>(
+            `/api/v1/subjects/${subjectId}/batches/${batchId}/toggle-status/`
+        );
+        return response.data;
+    },
+
+    /**
+     * Delete a batch
+     */
+    deleteBatch: async (subjectId: number, batchId: number): Promise<ApiResponse<any>> => {
+        const response = await apiClient.delete<ApiResponse<any>>(
+            `/api/v1/subjects/${subjectId}/batches/${batchId}/`
         );
         return response.data;
     },
