@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, Search, AlertCircle, Calendar, Loader2, CreditCard, RefreshCw } from 'lucide-react'
+import { Plus, Search, AlertCircle, Calendar, Loader2, CreditCard, RefreshCw, CheckCircle, Download, FileText } from 'lucide-react'
 import { paymentsApi, enrollmentsApi, Payment, CreatePaymentData } from '@/lib/api'
 import { API_BASE_URL } from '@/lib/api/client'
 
@@ -967,13 +967,22 @@ export default function PaymentsPage({ userRole, canEdit }: PaymentsPageProps) {
                         <td className="px-6 py-4 text-right">
                           <div className="flex gap-2 justify-end items-center">
                             {payment.status === 'PENDING_CONFIRMATION' && (canAdd) && (
-                              <button onClick={() => handleConfirm(payment.id)} className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium font-poppins rounded-xl transition-all active:scale-95 shadow-lg shadow-emerald-500/20">
-                                Confirm
+                              <button 
+                                onClick={() => handleConfirm(payment.id)} 
+                                title="Mark as Paid - Opens Receipt & ID Card"
+                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium font-poppins rounded-xl transition-all active:scale-95 shadow-lg shadow-emerald-500/20 flex items-center gap-1.5"
+                              >
+                                <CheckCircle size={14} />
+                                Pending → Paid
                               </button>
                             )}
                             {payment.status === 'SUCCESS' && (
-                                <button onClick={() => paymentsApi.downloadReceipt(payment.id)} className="p-2 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl transition-all h-9 w-9 flex items-center justify-center shadow-sm" title="Download Receipt">
-                                  <Calendar size={18} />
+                                <button 
+                                  onClick={() => paymentsApi.downloadReceipt(payment.id)} 
+                                  title="Download Receipt"
+                                  className="p-2 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl transition-all h-9 w-9 flex items-center justify-center shadow-sm"
+                                >
+                                  <FileText size={18} />
                                 </button>
                             )}
                           </div>
@@ -1028,17 +1037,20 @@ export default function PaymentsPage({ userRole, canEdit }: PaymentsPageProps) {
                     {payment.status === 'PENDING_CONFIRMATION' && (canAdd) && (
                       <button
                         onClick={() => handleConfirm(payment.id)}
-                        className="flex-1 h-12 rounded-xl text-[11px] bg-emerald-600 text-white shadow-lg shadow-emerald-500/20 uppercase font-bold tracking-widest active:scale-95 transition-all"
+                        title="Mark as Paid - Opens Receipt & ID Card"
+                        className="flex-1 h-12 rounded-xl text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-500/20 uppercase font-bold tracking-widest flex items-center justify-center gap-2 active:scale-95 transition-all"
                       >
-                        Confirm Receipt
+                        <CheckCircle size={16} />
+                        Pending → Paid
                       </button>
                     )}
                      {payment.status === 'SUCCESS' && (
                       <button
                         onClick={() => paymentsApi.downloadReceipt(payment.id)}
+                        title="Download Receipt"
                         className="flex-1 h-12 rounded-xl text-[11px] bg-slate-900 dark:bg-indigo-600 text-white shadow-lg shadow-slate-900/10 dark:shadow-indigo-500/10 font-bold uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95 transition-all"
                       >
-                        <Calendar size={16} /> Receipt
+                        <FileText size={16} /> Receipt
                       </button>
                     )}
                   </div>

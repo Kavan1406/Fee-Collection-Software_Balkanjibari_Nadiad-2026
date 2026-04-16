@@ -286,6 +286,18 @@ export const paymentsApi = {
     },
 
     /**
+     * Mark payment as paid (after Razorpay verification)
+     * Transitions payment from PENDING_CONFIRMATION to SUCCESS
+     * and automatically opens receipt and ID card
+     */
+    markPaymentAsPaid: async (id: number): Promise<ApiResponse<Payment>> => {
+        const response = await apiClient.post<ApiResponse<Payment>>(
+            `/api/v1/payments/${id}/confirm/`
+        );
+        return response.data;
+    },
+
+    /**
      * Alias request list endpoint for offline cash workflow.
      */
     getOfflineRequests: async (status: 'PENDING' | 'COMPLETED' | 'REJECTED' | 'ALL' = 'PENDING'): Promise<ApiResponse<OfflineRequestItem[]>> => {
