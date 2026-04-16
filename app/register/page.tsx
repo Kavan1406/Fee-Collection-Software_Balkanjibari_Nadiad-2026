@@ -133,7 +133,6 @@ export default function RegisterPage() {
   const [isMounted, setIsMounted] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isPaymentLoading, setIsPaymentLoading] = useState(false)
-  const [isCashProceedLoading, setIsCashProceedLoading] = useState(false)
   const [selectedSubjects, setSelectedSubjects] = useState<SelectedSubject[]>([
     { subject_id: 0, subject_name: '', batch_time: '', include_library_fee: true }
   ])
@@ -503,80 +502,6 @@ export default function RegisterPage() {
     } catch (e: any) {
       toast.error('Network error. Please check your connection and try again.')
       setIsPaymentLoading(false)
-    }
-  }
-
-  // Handle cash workflow - proceed to process cash payment
-  const handleCashProceed = async () => {
-    const err = validate()
-    if (err) { toast.error(err); return }
-    setIsCashProceedLoading(true)
-
-    try {
-      // Register student with CASH payment mode
-      const fd = new FormData()
-      fd.append('name', form.name.trim())
-      fd.append('date_of_birth', (() => {
-        const [d, m, y] = form.date_of_birth.split('-')
-        return `${y}-${m}-${d}`
-      })())
-      fd.append('age', form.age)
-      fd.append('gender', form.gender)
-      fd.append('phone', form.phone.trim())
-      fd.append('email', normalizedEmail)
-      fd.append('address', form.address.trim())
-      fd.append('city', form.city.trim())
-      fd.append('pincode', form.pincode)
-      fd.append('enrollment_date', (() => {
-        const t = new Date()
-        return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`
-      })())
-      fd.append('payment_mode', 'CASH')
-      const validSubs = selectedSubjects.filter(s => s.subject_id > 0)
-      fd.append('subjects_data', JSON.stringify(validSubs))
-
-      const regRes = await fetch(`${API_BASE}/api/v1/students/register/`, {
-        method: 'POST',
-        body: fd,
-      })
-      const regData = await regRes.json()
-
-      if (!regRes.ok || !regData.success) {
-        toast.error(regData.error || 'Registration failed. Please try again.')
-        setIsCashProceedLoading(false)
-        return
-      }
-
-      // Successfully registered with cash payment pending
-      toast.success('Registration submitted! Form cleared for next student.')
-      
-      // Clear the form and draft immediately
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('registration_form_draft')
-      }
-      
-      // Reset form state
-      setForm({
-        name: '',
-        date_of_birth: '',
-        age: '',
-        gender: '',
-        phone: '',
-        email: '',
-        address: '',
-        city: '',
-        pincode: '',
-      })
-      
-      setSelectedSubjects([
-        { subject_id: 0, subject_name: '', batch_time: '', include_library_fee: true }
-      ])
-      
-      setIsCashProceedLoading(false)
-      
-    } catch (e: any) {
-      toast.error('Network error. Please check your connection and try again.')
-      setIsCashProceedLoading(false)
     }
   }
 
@@ -1151,45 +1076,25 @@ export default function RegisterPage() {
             </div>
             )}
 
-            {/* ---- Payment Method Selection ---- */}
+            {/* ---- Payment Method: Online Only ---- */}
             <div className="mt-8 space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {/* Online Payment Button */}
-                <button
-                  type="button"
-                  onClick={handlePayNow}
-                  disabled={isPaymentLoading || isCashProceedLoading || grandTotal <= 0 || anyIneligible}
-                  className="py-3.5 rounded-xl font-poppins font-black text-white text-[16px] tracking-widest transition-all disabled:opacity-50 flex items-center justify-center gap-3 shadow-lg hover:shadow-xl active:scale-[0.99] border-b-4 border-blue-950/20"
-                  style={{ background: grandTotal > 0 && !anyIneligible ? 'linear-gradient(135deg, #1E40AF, #3B82F6)' : '#9CA3AF' }}
-                >
-                  {anyIneligible 
-                    ? <><AlertCircle size={20} /> AGE INELIGIBLE</>
-                    : isPaymentLoading
-                      ? <><Loader2 size={20} className="animate-spin" /> VERIFYING...</>
-                      : <><CreditCard size={20} /> PAY ONLINE</>
-                  }
-                </button>
-
-                {/* Cash Payment Button */}
-                <button
-                  type="button"
-                  onClick={handleCashProceed}
-                  disabled={isCashProceedLoading || isPaymentLoading || grandTotal <= 0 || anyIneligible}
-                  className="py-3.5 rounded-xl font-poppins font-black text-white text-[16px] tracking-widest transition-all disabled:opacity-50 flex items-center justify-center gap-3 shadow-lg hover:shadow-xl active:scale-[0.99] border-b-4 border-green-950/20"
-                  style={{ background: grandTotal > 0 && !anyIneligible ? 'linear-gradient(135deg, #059669, #10B981)' : '#9CA3AF' }}
-                >
-                  {anyIneligible 
-                    ? <><AlertCircle size={20} /> AGE INELIGIBLE</>
-                    : isCashProceedLoading
-                      ? <><Loader2 size={20} className="animate-spin" /> PROCESSING...</>
-                      : <><span>💵</span> PROCEED (CASH)</>  
-                  }
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={handlePayNow}
+                disabled={isPaymentLoading || grandTotal <= 0 || anyIneligible}
+                className="w-full py-3.5 rounded-xl font-poppins font-black text-white text-[16px] tracking-widest transition-all disabled:opacity-50 flex items-center justify-center gap-3 shadow-lg hover:shadow-xl active:scale-[0.99] border-b-4 border-blue-950/20"
+                style={{ background: grandTotal > 0 && !anyIneligible ? 'linear-gradient(135deg, #1E40AF, #3B82F6)' : '#9CA3AF' }}
+              >
+                {anyIneligible 
+                  ? <><AlertCircle size={20} /> AGE INELIGIBLE</>
+                  : isPaymentLoading
+                    ? <><Loader2 size={20} className="animate-spin" /> VERIFYING...</>
+                    : <><CreditCard size={20} /> PAY ONLINE</>
+                }
+              </button>
 
               <p className="text-center text-gray-400 text-xs">
-                <span className="block">Online payments are secured by Razorpay. Account created instantly after payment.</span>
-                <span className="block text-green-600 font-medium mt-1">Cash payments: Complete registration, pay at office before class starts.</span>
+                <span className="block">Secure payment via Razorpay. Account created instantly after payment.</span>
               </p>
             </div>
           </div>
