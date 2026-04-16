@@ -187,7 +187,12 @@ class SubjectBatchViewSet(viewsets.ModelViewSet):
     
     queryset = SubjectBatch.objects.all()
     serializer_class = SubjectBatchSerializer
-    permission_classes = [IsAuthenticated, IsStaffAccountantOrAdmin]
+
+    def get_permissions(self):
+        """Allow public read access for registration flow; restrict writes to staff/admin."""
+        if self.action in ['list', 'retrieve', 'get_by_subject']:
+            return [AllowAny()]
+        return [IsAuthenticated(), IsStaffAccountantOrAdmin()]
     
     def get_queryset(self):
         """Filter batches by subject from URL parameter or query params."""
