@@ -280,7 +280,7 @@ class SubjectBatchViewSet(viewsets.ModelViewSet):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     @action(detail=True, methods=['patch'], url_path='toggle-status')
-    def toggle_status(self, request, pk=None):
+    def toggle_status(self, request, pk=None, **kwargs):
         """Toggle batch active/inactive status."""
         batch = self.get_object()
         batch.is_active = not batch.is_active
