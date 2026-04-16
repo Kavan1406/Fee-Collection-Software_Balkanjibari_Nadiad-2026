@@ -71,11 +71,11 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
 
       const enrollmentsData = enrollmentsRes?.results || enrollmentsRes?.data || (Array.isArray(enrollmentsRes) ? enrollmentsRes : []);
       
-      // Sort by enrollment ID descending (latest first)
+      // Sort by enrollment_date descending (latest first)
       const sortedEnrollments = [...enrollmentsData].sort((a, b) => {
-        const aId = parseInt(a.id?.toString() || '0')
-        const bId = parseInt(b.id?.toString() || '0')
-        return bId - aId
+        const aDate = new Date(a.enrollment_date || 0).getTime()
+        const bDate = new Date(b.enrollment_date || 0).getTime()
+        return bDate - aDate
       })
 
       setEnrollments(sortedEnrollments)
@@ -303,6 +303,9 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
                           <div>
                             <p className="font-semibold text-gray-900 dark:text-white leading-tight uppercase tracking-tight font-inter">{enrollment.student?.name}</p>
                             <p className="text-[10px] font-medium text-gray-400 mt-0.5 uppercase tracking-widest font-inter">{enrollment.subject?.name}</p>
+                            <p className="text-[9px] font-medium text-gray-500 dark:text-gray-400 mt-1 font-inter">
+                              {new Date(enrollment.enrollment_date).toLocaleDateString('en-IN')} • {new Date(enrollment.enrollment_date).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                            </p>
                           </div>
                         </td>
                         <td className="px-5 py-4 text-right">
@@ -313,14 +316,15 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
                         </td>
                         <td className="px-5 py-4">
                           <div className="flex flex-col gap-2">
-                            <span className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest font-inter w-fit ${enrollment.payment_status === 'PAID'
-                              ? 'bg-emerald-50 text-emerald-600'
-                              : enrollment.payment_status === 'PARTIAL'
-                                ? 'bg-blue-50 text-blue-600'
-                                : 'bg-rose-50 text-rose-600'
-                              }`}>
-                              {enrollment.payment_status}
-                            </span>
+                            {enrollment.payment_status !== 'PAID' && (
+                              <span className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest font-inter w-fit ${
+                                enrollment.payment_status === 'PARTIAL'
+                                  ? 'bg-blue-50 text-blue-600'
+                                  : 'bg-rose-50 text-rose-600'
+                                }`}>
+                                {enrollment.payment_status}
+                              </span>
+                            )}
                             <span className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest font-inter w-fit ${enrollment.payment_mode === 'OFFLINE'
                               ? 'bg-purple-50 text-purple-600'
                               : enrollment.payment_mode === 'ONLINE'
@@ -382,16 +386,20 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
                       <p className="text-[11px] font-medium text-slate-400 truncate tracking-tight uppercase mt-0.5 font-inter">
                         {enrollment.subject?.name}
                       </p>
+                      <p className="text-[9px] font-medium text-slate-500 dark:text-slate-400 mt-1 font-inter">
+                        {new Date(enrollment.enrollment_date).toLocaleDateString('en-IN')} • {new Date(enrollment.enrollment_date).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                      </p>
                     </div>
                     <div className="text-right flex flex-col items-end shrink-0 gap-2">
-                       <span className={`px-2.5 py-0.5 rounded-lg text-[10px] sm:text-[11px] font-bold uppercase tracking-widest shadow-sm ${enrollment.payment_status === 'PAID'
-                        ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600'
-                        : enrollment.payment_status === 'PARTIAL'
-                          ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600'
-                          : 'bg-rose-50 dark:bg-rose-900/30 text-rose-600'
-                        }`}>
-                        {enrollment.payment_status}
-                      </span>
+                      {enrollment.payment_status !== 'PAID' && (
+                        <span className={`px-2.5 py-0.5 rounded-lg text-[10px] sm:text-[11px] font-bold uppercase tracking-widest shadow-sm ${
+                          enrollment.payment_status === 'PARTIAL'
+                            ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600'
+                            : 'bg-rose-50 dark:bg-rose-900/30 text-rose-600'
+                          }`}>
+                          {enrollment.payment_status}
+                        </span>
+                      )}
                       <span className={`px-2.5 py-0.5 rounded-lg text-[10px] sm:text-[11px] font-bold uppercase tracking-widest shadow-sm ${enrollment.payment_mode === 'OFFLINE'
                         ? 'bg-purple-50 dark:bg-purple-900/30 text-purple-600'
                         : enrollment.payment_mode === 'ONLINE'
