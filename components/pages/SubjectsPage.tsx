@@ -76,7 +76,7 @@ export default function SubjectsPage({ userRole, canEdit }: SubjectsPageProps) {
       setLoading(true)
       setError('')
       const response = await subjectsApi.getAll()
-      setSubjects(response.data)
+      setSubjects(response.data ?? [])
     } catch (err: any) {
       setError(err.message || 'Failed to load subjects')
     } finally {
@@ -526,6 +526,44 @@ export default function SubjectsPage({ userRole, canEdit }: SubjectsPageProps) {
 
             {/* Content */}
             <div className="p-6 space-y-6">
+              {/* Add New Batch Form */}
+              <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+                <h3 className="text-sm font-bold text-slate-900 mb-4 font-poppins uppercase tracking-widest">Add New Batch</h3>
+                <form onSubmit={handleCreateBatch} className="flex flex-col sm:flex-row gap-3">
+                  <div className="flex-1">
+                    <label className="block text-[9px] font-medium text-gray-400 uppercase mb-0.5 ml-1 font-inter">Batch Time *</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 7-8 AM"
+                      value={newBatch.batch_time}
+                      onChange={(e) => setNewBatch({ ...newBatch, batch_time: e.target.value })}
+                      className="w-full input-standard h-10 text-[11px] font-medium font-inter uppercase"
+                      required
+                    />
+                  </div>
+                  <div className="w-full sm:w-36">
+                    <label className="block text-[9px] font-medium text-gray-400 uppercase mb-0.5 ml-1 font-inter">Capacity *</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={newBatch.capacity_limit}
+                      onChange={(e) => setNewBatch({ ...newBatch, capacity_limit: parseInt(e.target.value) || 50 })}
+                      className="w-full input-standard h-10 text-[11px] font-medium font-inter"
+                      required
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <button
+                      type="submit"
+                      className="h-10 px-5 bg-cyan-600 hover:bg-cyan-700 text-white rounded-xl font-medium text-[11px] uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2 whitespace-nowrap"
+                    >
+                      <Plus size={14} />
+                      Add Batch
+                    </button>
+                  </div>
+                </form>
+              </div>
+
               {/* Existing Batches */}
               <div>
                 <h3 className="text-sm font-bold text-slate-900 mb-4 font-poppins uppercase tracking-widest">All Existing Batches</h3>

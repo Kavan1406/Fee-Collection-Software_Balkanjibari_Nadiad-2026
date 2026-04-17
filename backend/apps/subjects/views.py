@@ -206,9 +206,20 @@ class SubjectBatchViewSet(viewsets.ModelViewSet):
 
     def list(self, request, *args, **kwargs):
         """Return batches in {success, data} format (no pagination wrapper)."""
-        queryset = self.filter_queryset(self.get_queryset())
-        serializer = self.get_serializer(queryset, many=True)
-        return Response({'success': True, 'data': serializer.data})
+        try:
+            queryset = self.filter_queryset(self.get_queryset())
+            serializer = self.get_serializer(queryset, many=True)
+            return Response({'success': True, 'data': serializer.data})
+        except (OperationalError, ProgrammingError) as db_error:
+            error_text = str(db_error).lower()
+            if 'subject_batches' in error_text or 'no such table' in error_text or 'does not exist' in error_text:
+                logger.exception("subject_batches table missing — returning empty list.")
+                return Response({'success': True, 'data': []}, status=status.HTTP_200_OK)
+            logger.exception("Database error listing batches.")
+            return Response({'success': False, 'message': 'Database error'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception:
+            logger.exception("Unhandled error listing batches.")
+            return Response({'success': False, 'message': 'Internal server error'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     def perform_create(self, serializer):
         """Automatically set the subject from URL parameter."""
@@ -220,10 +231,18 @@ class SubjectBatchViewSet(viewsets.ModelViewSet):
     
     def create(self, request, *args, **kwargs):
         """Create a new batch for a subject."""
+        subject_id = self.kwargs.get('subject_pk')
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        batch = serializer.save()
-        
+        try:
+            if subject_id:
+                batch = serializer.save(subject_id=subject_id)
+            else:
+                batch = serializer.save()
+        except Exception:
+            logger.exception("Error creating batch.")
+            return Response({'success': False, 'message': 'Failed to create batch.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
         return Response({
             'success': True,
             'message': 'Batch created successfully.',
