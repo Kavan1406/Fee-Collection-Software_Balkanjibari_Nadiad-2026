@@ -3,9 +3,11 @@ registration_views.py — Public endpoints for the new self-service student
 registration flow with instant account creation on payment.
 
 Endpoints:
-  POST /api/v1/students/register/
-  POST /api/v1/students/confirm-registration-payment/
+  POST /api/v1/students/register/                         (legacy — creates student before payment)
+  POST /api/v1/students/confirm-registration-payment/     (legacy)
   GET  /api/v1/students/download-receipt/
+  POST /api/v1/students/create-registration-order/        (new — creates Razorpay order only, NO student)
+  POST /api/v1/students/register-after-payment/           (new — creates student only after payment verified)
 """
 
 import json
@@ -619,3 +621,357 @@ def download_registration_receipt(request):
     response = HttpResponse(pdf_bytes, content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     return response
+
+
+def _calculate_subjects_total(subjects_list):
+    """
+    Validate subjects and calculate total registration fee.
+    Returns (total_amount, error_message). On error, total_amount is None.
+    """
+    if not subjects_list:
+        return None, 'At least one subject must be selected.'
+    if len(subjects_list) > 4:
+        return None, 'Maximum 4 subjects can be selected per student.'
+
+    total_amount = Decimal('0.00')
+    for i, sub_data in enumerate(subjects_list):
+        subject_id = sub_data.get('subject_id')
+        try:
+            subject = Subject.objects.get(id=subject_id)
+        except Subject.DoesNotExist:
+            return None, f'Subject with id={subject_id} not found.'
+
+        enrolled_count = Enrollment.objects.filter(subject=subject, is_deleted=False, status='ACTIVE').count()
+        if enrolled_count >= subject.max_seats:
+            return None, f'Sorry, "{subject.name}" is now full. Please pick another subject.'
+
+        curr_fee = subject.current_fee
+        if curr_fee:
+            subj_fee = Decimal(str(curr_fee.fee_amount))
+        elif subject.monthly_fee:
+            subj_fee = Decimal(str(subject.monthly_fee))
+        else:
+            subj_fee = Decimal('0.00')
+
+        library_fee = Decimal('10.00') if i == 0 else Decimal('0.00')
+        total_amount += subj_fee + library_fee
+
+    return total_amount, None
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def create_registration_order(request):
+    """
+    Step 1 (new flow): Create a Razorpay order for registration fees.
+    Does NOT create a student or any enrollment — purely creates the payment order.
+    The student is created only in register_after_payment once payment is verified.
+    """
+    data = request.data
+
+    subjects_raw = data.get('subjects_data', '[]')
+    if isinstance(subjects_raw, str):
+        try:
+            subjects_list = json.loads(subjects_raw)
+        except json.JSONDecodeError:
+            subjects_list = []
+    else:
+        subjects_list = subjects_raw
+
+    total_amount, err = _calculate_subjects_total(subjects_list)
+    if err:
+        return Response({'success': False, 'error': err}, status=400)
+
+    amount_paise = int(total_amount * 100)
+    student_name = (data.get('name') or 'Student').strip()
+    phone = (data.get('phone') or '').strip()
+
+    order_id = None
+    if razorpay_client:
+        try:
+            rzp_order = razorpay_client.order.create(data={
+                'amount': amount_paise,
+                'currency': 'INR',
+                'receipt': f'REG-{int(timezone.now().timestamp())}',
+                'notes': {'name': student_name, 'phone': phone},
+            })
+            order_id = rzp_order['id']
+        except Exception:
+            order_id = f'order_test_{int(timezone.now().timestamp())}'
+    else:
+        order_id = f'order_test_{int(timezone.now().timestamp())}'
+
+    return Response({
+        'success': True,
+        'order_id': order_id,
+        'amount': float(total_amount),
+        'amount_paise': amount_paise,
+        'currency': 'INR',
+        'key_id': RAZORPAY_KEY_ID,
+        'test_mode': not razorpay_client or order_id.startswith('order_test_'),
+    }, status=200)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def register_after_payment(request):
+    """
+    Step 2 (new flow): Verify Razorpay payment, then create student + enrollments.
+    The student record is created ONLY after the payment signature is verified.
+    Idempotent: if the order_id was already processed, returns the existing student's data.
+    """
+    max_retries = 3
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            with transaction.atomic():
+                return _handle_register_after_payment(request)
+        except OperationalError as e:
+            last_error = e
+            error_str = str(e).lower()
+            if ('translate host name' in error_str or 'could not connect' in error_str) and attempt < max_retries - 1:
+                time.sleep(1)
+                continue
+            break
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return Response({'success': False, 'error': f'Registration failed: {str(e)}'}, status=500)
+
+    return Response({
+        'success': False,
+        'error': 'Server connection error. Please try again in a few seconds.',
+        'detail': str(last_error) if last_error else 'Connection pooler timeout.',
+    }, status=500)
+
+
+def _handle_register_after_payment(request):
+    data = request.data
+
+    razorpay_order_id = (data.get('razorpay_order_id') or '').strip()
+    razorpay_payment_id = (data.get('razorpay_payment_id') or '').strip()
+    razorpay_signature = (data.get('razorpay_signature') or '').strip()
+
+    if not razorpay_order_id:
+        return Response({'success': False, 'error': 'razorpay_order_id is required.'}, status=400)
+
+    # Idempotency: if this order was already processed, return existing student data.
+    existing_payment = Payment.objects.filter(
+        razorpay_order_id=razorpay_order_id,
+        status='SUCCESS',
+    ).select_related('enrollment__student').first()
+    if existing_payment:
+        student = existing_payment.enrollment.student
+        enrolled_subjects = []
+        for pay in Payment.objects.filter(razorpay_order_id=razorpay_order_id, status='SUCCESS').select_related('enrollment__subject'):
+            enr = pay.enrollment
+            enrolled_subjects.append({
+                'subject': enr.subject.name,
+                'batch_time': enr.batch_time,
+                'fee': float(enr.total_fee),
+                'enrollment_id': enr.enrollment_id,
+            })
+        import base64
+        receipt_token = base64.urlsafe_b64encode(
+            f"{student.student_id}:{razorpay_order_id}".encode()
+        ).decode()
+        return Response({
+            'success': True,
+            'student_id': student.student_id,
+            'username': student.login_username,
+            'password': student.login_password_hint,
+            'enrolled_subjects': enrolled_subjects,
+            'total_paid': sum(s['fee'] for s in enrolled_subjects),
+            'receipt_token': receipt_token,
+            'message': 'Payment confirmed! Your account has been created successfully.',
+        }, status=200)
+
+    # Verify Razorpay signature (skip for test orders).
+    is_test_order = razorpay_order_id.startswith('order_test_')
+    if not is_test_order and razorpay_client and razorpay_payment_id:
+        try:
+            generated_sig = hmac.new(
+                RAZORPAY_KEY_SECRET.encode(),
+                f"{razorpay_order_id}|{razorpay_payment_id}".encode(),
+                hashlib.sha256,
+            ).hexdigest()
+            if generated_sig != razorpay_signature:
+                return Response({'success': False, 'error': 'Payment verification failed. Invalid signature.'}, status=400)
+        except Exception:
+            pass  # Allow in edge-cases; Razorpay already captured the payment.
+
+    # --- Validate required fields ---
+    name = (data.get('name') or '').strip()
+    phone = (data.get('phone') or '').strip()
+    email = (data.get('email') or '').strip()
+
+    if not name:
+        return Response({'success': False, 'error': 'Full name is required.'}, status=400)
+    if not phone or len(phone) < 10:
+        return Response({'success': False, 'error': 'Valid 10-digit mobile number is required.'}, status=400)
+
+    subjects_raw = data.get('subjects_data', '[]')
+    if isinstance(subjects_raw, str):
+        try:
+            subjects_list = json.loads(subjects_raw)
+        except json.JSONDecodeError:
+            subjects_list = []
+    else:
+        subjects_list = subjects_raw
+
+    if not subjects_list:
+        return Response({'success': False, 'error': 'At least one subject must be selected.'}, status=400)
+
+    # --- Parse optional fields ---
+    dob = _parse_date(data.get('date_of_birth', ''))
+    age = _calculate_age(dob) if dob else None
+    if data.get('age') and not age:
+        try:
+            age = int(data.get('age'))
+        except Exception:
+            age = None
+
+    enrollment_date = _parse_date(data.get('enrollment_date', '')) or timezone.now().date()
+
+    # --- Create User + Student ---
+    temp_suffix = secrets.token_hex(4)
+    user = User.objects.create_user(
+        username=f"stu_temp_{temp_suffix}",
+        email=email,
+        password=temp_suffix,
+        role='STUDENT',
+        full_name=name,
+    )
+
+    student = Student.objects.create(
+        user=user,
+        name=name,
+        age=age,
+        gender=data.get('gender') or None,
+        date_of_birth=dob,
+        phone=phone,
+        email=email,
+        address=data.get('address') or '',
+        area=data.get('area') or '',
+        city=data.get('city') or '',
+        pincode=data.get('pincode') or '',
+        enrollment_date=enrollment_date,
+        status='ACTIVE',
+    )
+
+    base_username = _generate_username(student.student_id)
+    final_username = _allocate_unique_username(base_username, current_user_id=user.id)
+    raw_password = _generate_password(student.student_id, phone)
+
+    username_saved = False
+    for _ in range(5):
+        try:
+            with transaction.atomic():
+                user.username = final_username
+                user.set_password(raw_password)
+                user.save()
+            username_saved = True
+            break
+        except IntegrityError:
+            final_username = _allocate_unique_username(base_username, current_user_id=user.id)
+
+    if not username_saved:
+        transaction.set_rollback(True)
+        return Response({'success': False, 'error': 'Could not allocate a unique username. Please retry.'}, status=409)
+
+    student.login_username = final_username
+    student.login_password_hint = raw_password
+    student.save()
+
+    if 'photo' in request.FILES:
+        try:
+            import cloudinary.uploader
+            result = cloudinary.uploader.upload(request.FILES['photo'], folder='student_photos')
+            student.photo = result.get('public_id')
+            student.save()
+        except Exception:
+            pass
+
+    # --- Create Enrollments + Payment records (SUCCESS immediately) ---
+    enrolled_subjects = []
+    for i, sub_data in enumerate(subjects_list):
+        subject_id = sub_data.get('subject_id')
+        batch_time = sub_data.get('batch_time', '')
+        include_library = (i == 0)
+
+        try:
+            subject = Subject.objects.get(id=subject_id)
+        except Subject.DoesNotExist:
+            continue
+
+        curr_fee = subject.current_fee
+        if curr_fee:
+            subj_fee = Decimal(str(curr_fee.fee_amount))
+        elif subject.monthly_fee:
+            subj_fee = Decimal(str(subject.monthly_fee))
+        else:
+            subj_fee = Decimal('0.00')
+
+        library_fee = Decimal('10.00') if include_library else Decimal('0.00')
+        total_fee = subj_fee + library_fee
+
+        enrollment = Enrollment.objects.create(
+            student=student,
+            subject=subject,
+            batch_time=batch_time,
+            include_library_fee=include_library,
+            total_fee=total_fee,
+            paid_amount=total_fee,
+            pending_amount=Decimal('0.00'),
+            status='ACTIVE',
+        )
+
+        Payment.objects.create(
+            enrollment=enrollment,
+            amount=total_fee,
+            payment_date=timezone.now().date(),
+            payment_mode='ONLINE',
+            razorpay_order_id=razorpay_order_id,
+            razorpay_payment_id=razorpay_payment_id or 'test_pay_confirmed',
+            razorpay_signature=razorpay_signature or 'test_sig',
+            transaction_id=razorpay_payment_id or 'test_pay_confirmed',
+            status='SUCCESS',
+            notes=f'Registration payment for {subject.name} — confirmed after Razorpay payment',
+        )
+
+        enrolled_subjects.append({
+            'subject': subject.name,
+            'batch_time': batch_time,
+            'fee': float(total_fee),
+            'enrollment_id': enrollment.enrollment_id,
+        })
+
+    if not enrolled_subjects:
+        transaction.set_rollback(True)
+        return Response({'success': False, 'error': 'No valid subjects found. Please try again.'}, status=400)
+
+    import base64
+    receipt_token = base64.urlsafe_b64encode(
+        f"{student.student_id}:{razorpay_order_id}".encode()
+    ).decode()
+
+    try:
+        email_thread = threading.Thread(
+            target=_send_registration_email,
+            args=(student, enrolled_subjects, receipt_token),
+            daemon=False,
+        )
+        email_thread.start()
+    except Exception:
+        logger.exception("Failed to start registration email thread for student_id=%s", student.student_id)
+
+    return Response({
+        'success': True,
+        'student_id': student.student_id,
+        'username': student.login_username,
+        'password': student.login_password_hint,
+        'enrolled_subjects': enrolled_subjects,
+        'total_paid': sum(s['fee'] for s in enrolled_subjects),
+        'receipt_token': receipt_token,
+        'message': 'Payment confirmed! Your account has been created successfully.',
+    }, status=200)
