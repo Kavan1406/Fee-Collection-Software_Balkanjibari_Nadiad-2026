@@ -459,61 +459,44 @@ export default function RegisterPage() {
     setIsPaymentLoading(true)
 
     try {
-      // Step 1: Register student and get Razorpay order
-      const fd = new FormData()
-      fd.append('name', form.name.trim())
-      fd.append('date_of_birth', (() => {
-        const [d, m, y] = form.date_of_birth.split('-')
-        return `${y}-${m}-${d}`
-      })())
-      fd.append('age', form.age)
-      fd.append('gender', form.gender)
-      fd.append('phone', form.phone.trim())
-      fd.append('email', normalizedEmail)
-      fd.append('address', form.address.trim())
-      fd.append('city', form.city.trim())
-      fd.append('pincode', form.pincode)
-      fd.append('enrollment_date', (() => {
-        const t = new Date()
-        return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`
-      })())
       const validSubs = selectedSubjects.filter(s => s.subject_id > 0)
-      fd.append('subjects_data', JSON.stringify(validSubs))
-      // Photo can be added from the student profile page after login
 
-      const regRes = await fetch(`${API_BASE}/api/v1/students/register/`, {
+      // Step 1: Create Razorpay order only — NO student is created yet.
+      const orderRes = await fetch(`${API_BASE}/api/v1/students/create-registration-order/`, {
         method: 'POST',
-        body: fd,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: form.name.trim(),
+          phone: form.phone.trim(),
+          subjects_data: validSubs,
+        }),
       })
-      const regData = await regRes.json()
+      const orderData = await orderRes.json()
 
-      if (!regRes.ok || !regData.success) {
-        toast.error(regData.error || 'Registration failed. Please try again.')
+      if (!orderRes.ok || !orderData.success) {
+        toast.error(orderData.error || 'Could not initiate payment. Please try again.')
         setIsPaymentLoading(false)
         return
       }
 
-      const {
-        student_id, username, order_id, amount, key_id,
-        payment_ids, test_mode
-      } = regData
+      const { order_id, amount_paise, key_id, test_mode } = orderData
 
-      // Step 2: Open Razorpay checkout
+      // Step 2: Open Razorpay checkout.
+      // If payment is cancelled or fails, nothing is saved — no student created.
       const rzpLoaded = await loadRazorpayScript()
 
       if (!rzpLoaded || test_mode) {
-        // Test mode: simulate payment success
         await handlePaymentSuccess({
           razorpay_order_id: order_id,
           razorpay_payment_id: `pay_test_${Date.now()}`,
           razorpay_signature: 'test_sig',
-        }, student_id, payment_ids)
+        })
         return
       }
 
       const options = {
         key: key_id,
-        amount: regData.amount_paise,
+        amount: amount_paise,
         currency: 'INR',
         name: 'Balkanji Ni Bari',
         description: 'Summer Camp Enrollment Fee',
@@ -525,11 +508,13 @@ export default function RegisterPage() {
         },
         theme: { color: '#4F46E5' },
         handler: async (response: any) => {
-          await handlePaymentSuccess(response, student_id, payment_ids)
+          // Step 3 on success: student is created here, after payment confirmed by Razorpay.
+          await handlePaymentSuccess(response)
         },
         modal: {
           ondismiss: () => {
-            toast.error('Payment was cancelled. Please complete payment to activate your account.')
+            // User closed the modal without paying — no student was created.
+            toast.error('Payment was cancelled. No registration was saved.')
             setIsPaymentLoading(false)
           }
         }
@@ -544,17 +529,28 @@ export default function RegisterPage() {
     }
   }
 
+  // Called only after Razorpay confirms payment. Creates the student on the backend.
   const handlePaymentSuccess = async (
-    response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string },
-    student_id: string,
-    payment_ids: number[]
+    response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }
   ) => {
     let verifyTimeout: ReturnType<typeof setTimeout> | undefined
     try {
       const verifyController = new AbortController()
       verifyTimeout = setTimeout(() => verifyController.abort(), 120000)
 
-      const verifyRes = await fetch(`${API_BASE}/api/v1/students/confirm-registration-payment/`, {
+      const enrollmentDate = (() => {
+        const t = new Date()
+        return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`
+      })()
+
+      const dobApi = (() => {
+        const [d, m, y] = form.date_of_birth.split('-')
+        return `${y}-${m}-${d}`
+      })()
+
+      const validSubs = selectedSubjects.filter(s => s.subject_id > 0)
+
+      const verifyRes = await fetch(`${API_BASE}/api/v1/students/register-after-payment/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: verifyController.signal,
@@ -562,8 +558,17 @@ export default function RegisterPage() {
           razorpay_order_id: response.razorpay_order_id,
           razorpay_payment_id: response.razorpay_payment_id,
           razorpay_signature: response.razorpay_signature,
-          student_id,
-          payment_ids,
+          name: form.name.trim(),
+          date_of_birth: dobApi,
+          age: form.age,
+          gender: form.gender,
+          phone: form.phone.trim(),
+          email: normalizedEmail,
+          address: form.address.trim(),
+          city: form.city.trim(),
+          pincode: form.pincode,
+          enrollment_date: enrollmentDate,
+          subjects_data: validSubs,
         }),
       })
       if (verifyTimeout) clearTimeout(verifyTimeout)
@@ -577,24 +582,23 @@ export default function RegisterPage() {
       }
 
       if (!verifyRes.ok) {
-        toast.error(verifyData?.error || verifyData?.message || 'Payment verification failed. Please contact the office.')
+        toast.error(verifyData?.error || verifyData?.message || 'Registration failed after payment. Please contact the office with your payment ID.')
         return
       }
 
       if (verifyData.success) {
-        // Clear the draft form after successful registration
         if (typeof window !== 'undefined') {
           localStorage.removeItem('registration_form_draft')
         }
         setSuccessData(verifyData)
       } else {
-        toast.error(verifyData.error || 'Payment verification failed. Please contact the office.')
+        toast.error(verifyData.error || 'Registration failed after payment. Please contact the office.')
       }
     } catch (err: any) {
       if (err?.name === 'AbortError') {
-        toast.error('Verification timed out. Please check your internet and retry. If payment was debited, contact office with payment ID.')
+        toast.error('Request timed out. If payment was debited, please contact the office with your payment ID.')
       } else {
-        toast.error('Payment was received but verification failed. Please contact the office with your payment ID.')
+        toast.error('Payment was received but registration failed. Please contact the office with your payment ID.')
       }
     } finally {
       if (verifyTimeout) clearTimeout(verifyTimeout)

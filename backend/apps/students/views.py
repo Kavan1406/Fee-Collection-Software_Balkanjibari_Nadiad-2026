@@ -258,17 +258,31 @@ class StudentViewSet(viewsets.ModelViewSet):
     
     def destroy(self, request, *args, **kwargs):
         """Soft delete student (Admin only)."""
-        # Check if user is admin or staff
         if request.user.role not in ['ADMIN', 'STAFF']:
             return Response({
                 'success': False,
                 'error': {'message': 'Only admins or staff can delete students.'}
             }, status=status.HTTP_403_FORBIDDEN)
-        
+
+        from apps.enrollments.models import Enrollment
+
         instance = self.get_object()
-        instance.is_deleted = True
-        instance.save()
-        
+
+        with transaction.atomic():
+            # Soft-delete the student
+            instance.is_deleted = True
+            instance.status = 'INACTIVE'
+            instance.save()
+
+            # Deactivate linked User account so student can no longer log in
+            instance.user.is_active = False
+            instance.user.save()
+
+            # Soft-delete all active enrollments
+            Enrollment.objects.filter(
+                student=instance, is_deleted=False
+            ).update(is_deleted=True, status='DROPPED')
+
         return Response({
             'success': True,
             'message': 'Student deleted successfully.'

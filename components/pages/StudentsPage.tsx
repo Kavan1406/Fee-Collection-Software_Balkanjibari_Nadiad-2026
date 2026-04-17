@@ -176,6 +176,12 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
   })
   const [availableSubjects, setAvailableSubjects] = useState<any[]>([])
   const [batchData, setBatchData] = useState<Record<number, any[]>>({})
+
+  const checkAgeEligibility = (age: number | string, minAge: number, maxAge: number) => {
+    const n = typeof age === 'string' ? parseInt(age) : age
+    if (!age || isNaN(n)) return true
+    return n >= (minAge ?? 0) && n <= (maxAge ?? 100)
+  }
   const [formLoading, setFormLoading] = useState(false)
   const [countryCode, setCountryCode] = useState('+91')
 
@@ -292,6 +298,20 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
         }
       }
     }
+    // Age-per-subject validation
+    for (const enr of formData.enrollments) {
+      if (!enr.subject_id) continue
+      const sub = availableSubjects.find((s: any) => s.id === Number(enr.subject_id))
+      if (!sub) continue
+      const batchInfo = (batchData[enr.subject_id] || []).find((b: any) => b.batch_time === enr.batch_time)
+      const minAge = batchInfo?.min_age ?? sub.min_age ?? 0
+      const maxAge = batchInfo?.max_age ?? sub.max_age ?? 100
+      if (!checkAgeEligibility(formData.age, minAge, maxAge)) {
+        notifyError(`Age not eligible for "${sub.name}" — requires ${minAge}–${maxAge} yrs (student is ${formData.age})`)
+        return
+      }
+    }
+
     if (formData.enrollments.length === 0 && !editingStudent) {
       notifyError('Please enroll in at least one subject')
       return
@@ -451,6 +471,25 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
       })) : [],
       photo: null
     })
+
+    // Always fetch fresh batch data for all enrolled subjects when edit is opened
+    if (student.enrollments) {
+      student.enrollments.forEach(e => {
+        const subId = e.subject_id
+        if (subId) {
+          fetch(`${API_BASE_URL}/api/v1/subjects/${subId}/batches/`, {
+            headers: { 'Authorization': `Bearer ${sessionStorage.getItem('access_token')}` }
+          })
+            .then(r => r.json())
+            .then(data => {
+              const batches = data.data || data.results || []
+              setBatchData(prev => ({ ...prev, [subId]: batches }))
+            })
+            .catch(() => {})
+        }
+      })
+    }
+
     setShowForm(true)
   }
 
@@ -941,12 +980,31 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
                             required
                           >
                             <option value="">Select Subject</option>
-                            {availableSubjects.map(sub => (
-                              <option key={sub.id} value={sub.id}>
-                                {sub.name} (₹{parseFloat(sub.current_fee?.amount || '0')})
-                              </option>
-                            ))}
+                            {availableSubjects.map((sub: any) => {
+                              const eligible = checkAgeEligibility(formData.age, sub.min_age ?? 0, sub.max_age ?? 100)
+                              const ageRange = (sub.min_age > 0 || sub.max_age < 100) ? ` · ${sub.min_age}–${sub.max_age} yrs` : ''
+                              return (
+                                <option key={sub.id} value={sub.id} disabled={!eligible}>
+                                  {!eligible ? '✕ ' : ''}{sub.name} (₹{parseFloat(sub.current_fee?.amount || '0')}){ageRange}
+                                </option>
+                              )
+                            })}
                           </select>
+                          {enr.subject_id && (() => {
+                            const sub = availableSubjects.find((s: any) => s.id === Number(enr.subject_id))
+                            if (!sub) return null
+                            const batchInfo = (batchData[enr.subject_id] || []).find((b: any) => b.batch_time === enr.batch_time)
+                            const minAge = batchInfo?.min_age ?? sub.min_age ?? 0
+                            const maxAge = batchInfo?.max_age ?? sub.max_age ?? 100
+                            if (!checkAgeEligibility(formData.age, minAge, maxAge)) {
+                              return (
+                                <p className="flex items-center gap-1 mt-1 text-[11px] font-bold text-rose-600">
+                                  <AlertCircle size={12} /> Age not eligible — requires {minAge}–{maxAge} yrs (student is {formData.age})
+                                </p>
+                              )
+                            }
+                            return null
+                          })()}
                         </div>
                         <div className="flex flex-col gap-1">
                           <label className="text-[11px] font-bold text-gray-400 uppercase ml-1">Batch Time</label>
