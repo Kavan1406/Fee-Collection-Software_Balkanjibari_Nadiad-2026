@@ -7,7 +7,7 @@ from django.core.mail import send_mail, EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.utils.html import strip_tags
 from django.conf import settings
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from rest_framework import status
 from rest_framework.response import Response
 import secrets
@@ -57,9 +57,10 @@ class StudentCredentialManager:
         Password: {student_id}{last_4_mobile_digits}
         """
         try:
+            User = get_user_model()
             username = StudentCredentialManager.generate_student_username(student.student_id)
             password = StudentCredentialManager.generate_password(student.student_id, student.phone)
-            
+
             # Create or update user account
             user, created = User.objects.get_or_create(
                 username=username,
