@@ -78,6 +78,14 @@ class Subject(models.Model):
         blank=True,
         help_text='Age group/limit for this subject (e.g. "4 to 16")'
     )
+    min_age = models.IntegerField(
+        default=0,
+        help_text='Minimum age (inclusive). 0 = no lower limit.'
+    )
+    max_age = models.IntegerField(
+        default=100,
+        help_text='Maximum age (inclusive). 100 = no upper limit.'
+    )
     is_active = models.BooleanField(default=True)
     is_deleted = models.BooleanField(default=False)
     
@@ -158,6 +166,14 @@ class SubjectBatch(models.Model):
     capacity_limit = models.IntegerField(
         default=50,
         help_text='Maximum number of students for this batch'
+    )
+    min_age = models.IntegerField(
+        default=0,
+        help_text='Minimum age for this batch. 0 = no lower limit.'
+    )
+    max_age = models.IntegerField(
+        default=100,
+        help_text='Maximum age for this batch. 100 = no upper limit.'
     )
     is_active = models.BooleanField(default=True)
     

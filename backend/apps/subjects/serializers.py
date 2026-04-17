@@ -23,9 +23,9 @@ class SubjectSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Subject
-        fields = ['id', 'name', 'description', 'category', 'activity_type', 'duration_months', 
-                  'timing_schedule', 'monthly_fee', 'instructor_name', 'default_batch_timing', 
-                  'max_seats', 'enrolled_count',
+        fields = ['id', 'name', 'description', 'category', 'activity_type', 'duration_months',
+                  'timing_schedule', 'monthly_fee', 'instructor_name', 'default_batch_timing',
+                  'max_seats', 'enrolled_count', 'min_age', 'max_age',
                   'is_active', 'current_fee', 'fee_structures', 'created_at']
         read_only_fields = ['id', 'created_at']
     
@@ -113,8 +113,8 @@ class SubjectBatchSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = SubjectBatch
-        fields = ['id', 'subject', 'batch_time', 'capacity_limit', 'is_active', 
-                  'enrolled_count', 'available_seats', 'is_full', 'created_at', 'updated_at']
+        fields = ['id', 'subject', 'batch_time', 'capacity_limit', 'min_age', 'max_age',
+                  'is_active', 'enrolled_count', 'available_seats', 'is_full', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
     
     def get_enrolled_count(self, obj):

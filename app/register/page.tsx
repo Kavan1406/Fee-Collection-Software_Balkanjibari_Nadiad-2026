@@ -20,6 +20,8 @@ interface Subject {
   max_seats: number
   enrolled_count: number
   age_limit?: string
+  min_age: number
+  max_age: number
 }
 
 interface SelectedSubject {
@@ -334,23 +336,20 @@ export default function RegisterPage() {
     return 0
   }
 
-  // Helper to parse age limit (e.g. "10 to 16", "4 to 16")
-  const checkAgeEligibility = (studentAge: string, limitStr?: string) => {
-    if (!studentAge || !limitStr) return { eligible: true }
-    
+  // Check age eligibility using integer min_age / max_age from the DB.
+  // Pass batchMinAge / batchMaxAge to use per-batch limits instead of subject-level ones.
+  const checkAgeEligibility = (
+    studentAge: string,
+    minAge: number,
+    maxAge: number,
+  ): { eligible: boolean; min: number; max: number } => {
     const ageNum = parseInt(studentAge)
-    if (isNaN(ageNum)) return { eligible: true }
-
-    // Parse "XX to YY" or "XX-YY"
-    const match = limitStr.match(/(\d+)\s*(?:to|-)\s*(\d+)/i)
-    if (match) {
-      const min = parseInt(match[1])
-      const max = parseInt(match[2])
-      if (ageNum < min || ageNum > max) {
-        return { eligible: false, min, max }
-      }
-    }
-    return { eligible: true }
+    if (!studentAge || isNaN(ageNum)) return { eligible: true, min: minAge, max: maxAge }
+    // 0 / 100 are the "no restriction" sentinels
+    const effectiveMin = minAge ?? 0
+    const effectiveMax = maxAge ?? 100
+    const eligible = ageNum >= effectiveMin && ageNum <= effectiveMax
+    return { eligible, min: effectiveMin, max: effectiveMax }
   }
 
   // Fee calculation
@@ -743,10 +742,18 @@ export default function RegisterPage() {
     );
   }
 
+  const dobEntered = form.date_of_birth.length === 10 && !!form.age
+
   const anyIneligible = selectedSubjects.some(s => {
-    const subData = subjects.find(x => x.id === s.subject_id);
-    return !checkAgeEligibility(form.age, subData?.age_limit).eligible;
-  });
+    if (!dobEntered || !s.subject_id) return false
+    const subData = subjects.find(x => x.id === s.subject_id)
+    if (!subData) return false
+    // Use batch-level limits if available, fall back to subject-level
+    const batchInfo = getBatchInfo(s.subject_id, s.batch_time)
+    const minAge = batchInfo?.min_age ?? subData.min_age
+    const maxAge = batchInfo?.max_age ?? subData.max_age
+    return !checkAgeEligibility(form.age, minAge, maxAge).eligible
+  })
 
   return (
     <div className="min-h-screen bg-slate-50 py-2 sm:py-6 px-3 sm:px-4 transition-colors">
@@ -934,7 +941,17 @@ export default function RegisterPage() {
             {isMounted && (
               <div>
                 <h2 className={sectionTitle}>Subject Enrollment</h2>
-              
+
+                {/* DOB gate — shown until age is calculated */}
+                {!dobEntered && (
+                  <div className="flex items-center gap-3 px-4 py-3.5 mb-4 rounded-xl bg-amber-50 border border-amber-200 shadow-sm">
+                    <Lock size={16} className="text-amber-500 shrink-0" />
+                    <p className="text-[13px] font-semibold text-amber-800">
+                      Enter your <span className="font-black">Date of Birth</span> above to unlock subject selection — age limits are checked per subject.
+                    </p>
+                  </div>
+                )}
+
               {/* Template Download Button */}
               <div className="mb-4 bg-blue-50 p-3 rounded-xl border border-blue-100 flex items-center justify-between">
                 <div>
@@ -955,7 +972,8 @@ export default function RegisterPage() {
                 <button
                   type="button"
                   onClick={addSubject}
-                  className="font-inter flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold text-primary hover:bg-indigo-50 transition border border-indigo-200 shadow-sm"
+                  disabled={!dobEntered}
+                  className="font-inter flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold text-primary hover:bg-indigo-50 transition border border-indigo-200 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Plus size={14} /> Add Subject
                 </button>
@@ -972,7 +990,12 @@ export default function RegisterPage() {
                   const libFee = idx === 0 ? LIBRARY_FEE : 0
 
                   const subData = subjects.find(x => x.id === sub.subject_id)
-                  const eligibility = checkAgeEligibility(form.age, subData?.age_limit)
+                  const batchInfo = getBatchInfo(sub.subject_id, sub.batch_time)
+                  const minAge = batchInfo?.min_age ?? subData?.min_age ?? 0
+                  const maxAge = batchInfo?.max_age ?? subData?.max_age ?? 100
+                  const eligibility = dobEntered && sub.subject_id
+                    ? checkAgeEligibility(form.age, minAge, maxAge)
+                    : { eligible: true, min: minAge, max: maxAge }
                   const isEligible = eligibility.eligible
 
                   return (
@@ -985,7 +1008,7 @@ export default function RegisterPage() {
                         <div className="flex items-center gap-2 mb-3 py-1.5 px-3 bg-white rounded-lg border border-rose-100 animate-in fade-in slide-in-from-top-2">
                           <AlertCircle size={14} className="text-rose-500 shrink-0" />
                           <p className="text-[11px] font-black text-rose-600 uppercase tracking-wider">
-                            Ineligible: Subject requires age {subData?.age_limit} (Student: {form.age})
+                            Age not eligible — requires {eligibility.min}–{eligibility.max} yrs (student is {form.age})
                           </p>
                         </div>
                       )}
@@ -995,20 +1018,27 @@ export default function RegisterPage() {
                           <div>
                             <label className="text-xs font-bold text-slate-500 mb-1 block uppercase tracking-wider">Subject</label>
                             <select
-                              className="w-full px-3 py-2.5 rounded-lg text-slate-800 text-sm bg-white border border-slate-200 focus:border-indigo-400 focus:outline-none shadow-sm transition-all font-inter"
+                              disabled={!dobEntered}
+                              className="w-full px-3 py-2.5 rounded-lg text-slate-800 text-sm bg-white border border-slate-200 focus:border-indigo-400 focus:outline-none shadow-sm transition-all font-inter disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                               value={sub.subject_id}
                               onChange={e => updateSubject(idx, 'subject_id', e.target.value)}
                             >
-                              <option value={0}>{isSubjectsLoading ? 'Loading subjects...' : 'Select subject'}</option>
-                              {summerCamp.length > 0 && (
+                              <option value={0}>
+                                {!dobEntered ? '🔒 Enter DOB first' : isSubjectsLoading ? 'Loading subjects...' : 'Select subject'}
+                              </option>
+                              {dobEntered && summerCamp.length > 0 && (
                                 <optgroup label="☀️ Summer Camp 2026">
                                   {summerCamp.map(s => {
                                     const fee = s.current_fee
                                       ? `₹${s.current_fee.amount}`
                                       : s.monthly_fee ? `₹${s.monthly_fee}` : ''
+                                    const ageRange = (s.min_age > 0 || s.max_age < 100)
+                                      ? ` · ${s.min_age}–${s.max_age} yrs`
+                                      : ''
+                                    const eligible = checkAgeEligibility(form.age, s.min_age, s.max_age).eligible
                                     return (
-                                      <option key={s.id} value={s.id}>
-                                        {s.name} — {fee}
+                                      <option key={s.id} value={s.id} disabled={!eligible}>
+                                        {!eligible ? '✕ ' : ''}{s.name} — {fee}{ageRange}
                                       </option>
                                     )
                                   })}
