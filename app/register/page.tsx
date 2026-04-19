@@ -1048,6 +1048,24 @@ export default function RegisterPage() {
                                   })}
                                 </optgroup>
                               )}
+                              {dobEntered && yearRound.length > 0 && (
+                                <optgroup label="📅 Regular Classes (Year Round)">
+                                  {yearRound.map(s => {
+                                    const fee = s.current_fee
+                                      ? `₹${s.current_fee.amount}`
+                                      : s.monthly_fee ? `₹${s.monthly_fee}` : ''
+                                    const ageRange = (s.min_age > 0 || s.max_age < 100)
+                                      ? ` · ${s.min_age}–${s.max_age} yrs`
+                                      : ''
+                                    const eligible = checkAgeEligibility(form.age, s.min_age, s.max_age).eligible
+                                    return (
+                                      <option key={s.id} value={s.id} disabled={!eligible}>
+                                        {!eligible ? '✕ ' : ''}{s.name} — {fee}{ageRange}
+                                      </option>
+                                    )
+                                  })}
+                                </optgroup>
+                              )}
                             </select>
                             {sub.subject_id > 0 && (
                               <p className="text-[12px] text-blue-600 mt-1 font-bold uppercase tracking-tighter">
