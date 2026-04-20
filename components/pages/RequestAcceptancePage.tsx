@@ -375,29 +375,7 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
     }
   }
 
-  const handleDeletePayment = async (groupedRequest: GroupedStudentRequest) => {
-    const ok = window.confirm(`Delete pending payment request for ${groupedRequest.student_name} (${groupedRequest.requests.length} subject${groupedRequest.requests.length > 1 ? 's' : ''}) - ₹${groupedRequest.total_fees.toLocaleString('en-IN')}?\n\nThis action cannot be undone.`)
-    if (!ok) return
-
-    try {
-      setProcessingId(groupedRequest.requests[0]?.request_id || 0)
-      notifyInfo(`Deleting ${groupedRequest.requests.length} payment request${groupedRequest.requests.length > 1 ? 's' : ''}...`)
-
-      // Delete all payments for this student
-      await Promise.all(
-        groupedRequest.requests.map(req => paymentsApi.delete(req.request_id))
-      )
-
-      notifySuccess(`Payment request${groupedRequest.requests.length > 1 ? 's' : ''} deleted successfully.`)
-      await fetchPendingCashRequests()
-    } catch (err: any) {
-      const backendMessage = err?.response?.data?.error?.message
-      const fallbackMessage = err?.message
-      notifyError(backendMessage || fallbackMessage || 'Failed to delete payment request')
-    } finally {
-      setProcessingId(null)
-    }
-  }
+  const rejectRequestId = rejectConfirm.request?.requests?.[0]?.request_id
 
   return (
     <div className="space-y-6">
@@ -576,15 +554,6 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
                             {processingId === group.requests[0]?.request_id ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}
                             Reject All
                           </button>
-                          <button
-                            disabled={!canAccept || processingId === group.requests[0]?.request_id}
-                            onClick={() => handleDeletePayment(group)}
-                            className="inline-flex items-center gap-1 px-3 h-9 rounded-lg bg-slate-600 text-white text-[11px] font-bold uppercase tracking-widest hover:bg-slate-700 disabled:opacity-60"
-                            title="Delete all pending payments for this student"
-                          >
-                            {processingId === group.requests[0]?.request_id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                            Delete
-                          </button>
                         </div>
                       ) : (
                         <span className="text-xs font-bold uppercase tracking-widest text-slate-400">-</span>
@@ -643,10 +612,10 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
               </button>
               <button
                 onClick={confirmRejectPayment}
-                disabled={processingId === rejectConfirm.request.request_id}
+                disabled={processingId === rejectRequestId}
                 className="flex-1 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded-lg transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
               >
-                {processingId === rejectConfirm.request.request_id ? (
+                {processingId === rejectRequestId ? (
                   <>
                     <Loader2 size={16} className="animate-spin" />
                     Rejecting...
@@ -715,21 +684,35 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
                       </button>
                     </div>
                   </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-mono font-semibold text-slate-900 truncate">
-                      {cred.visible ? cred.password_hint : '••••••••'}
-                    </p>
-                    {cred.visible && (
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Password Hint</p>
                       <button
                         onClick={() => {
-                          navigator.clipboard.writeText(cred.password_hint || '')
-                          notifySuccess('Copied to clipboard')
+                          setAcceptedCredentials(prev => prev.map((c, i) => i === idx ? { ...c, visible: !c.visible } : c))
                         }}
-                        className="text-xs text-blue-600 hover:underline shrink-0"
+                        className="text-slate-400 hover:text-slate-600"
                       >
-                        Copy
+                        {cred.visible ? <EyeOff size={14} /> : <Eye size={14} />}
                       </button>
-                    )}
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-mono font-semibold text-slate-900 truncate">
+                        {cred.visible ? cred.password_hint : '••••••••'}
+                      </p>
+                      {cred.visible && (
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(cred.password_hint || '')
+                            notifySuccess('Copied to clipboard')
+                          }}
+                          className="text-xs text-blue-600 hover:underline shrink-0"
+                        >
+                          Copy
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>

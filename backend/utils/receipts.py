@@ -193,25 +193,27 @@ def generate_receipt_pdf(payment=None, student=None, order_id=None):
     lbl_s = ParagraphStyle('Label', fontSize=8, fontName='Helvetica-Bold', textColor=slate)
     val_s = ParagraphStyle('Value', fontSize=8.5, fontName='Helvetica-Bold', textColor=dark)
 
-    # Get actual payment date from the payment record, not the current date
+    # Use enrollment date/time instead of receipt generation date
     if payments and len(payments) > 0:
         # Use the first (earliest) payment's receipt number and date for the student
         first_payment = payments[0]
         receipt_no = first_payment.receipt_number or f"REC-{first_payment.id:04d}"
         pay_mode = first_payment.payment_mode if len(payments) == 1 else "MULTIPLE"
-        # Use payment_date from Payment model instead of current date
-        if first_payment.payment_date:
-            receipt_date = first_payment.payment_date.strftime('%d %B %Y')
+        if enrollments:
+            earliest_enrollment = min(enrollments, key=lambda e: e.created_at or timezone.now())
+            receipt_date = timezone.localtime(earliest_enrollment.created_at).strftime('%d %B %Y %I:%M %p')
+        elif first_payment.payment_date:
+            receipt_date = first_payment.payment_date.strftime('%d %B %Y %I:%M %p')
         else:
-            receipt_date = first_payment.created_at.strftime('%d %B %Y')
+            receipt_date = first_payment.created_at.strftime('%d %B %Y %I:%M %p')
     elif order_id:
         receipt_no = f"REG-2026-{student.id:04d}"
         pay_mode = "ONLINE"
-        receipt_date = timezone.now().strftime('%d %B %Y')
+        receipt_date = timezone.now().strftime('%d %B %Y %I:%M %p')
     else:
         receipt_no = "N/A"
         pay_mode = "N/A"
-        receipt_date = timezone.now().strftime('%d %B %Y')
+        receipt_date = timezone.now().strftime('%d %B %Y %I:%M %p')
 
     col1 = [
         [Paragraph('<b>Student Name:</b>', lbl_s), Paragraph(student.name.upper() if student else 'N/A', val_s)],
@@ -232,8 +234,8 @@ def generate_receipt_pdf(payment=None, student=None, order_id=None):
     story.append(Table([[t1, t2]], colWidths=[9.5 * cm, 9.5 * cm]))
     story.append(Spacer(1, 0.1 * cm))
 
-    # Enrollments Table - Show ALL enrollments with payment status
-    fee_data = [['Sr no.', 'Subject', 'Batch\nTime', 'SubFee', 'LibFee', 'Total', 'Status']]
+    # Enrollments Table - Show ALL enrollments with payment status and enrollment date/time
+    fee_data = [['Sr no.', 'Subject', 'Batch\nTime', 'Enrolled On', 'SubFee', 'LibFee', 'Total', 'Status']]
     grand_total = 0
     total_paid = 0
     
@@ -266,10 +268,15 @@ def generate_receipt_pdf(payment=None, student=None, order_id=None):
         
         status_para = Paragraph(payment_status, ParagraphStyle('Status', fontSize=7.5, fontName='Helvetica-Bold', textColor=status_color))
         
+        enrolled_on = "N/A"
+        if enr.created_at:
+            enrolled_on = timezone.localtime(enr.created_at).strftime('%d %b %Y %I:%M %p')
+
         fee_data.append([
             str(i),
             enr.subject.name if enr.subject else "Activity",
             enr.batch_time or "N/A",
+            enrolled_on,
             f"Rs.{sub_fee:,.0f}",
             f"Rs.{lib_fee:,.0f}",
             f"Rs.{total:,.0f}",
@@ -277,30 +284,31 @@ def generate_receipt_pdf(payment=None, student=None, order_id=None):
         ])
 
     fee_data.append([
-        '', '', '', '', '', 
+        '', '', '', '', '', '',
         Paragraph(f'<b>₹{grand_total:,.0f}</b>', ParagraphStyle('Total', fontSize=8.5, fontName='Helvetica-Bold', textColor=dark)),
         Paragraph('<b>TOTAL</b>', ParagraphStyle('TotalLabel', fontSize=7, fontName='Helvetica-Bold', textColor=slate))
     ])
 
-    fee_table = Table(fee_data, colWidths=[0.9 * cm, 5.8 * cm, 3.2 * cm, 2.3 * cm, 2.3 * cm, 2.5 * cm, 2.0 * cm])
+    fee_table = Table(fee_data, colWidths=[0.9 * cm, 5.2 * cm, 2.6 * cm, 3.2 * cm, 2.0 * cm, 2.0 * cm, 2.3 * cm, 1.8 * cm])
     fee_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), indigo),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, 0), 7.5),
         ('FONTSIZE', (0, 1), (-1, -2), 8),
-        ('ALIGN', (3, 0), (5, -1), 'RIGHT'),
+        ('ALIGN', (4, 0), (6, -1), 'RIGHT'),
         ('ALIGN', (0, 0), (2, -1), 'LEFT'),
-        ('ALIGN', (6, 0), (6, -1), 'CENTER'),
+        ('ALIGN', (3, 0), (3, -1), 'LEFT'),
+        ('ALIGN', (7, 0), (7, -1), 'CENTER'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('TOPPADDING', (0, 0), (-1, -1), 4),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
         ('GRID', (0, 0), (-1, -2), 0.5, HexColor('#CBD5E1')),
         # Total row styling
-        ('FONTNAME', (4, -1), (-1, -1), 'Helvetica-Bold'),
-        ('FONTSIZE', (4, -1), (-1, -1), 8.5),
+        ('FONTNAME', (5, -1), (-1, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (5, -1), (-1, -1), 8.5),
         ('BACKGROUND', (0, -1), (-1, -1), HexColor('#F1F5F9')),
-        ('ALIGN', (4, -1), (5, -1), 'RIGHT'),
+        ('ALIGN', (6, -1), (6, -1), 'RIGHT'),
         ('BOX', (0, -1), (-1, -1), 0.5, HexColor('#CBD5E1')),
     ]))
     story.append(fee_table)
