@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: #f59e0b; color: white; padding: 20px; border-radius: 5px; margin-bottom: 20px; }
+        .content { background: #f9f9f9; padding: 20px; border-radius: 5px; }
+        .amount { color: #ef4444; font-weight: bold; font-size: 16px; }
+        .fees-list { background: white; padding: 15px; border-radius: 5px; margin: 15px 0; }
+        .fee-item { display: flex; justify-content: space-between; padding: 10px; border-bottom: 1px solid #eee; }
+        .button { display: inline-block; background: #f59e0b; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Fee Payment Reminder</h1>
+        </div>
+        
+        <div class="content">
+            <p>Dear {{ student_name }},</p>
+            
+            <p>This is a friendly reminder that you have pending fees to pay.</p>
+            
+            <h3>Pending Fees Details:</h3>
+            <div class="fees-list">
+                {% for enrollment in enrollments %}
+                <div class="fee-item">
+                    <span>{{ enrollment.subject }}</span>
+                    <span class="amount">₹{{ enrollment.pending_amount }}</span>
+                </div>
+                {% endfor %}
+                <div class="fee-item" style="border-top: 2px solid #333; border-bottom: none; font-weight: bold;">
+                    <span>Total Pending</span>
+                    <span class="amount">₹{{ total_pending }}</span>
+                </div>
+            </div>
+            
+            <p>Please make the payment at your earliest convenience. You can pay online or offline.</p>
+            
+            <a href="http://localhost:3002/student/payments" class="button">Pay Now</a>
+        </div>
+    </div>
+</body>
+</html>
