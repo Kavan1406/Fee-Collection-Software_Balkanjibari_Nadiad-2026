@@ -99,8 +99,6 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('')
-  const [areaFilter, setAreaFilter] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
 
   const formatDateForUI = (val: string) => {
     if (!val) return ''
@@ -220,8 +218,6 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
         page: currentPage,
         page_size: 20,
         search: searchTerm || undefined,
-        area: areaFilter || undefined,
-        status: statusFilter || undefined,
       }) as any
 
       // Handle both paginated and non-paginated responses
@@ -257,7 +253,7 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
     } finally {
       setLoading(false)
     }
-  }, [currentPage, searchTerm, areaFilter, statusFilter])
+  }, [currentPage, searchTerm])
 
   useEffect(() => {
     fetchStudents()
@@ -310,6 +306,12 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
         notifyError(`Age not eligible for "${sub.name}" — requires ${minAge}–${maxAge} yrs (student is ${formData.age})`)
         return
       }
+      
+      // Check if selected batch has available seats
+      if (batchInfo && batchInfo.is_full) {
+        notifyError(`Sorry, the batch "${enr.batch_time}" for "${sub.name}" is full. Please select another batch.`)
+        return
+      }
     }
 
     if (formData.enrollments.length === 0 && !editingStudent) {
@@ -325,12 +327,19 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
     setError('')
 
     try {
-      // Clean up formData: replace empty strings with null for optional fields
-      // and filter ONLY the fields the backend expects for registration
-      const allowedFields = [
-        'name', 'age', 'gender', 'date_of_birth', 'phone',
-        'email', 'address', 'city', 'pincode', 'enrollment_date', 'enrollments', 'photo', 'payment_method', 'status'
-      ];
+      // Determine which fields are allowed based on mode (create vs edit)
+      let allowedFields: string[] = [];
+      
+      if (editingStudent) {
+        // Edit mode: Only allow updating name, phone, and enrollments
+        allowedFields = ['name', 'phone', 'enrollments'];
+      } else {
+        // Create mode: Allow all fields for new registration
+        allowedFields = [
+          'name', 'age', 'gender', 'date_of_birth', 'phone',
+          'email', 'address', 'city', 'pincode', 'enrollment_date', 'enrollments', 'photo', 'payment_method', 'status'
+        ];
+      }
 
       const submissionData: any = {};
       allowedFields.forEach(field => {
@@ -362,7 +371,7 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
       let result;
       if (editingStudent) {
         result = await studentsApi.update(editingStudent.id, submissionData)
-        notifySuccess('Student updated successfully')
+        notifySuccess('Student updated successfully - Name, Phone & Subjects updated')
         setShowForm(false)
         setEditingStudent(null)
         resetForm()
@@ -586,6 +595,18 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
       } else {
         newEnrollments[index] = { ...newEnrollments[index], [field]: value }
       }
+    } else if (field === 'batch_time') {
+      // Check if selected batch is full
+      const subjId = newEnrollments[index].subject_id
+      if (subjId && value) {
+        const batches = batchData[subjId] || []
+        const selectedBatch = batches.find(b => b.batch_time === value)
+        if (selectedBatch && selectedBatch.is_full) {
+          notifyError(`Sorry, the batch "${value}" is currently full. Please select another batch.`)
+          return // Don't update if batch is full
+        }
+      }
+      newEnrollments[index] = { ...newEnrollments[index], [field]: value }
     } else {
       newEnrollments[index] = { ...newEnrollments[index], [field]: value }
     }
@@ -728,40 +749,28 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
               }}
             />
           </div>
-          <div className="grid grid-cols-2 gap-3 lg:w-auto">
-            <select
-              className="h-11 input-standard text-[11px] sm:text-sm font-medium uppercase tracking-wider font-inter"
-              value={areaFilter}
-              onChange={(e) => {
-                setAreaFilter(e.target.value)
-                setCurrentPage(1)
-              }}
-            >
-              <option value="">All Localities</option>
-            </select>
-            <select
-              className="h-11 input-standard text-[11px] sm:text-sm font-medium uppercase tracking-wider font-inter"
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value)
-                setCurrentPage(1)
-              }}
-            >
-              <option value="">All Status</option>
-              <option value="PAID">Paid</option>
-              <option value="PARTIAL">Partial</option>
-              <option value="OVERDUE">Overdue</option>
-            </select>
-          </div>
         </div>
       </div>
 
       {/* Add/Edit Student Form */}
       {showForm && (
         <div ref={formRef} className="bg-white border border-gray-200 rounded-[24px] p-6 shadow-xl scroll-mt-20">
-          <h2 className="h2 mb-6">
-            {editingStudent ? 'Edit Student Record' : 'New Student Registration'}
-          </h2>
+          <div className="flex items-start justify-between mb-6">
+            <h2 className="h2">
+              {editingStudent ? 'Edit Student Record' : 'New Student Registration'}
+            </h2>
+          </div>
+
+          {/* Edit Mode Info Banner */}
+          {editingStudent && (
+            <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+              <p className="text-sm font-bold text-amber-900">
+                ✏️ Editable Fields: <span className="text-amber-700">Name, Phone Number, & Subject/Batch Details</span>
+              </p>
+              <p className="text-xs text-amber-700 mt-1">Other personal information fields are locked to maintain data integrity.</p>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit}>
             <div className="space-y-8">
               {/* ---- Personal Information ---- */}
@@ -781,6 +790,7 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
                       placeholder="Enter student's full name"
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      disabled={editingStudent ? false : false}
                       required
                       className="w-full input-standard"
                     />
@@ -791,9 +801,10 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
                       type="text"
                       placeholder="DD-MM-YYYY"
                       value={formData.enrollment_date}
-                      onChange={(e) => handleDateInput('enrollment_date', e.target.value)}
+                      onChange={(e) => editingStudent ? null : handleDateInput('enrollment_date', e.target.value)}
+                      disabled={editingStudent ? true : false}
                       required
-                      className="w-full input-standard"
+                      className="w-full input-standard bg-gray-50/80 cursor-not-allowed"
                     />
                   </div>
                   <div className="flex flex-col gap-1">
@@ -802,9 +813,10 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
                       type="text"
                       placeholder="DD-MM-YYYY"
                       value={formData.date_of_birth}
-                      onChange={(e) => handleDateInput('date_of_birth', e.target.value)}
+                      onChange={(e) => editingStudent ? null : handleDateInput('date_of_birth', e.target.value)}
+                      disabled={editingStudent ? true : false}
                       required
-                      className="w-full input-standard"
+                      className="w-full input-standard bg-gray-50/80 cursor-not-allowed"
                     />
                   </div>
                   <div className="flex flex-col gap-1">
@@ -822,8 +834,9 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
                     <select
                       value={formData.gender}
                       onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
+                      disabled={editingStudent ? true : false}
                       required
-                      className="w-full input-standard"
+                      className={`w-full input-standard ${editingStudent ? 'bg-gray-50/80 cursor-not-allowed' : ''}`}
                     >
                       <option value="MALE">Male</option>
                       <option value="FEMALE">Female</option>
@@ -877,13 +890,13 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
                   </div>
                   <div className="flex flex-col gap-1">
                     <label className="text-[11px] font-bold text-gray-500 uppercase px-1">Email Address <span className="text-gray-400">(Optional)</span></label>
-                    {/* Email is optional. If provided, it can be used for multiple student registrations. */}
                     <input
                       type="email"
                       placeholder="student@example.com (optional - can be shared across registrations)"
                       value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      className="w-full input-standard"
+                      onChange={(e) => editingStudent ? null : setFormData({ ...formData, email: e.target.value })}
+                      disabled={editingStudent ? true : false}
+                      className={`w-full input-standard ${editingStudent ? 'bg-gray-50/80 cursor-not-allowed' : ''}`}
                     />
                   </div>
                   <div className="md:col-span-2 flex flex-col gap-1">
@@ -891,10 +904,11 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
                     <textarea
                       placeholder="Enter house no, street, area details..."
                       value={formData.address}
-                      onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                      onChange={(e) => editingStudent ? null : setFormData({ ...formData, address: e.target.value })}
+                      disabled={editingStudent ? true : false}
                       required
                       rows={2}
-                      className="w-full input-standard resize-none py-3"
+                      className={`w-full input-standard resize-none py-3 ${editingStudent ? 'bg-gray-50/80 cursor-not-allowed' : ''}`}
                     />
                   </div>
                   <div className="flex flex-col gap-1">
@@ -903,9 +917,10 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
                       type="text"
                       placeholder="e.g. Nadiad"
                       value={formData.city}
-                      onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                      onChange={(e) => editingStudent ? null : setFormData({ ...formData, city: e.target.value })}
+                      disabled={editingStudent ? true : false}
                       required
-                      className="w-full input-standard"
+                      className={`w-full input-standard ${editingStudent ? 'bg-gray-50/80 cursor-not-allowed' : ''}`}
                     />
                   </div>
                   <div className="flex flex-col gap-1">
@@ -915,9 +930,10 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
                       placeholder="6-digit pincode"
                       maxLength={6}
                       value={formData.pincode}
-                      onChange={(e) => setFormData({ ...formData, pincode: e.target.value.replace(/\D/g, '') })}
+                      onChange={(e) => editingStudent ? null : setFormData({ ...formData, pincode: e.target.value.replace(/\D/g, '') })}
+                      disabled={editingStudent ? true : false}
                       required
-                      className="w-full input-standard"
+                      className={`w-full input-standard ${editingStudent ? 'bg-gray-50/80 cursor-not-allowed' : ''}`}
                     />
                   </div>
                 </div>

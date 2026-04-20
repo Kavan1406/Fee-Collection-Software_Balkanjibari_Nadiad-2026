@@ -19,6 +19,18 @@ interface AcceptedCredential {
   visible: boolean
 }
 
+interface GroupedStudentRequest {
+  student_id: string
+  student_name: string
+  requests: OfflineRequestItem[]
+  subjects: string[]
+  total_fees: number
+  status: string
+  all_pending: boolean
+  all_accepted: boolean
+  all_rejected: boolean
+}
+
 const PENDING_STATUSES = new Set(['PENDING_CONFIRMATION', 'CREATED', 'UNPAID', 'PENDING'])
 const ACCEPTED_STATUSES = new Set(['SUCCESS', 'PAID', 'COMPLETED', 'ACCEPTED'])
 const REJECTED_STATUSES = new Set(['FAILED', 'REJECTED'])
@@ -33,7 +45,7 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
   const [rows, setRows] = useState<OfflineRequestItem[]>([])
   const [requestFilter, setRequestFilter] = useState<RequestFilter>('PENDING')
   const [searchTerm, setSearchTerm] = useState('')
-  const [rejectConfirm, setRejectConfirm] = useState<{ show: boolean; request: OfflineRequestItem | null; reason: string }>({
+  const [rejectConfirm, setRejectConfirm] = useState<{ show: boolean; request: GroupedStudentRequest | null; reason: string }>({
     show: false,
     request: null,
     reason: ''
@@ -45,17 +57,54 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
 
   const canAccept = userRole === 'admin' || userRole === 'staff' || userRole === 'accountant'
 
-  const pendingCashRows = useMemo(() => {
-    return rows.filter((p) => p.payment_mode === 'CASH' && PENDING_STATUSES.has((p.status || '').toUpperCase()))
+  // Group requests by student_id
+  const groupedRows = useMemo(() => {
+    const grouped = new Map<string, GroupedStudentRequest>()
+    
+    for (const request of rows) {
+      const studentId = request.student_id?.toLowerCase().trim() || ''
+      if (!studentId) continue
+      
+      if (!grouped.has(studentId)) {
+        grouped.set(studentId, {
+          student_id: request.student_id || '',
+          student_name: request.student_name || '',
+          requests: [],
+          subjects: [],
+          total_fees: 0,
+          status: 'PENDING',
+          all_pending: true,
+          all_accepted: true,
+          all_rejected: true
+        })
+      }
+      
+      const group = grouped.get(studentId)!
+      group.requests.push(request)
+      group.subjects.push(request.subject || '')
+      group.total_fees += Number(request.total_fees || 0)
+      
+      // Update status flags
+      const requestStatus = (request.status || '').toUpperCase()
+      if (!PENDING_STATUSES.has(requestStatus)) group.all_pending = false
+      if (!ACCEPTED_STATUSES.has(requestStatus)) group.all_accepted = false
+      if (!REJECTED_STATUSES.has(requestStatus)) group.all_rejected = false
+    }
+    
+    return Array.from(grouped.values())
   }, [rows])
+
+  const pendingCashRows = useMemo(() => {
+    return groupedRows.filter((g) => g.all_pending)
+  }, [groupedRows])
 
   const acceptedCashRows = useMemo(() => {
-    return rows.filter((p) => p.payment_mode === 'CASH' && ACCEPTED_STATUSES.has((p.status || '').toUpperCase()))
-  }, [rows])
+    return groupedRows.filter((g) => g.all_accepted)
+  }, [groupedRows])
 
   const rejectedCashRows = useMemo(() => {
-    return rows.filter((p) => p.payment_mode === 'CASH' && REJECTED_STATUSES.has((p.status || '').toUpperCase()))
-  }, [rows])
+    return groupedRows.filter((g) => g.all_rejected)
+  }, [groupedRows])
 
   const normalizedSubjectFeeMap = useMemo(() => {
     const normalize = (value: string) =>
@@ -107,26 +156,26 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
   }
 
   const visibleRows = useMemo(() => {
-    let filtered = rows
+    let filtered = groupedRows
     
     // Filter by status
-    if (requestFilter === 'ACCEPTED') filtered = filtered.filter((p) => p.payment_mode === 'CASH' && ACCEPTED_STATUSES.has((p.status || '').toUpperCase()))
-    else if (requestFilter === 'REJECTED') filtered = filtered.filter((p) => p.payment_mode === 'CASH' && REJECTED_STATUSES.has((p.status || '').toUpperCase()))
-    else if (requestFilter === 'ALL') filtered = filtered.filter((p) => p.payment_mode === 'CASH')
-    else filtered = filtered.filter((p) => p.payment_mode === 'CASH' && PENDING_STATUSES.has((p.status || '').toUpperCase()))
+    if (requestFilter === 'ACCEPTED') filtered = filtered.filter((g) => g.all_accepted)
+    else if (requestFilter === 'REJECTED') filtered = filtered.filter((g) => g.all_rejected)
+    else if (requestFilter === 'ALL') filtered = filtered
+    else filtered = filtered.filter((g) => g.all_pending)
     
     // Filter by search term
     if (searchTerm.trim()) {
       const search = searchTerm.toLowerCase().trim()
-      filtered = filtered.filter(payment =>
-        payment.student_name?.toLowerCase().includes(search) ||
-        payment.student_id?.toLowerCase().includes(search) ||
-        payment.subject?.toLowerCase().includes(search)
+      filtered = filtered.filter(group =>
+        group.student_name?.toLowerCase().includes(search) ||
+        group.student_id?.toLowerCase().includes(search) ||
+        group.subjects.some(s => s?.toLowerCase().includes(search))
       )
     }
     
     return filtered
-  }, [requestFilter, rows, searchTerm])
+  }, [requestFilter, groupedRows, searchTerm])
 
   const getStatusLabel = (status?: string) => {
     const normalized = (status || '').toUpperCase()
@@ -196,66 +245,91 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
     fetchSubjects()
   }, [])
 
-  const handleAcceptPayment = async (payment: OfflineRequestItem) => {
-    const ok = window.confirm(`Accept cash payment for ${payment.student_name}?`)
+  const handleAcceptPayment = async (groupedRequest: GroupedStudentRequest) => {
+    const ok = window.confirm(`Accept cash payment for ${groupedRequest.student_name} (${groupedRequest.requests.length} subject${groupedRequest.requests.length > 1 ? 's' : ''}) - ₹${groupedRequest.total_fees.toLocaleString('en-IN')}?`)
     if (!ok) return
 
-    const receiptTab = window.open('about:blank', '_blank')
-    const idCardTab = window.open('about:blank', '_blank')
-
-    if (receiptTab) {
-      receiptTab.document.title = 'Generating receipt...'
-      receiptTab.document.body.innerHTML = '<p style="font-family: Arial, sans-serif; padding: 16px;">Generating receipt PDF...</p>'
-    }
-    if (idCardTab) {
-      idCardTab.document.title = 'Generating ID card...'
-      idCardTab.document.body.innerHTML = '<p style="font-family: Arial, sans-serif; padding: 16px;">Generating ID card PDF...</p>'
-    }
-
     try {
-      setProcessingId(payment.request_id)
-      notifyInfo('Confirming cash payment and generating documents...')
+      setProcessingId(groupedRequest.requests[0]?.request_id || 0)
+      notifyInfo(`Confirming ${groupedRequest.requests.length} payment${groupedRequest.requests.length > 1 ? 's' : ''} and generating documents...`)
 
-      const confirmRes = await paymentsApi.acceptOfflineRequest(payment.request_id)
-      const enrollmentId = Number((confirmRes as any)?.data?.enrollment_id || payment.enrollment_id)
-      const confirmedPaymentId = Number((confirmRes as any)?.data?.payment_id || payment.payment_id)
+      // Accept all payments for this student
+      const confirmResults = await Promise.all(
+        groupedRequest.requests.map(req => paymentsApi.acceptOfflineRequest(req.request_id))
+      )
 
-      const docResults = await Promise.allSettled([
-        paymentsApi.openReceiptInNewTab(confirmedPaymentId, receiptTab),
-        enrollmentsApi.openIdCardInNewTab(enrollmentId, idCardTab),
-        paymentsApi.downloadReceipt(confirmedPaymentId),
-        enrollmentsApi.downloadIdCard(enrollmentId),
-      ])
+      // Collect enrollment and payment IDs
+      const enrollmentIds: number[] = []
+      const paymentIds: number[] = []
 
-      const openedCount = docResults.slice(0, 2).filter((result) => result.status === 'fulfilled').length
-      const downloadedCount = docResults.slice(2).filter((result) => result.status === 'fulfilled').length
-
-      if (openedCount === 2 && downloadedCount === 2) {
-        notifySuccess('Payment accepted. Receipt and ID card opened in separate tabs and downloaded successfully.')
-      } else if (openedCount >= 1 || downloadedCount >= 1) {
-        notifySuccess('Payment accepted. Documents were partially opened/downloaded; you can always re-download from student records.')
-      } else {
-        notifySuccess('Payment accepted. Documents are available in student records for manual open/download.')
+      for (let i = 0; i < confirmResults.length; i++) {
+        const result = confirmResults[i]
+        const enrollmentId = Number(result?.data?.enrollment_id || groupedRequest.requests[i]?.enrollment_id)
+        const paymentId = Number(result?.data?.payment_id || groupedRequest.requests[i]?.payment_id)
+        enrollmentIds.push(enrollmentId)
+        paymentIds.push(paymentId)
       }
 
-      if (!receiptTab || !idCardTab) {
-        notifyInfo('Your browser blocked one or more tabs. Please allow pop-ups for this site to auto-open both PDFs.')
+      // Open receipt tab (single receipt for all subjects)
+      const receiptTab = window.open('about:blank', '_blank')
+      if (receiptTab) {
+        receiptTab.document.title = 'Generating receipt...'
+        receiptTab.document.body.innerHTML = '<p style="font-family: Arial, sans-serif; padding: 16px;">Generating receipt PDF...</p>'
+      }
+
+      // Open ID card tabs for each enrollment (one per subject)
+      const idCardTabs = enrollmentIds.map(() => window.open('about:blank', '_blank'))
+      idCardTabs.forEach((tab) => {
+        if (tab) {
+          tab.document.title = 'Generating ID card...'
+          tab.document.body.innerHTML = '<p style="font-family: Arial, sans-serif; padding: 16px;">Generating ID card PDF...</p>'
+        }
+      })
+
+      // Generate and open documents
+      const docResults = await Promise.allSettled([
+        // Receipt (use first payment ID for the receipt)
+        receiptTab ? paymentsApi.openReceiptInNewTab(paymentIds[0], receiptTab) : Promise.reject(),
+        // ID Cards (one for each enrollment)
+        ...idCardTabs.map((tab, idx) => tab ? enrollmentsApi.openIdCardInNewTab(enrollmentIds[idx], tab) : Promise.reject()),
+        // Downloads
+        paymentsApi.downloadReceipt(paymentIds[0]),
+        ...enrollmentIds.map(id => enrollmentsApi.downloadIdCard(id))
+      ])
+
+      const openedCount = docResults.slice(0, 1 + idCardTabs.length).filter(r => r.status === 'fulfilled').length
+      const downloadedCount = docResults.slice(1 + idCardTabs.length).filter(r => r.status === 'fulfilled').length
+
+      if (openedCount > 0 && downloadedCount > 0) {
+        notifySuccess(`Payment${groupedRequest.requests.length > 1 ? 's' : ''} accepted. Receipt and ${enrollmentIds.length} ID card${enrollmentIds.length > 1 ? 's' : ''} opened in separate tabs and downloaded successfully.`)
+      } else if (openedCount > 0 || downloadedCount > 0) {
+        notifySuccess(`Payment${groupedRequest.requests.length > 1 ? 's' : ''} accepted. Documents were partially opened/downloaded; you can always re-download from student records.`)
+      } else {
+        notifySuccess(`Payment${groupedRequest.requests.length > 1 ? 's' : ''} accepted. Documents are available in student records for manual open/download.`)
+      }
+
+      if (idCardTabs.some(tab => !tab || tab.closed)) {
+        notifyInfo('Your browser blocked one or more tabs. Please allow pop-ups for this site to auto-open all documents.')
       }
 
       // Fetch student credentials and add to slider
       try {
-        const studentId = parseInt(payment.student_id, 10)
+        const studentId = parseInt(groupedRequest.student_id, 10)
         const studentRes = await studentsApi.getById(studentId)
         const student = (studentRes?.data || {}) as Student
-        setAcceptedCredentials(prev => [{
-          student_id: payment.student_id || '',
-          student_name: payment.student_name || '',
-          subject: payment.subject || '',
-          username: student.login_username || payment.student_id,
-          password_hint: student.login_password_hint || '(Ask student)',
-          accepted_at: new Date(),
-          visible: false
-        }, ...prev.slice(0, 9)])
+        
+        setAcceptedCredentials(prev => {
+          const newCreds = groupedRequest.requests.map(req => ({
+            student_id: groupedRequest.student_id,
+            student_name: groupedRequest.student_name,
+            subject: req.subject || '',
+            username: student.login_username || groupedRequest.student_id,
+            password_hint: student.login_password_hint || '(Ask student)',
+            accepted_at: new Date(),
+            visible: false
+          }))
+          return [...newCreds, ...prev.slice(0, Math.max(0, 10 - newCreds.length))]
+        })
         setShowSlider(true)
       } catch (err) {
         console.error('Failed to fetch student credentials:', err)
@@ -263,12 +337,6 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
 
       await fetchPendingCashRequests()
     } catch (err: any) {
-      if (receiptTab && !receiptTab.closed) {
-        receiptTab.close()
-      }
-      if (idCardTab && !idCardTab.closed) {
-        idCardTab.close()
-      }
       const backendMessage = err?.response?.data?.error?.message
       const fallbackMessage = err?.message
       notifyError(backendMessage || fallbackMessage || 'Failed to accept payment')
@@ -277,7 +345,7 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
     }
   }
 
-  const handleRejectPayment = async (request: OfflineRequestItem) => {
+  const handleRejectPayment = async (request: GroupedStudentRequest) => {
     setRejectConfirm({ show: true, request, reason: '' })
   }
 
@@ -285,15 +353,17 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
     if (!rejectConfirm.request) return
 
     try {
-      setProcessingId(rejectConfirm.request.request_id)
-      notifyInfo('Rejecting payment request...')
+      setProcessingId(rejectConfirm.request.requests[0]?.request_id || 0)
+      notifyInfo(`Rejecting ${rejectConfirm.request.requests.length} payment${rejectConfirm.request.requests.length > 1 ? 's' : ''}...`)
 
-      const rejectRes = await paymentsApi.rejectOfflineRequest(
-        rejectConfirm.request.request_id,
-        rejectConfirm.reason || undefined
+      // Reject all payments for this student
+      await Promise.all(
+        rejectConfirm.request.requests.map(req => 
+          paymentsApi.rejectOfflineRequest(req.request_id, rejectConfirm.reason || undefined)
+        )
       )
 
-      notifySuccess('Payment request rejected successfully. The student can resubmit.')
+      notifySuccess(`Payment${rejectConfirm.request.requests.length > 1 ? 's' : ''} request${rejectConfirm.request.requests.length > 1 ? 's' : ''} rejected successfully. The student can resubmit.`)
       setRejectConfirm({ show: false, request: null, reason: '' })
       await fetchPendingCashRequests()
     } catch (err: any) {
@@ -305,24 +375,29 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
     }
   }
 
-  const getDuplicateStudents = useMemo(() => {
-    const studentMap = new Map<string, OfflineRequestItem[]>()
-    for (const request of rows) {
-      const studentId = request.student_id?.toLowerCase().trim() || ''
-      if (!studentId) continue
-      if (!studentMap.has(studentId)) {
-        studentMap.set(studentId, [])
-      }
-      studentMap.get(studentId)!.push(request)
+  const handleDeletePayment = async (groupedRequest: GroupedStudentRequest) => {
+    const ok = window.confirm(`Delete pending payment request for ${groupedRequest.student_name} (${groupedRequest.requests.length} subject${groupedRequest.requests.length > 1 ? 's' : ''}) - ₹${groupedRequest.total_fees.toLocaleString('en-IN')}?\n\nThis action cannot be undone.`)
+    if (!ok) return
+
+    try {
+      setProcessingId(groupedRequest.requests[0]?.request_id || 0)
+      notifyInfo(`Deleting ${groupedRequest.requests.length} payment request${groupedRequest.requests.length > 1 ? 's' : ''}...`)
+
+      // Delete all payments for this student
+      await Promise.all(
+        groupedRequest.requests.map(req => paymentsApi.delete(req.request_id))
+      )
+
+      notifySuccess(`Payment request${groupedRequest.requests.length > 1 ? 's' : ''} deleted successfully.`)
+      await fetchPendingCashRequests()
+    } catch (err: any) {
+      const backendMessage = err?.response?.data?.error?.message
+      const fallbackMessage = err?.message
+      notifyError(backendMessage || fallbackMessage || 'Failed to delete payment request')
+    } finally {
+      setProcessingId(null)
     }
-    const duplicates = new Map<string, OfflineRequestItem[]>()
-    for (const [studentId, requests] of studentMap) {
-      if (requests.length > 1) {
-        duplicates.set(studentId, requests)
-      }
-    }
-    return duplicates
-  }, [rows])
+  }
 
   return (
     <div className="space-y-6">
@@ -445,71 +520,70 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
                 <tr>
                   <th className="px-6 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-widest">Student Name</th>
                   <th className="px-6 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-widest">Student ID</th>
-                  <th className="px-6 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-widest">Subject</th>
+                  <th className="px-6 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-widest">Subjects</th>
                   <th className="px-6 py-3 text-right text-[11px] font-bold text-slate-500 uppercase tracking-widest">Total Fees</th>
                   <th className="px-6 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-widest">Payment Status</th>
                   <th className="px-6 py-3 text-right text-[11px] font-bold text-slate-500 uppercase tracking-widest">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {visibleRows.map((payment) => (
-                  (() => {
-                    const actualFee = getActualFeeForSubjectLabel(payment.subject)
-                    const requestedAmount = Number(payment.total_fees || 0)
-                    const displayAmount = actualFee ?? requestedAmount
-                    const showMismatch = actualFee !== null && Math.round(actualFee) !== Math.round(requestedAmount)
-                    const duplicates = getDuplicateStudents.get(payment.student_id?.toLowerCase().trim() || '')
-                    const hasDuplicates = duplicates && duplicates.length > 1
-
-                    return (
-                  <tr key={payment.request_id} className={`hover:bg-slate-50/70 ${hasDuplicates ? 'bg-orange-50/30' : ''}`}>
+                {visibleRows.map((group) => (
+                  <tr key={group.student_id} className="hover:bg-slate-50/70">
                     <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900">{payment.student_name}</p>
-                          {hasDuplicates && (
-                            <p className="text-[10px] font-bold text-orange-600 uppercase tracking-widest mt-1">
-                              ⚠️ {duplicates.length} Registrations
-                            </p>
-                          )}
-                        </div>
+                      <p className="text-sm font-semibold text-slate-900">{group.student_name}</p>
+                    </td>
+                    <td className="px-6 py-4">
+                      <p className="text-sm font-bold text-slate-900 font-mono">{group.student_id}</p>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-slate-700">
+                      <div className="flex flex-col gap-1">
+                        {group.subjects.map((subject, idx) => (
+                          <span key={idx} className="text-xs bg-slate-100 px-2 py-1 rounded inline-block w-fit">
+                            {subject}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="text-sm font-semibold text-slate-900">₹{Number(group.total_fees || 0).toLocaleString('en-IN')}</div>
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mt-1">
+                        {group.requests.length} payment{group.requests.length > 1 ? 's' : ''}
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <p className="text-sm font-bold text-slate-900 font-mono">{payment.student_id}</p>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-slate-700">{payment.subject}</td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="text-sm font-semibold text-slate-900">₹{Number(displayAmount || 0).toLocaleString('en-IN')}</div>
-                      {showMismatch && (
-                        <div className="text-[10px] font-bold uppercase tracking-widest text-rose-600">Requested: ₹{requestedAmount.toLocaleString('en-IN')}</div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest ${getStatusClassName(payment.status || payment.payment_status)}`}>
-                        {getStatusLabel(payment.status)}
+                      <span className={`inline-flex items-center px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest ${getStatusClassName(group.requests[0]?.status || group.requests[0]?.payment_status)}`}>
+                        {group.all_pending ? 'Pending' : group.all_accepted ? 'Accepted' : group.all_rejected ? 'Rejected' : 'Mixed'}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      {PENDING_STATUSES.has((payment.status || payment.payment_status || '').toUpperCase()) ? (
+                      {group.all_pending ? (
                         <div className="flex items-center gap-2 justify-end">
                           <button
-                            disabled={!canAccept || processingId === payment.request_id}
-                            onClick={() => handleAcceptPayment(payment)}
+                            disabled={!canAccept || processingId === group.requests[0]?.request_id}
+                            onClick={() => handleAcceptPayment(group)}
                             className="inline-flex items-center gap-1 px-3 h-9 rounded-lg bg-emerald-600 text-white text-[11px] font-bold uppercase tracking-widest hover:bg-emerald-700 disabled:opacity-60"
-                            title="Accept and generate documents"
+                            title="Accept all payments for this student"
                           >
-                            {processingId === payment.request_id ? <Loader2 size={14} className="animate-spin" /> : <CreditCard size={14} />}
-                            Accept
+                            {processingId === group.requests[0]?.request_id ? <Loader2 size={14} className="animate-spin" /> : <CreditCard size={14} />}
+                            Accept All
                           </button>
                           <button
-                            disabled={!canAccept || processingId === payment.request_id}
-                            onClick={() => handleRejectPayment(payment)}
+                            disabled={!canAccept || processingId === group.requests[0]?.request_id}
+                            onClick={() => handleRejectPayment(group)}
                             className="inline-flex items-center gap-1 px-3 h-9 rounded-lg bg-rose-600 text-white text-[11px] font-bold uppercase tracking-widest hover:bg-rose-700 disabled:opacity-60"
-                            title="Reject this request"
+                            title="Reject all payments for this student"
                           >
-                            {processingId === payment.request_id ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}
-                            Reject
+                            {processingId === group.requests[0]?.request_id ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}
+                            Reject All
+                          </button>
+                          <button
+                            disabled={!canAccept || processingId === group.requests[0]?.request_id}
+                            onClick={() => handleDeletePayment(group)}
+                            className="inline-flex items-center gap-1 px-3 h-9 rounded-lg bg-slate-600 text-white text-[11px] font-bold uppercase tracking-widest hover:bg-slate-700 disabled:opacity-60"
+                            title="Delete all pending payments for this student"
+                          >
+                            {processingId === group.requests[0]?.request_id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                            Delete
                           </button>
                         </div>
                       ) : (
@@ -517,18 +591,11 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
                       )}
                     </td>
                   </tr>
-                    )
-                  })()
                 ))}
               </tbody>
             </table>
           </div>
         )}
-      </div>
-
-      <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 border border-blue-100 text-blue-700 text-xs">
-        <AlertCircle size={14} className="mt-0.5" />
-        <p>After acceptance, payment is marked as paid in CASH mode and both student documents are generated, opened in separate tabs, and downloaded for printing.</p>
       </div>
 
       {/* Reject Confirmation Modal */}
@@ -547,10 +614,10 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
 
             <div className="bg-rose-50 rounded-xl p-4 border border-rose-200">
               <p className="text-sm text-slate-700">
-                <span className="font-semibold">Subject:</span> {rejectConfirm.request.subject}
+                <span className="font-semibold">Subjects:</span> {rejectConfirm.request.subjects.join(', ')}
               </p>
               <p className="text-sm text-slate-700 mt-1">
-                <span className="font-semibold">Amount:</span> ₹{Number(rejectConfirm.request.total_fees || 0).toLocaleString('en-IN')}
+                <span className="font-semibold">Amount:</span> ₹{Number(rejectConfirm.request.total_fees || 0).toLocaleString('en-IN')} (${rejectConfirm.request.requests.length} payment${rejectConfirm.request.requests.length > 1 ? 's' : ''})
               </p>
             </div>
 
@@ -592,42 +659,6 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
                 )}
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Duplicates Warning */}
-      {getDuplicateStudents.size > 0 && (
-        <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 space-y-3">
-          <div className="flex items-center gap-2">
-            <AlertCircle size={20} className="text-orange-600 flex-shrink-0" />
-            <h3 className="font-bold text-orange-900">⚠️ Duplicate Registrations Detected</h3>
-          </div>
-          <p className="text-sm text-orange-800">
-            {getDuplicateStudents.size} student(s) have multiple registrations. Review the entries marked with ⚠️ above and reject or delete duplicates.
-          </p>
-          <div className="grid gap-2">
-            {Array.from(getDuplicateStudents.entries()).map(([studentId, requests]) => (
-              <div key={studentId} className="bg-white p-3 rounded-lg border border-orange-100">
-                <p className="text-sm font-semibold text-slate-900">{requests[0].student_name} ({requests.length} entries)</p>
-                <div className="text-xs text-slate-600 mt-1 space-y-1">
-                  {requests.map((req, idx) => (
-                    <div key={req.request_id} className="flex items-center justify-between">
-                      <span>Entry {idx + 1}: {req.subject} - ₹{Number(req.total_fees).toLocaleString('en-IN')}</span>
-                      {PENDING_STATUSES.has((req.status || req.payment_status || '').toUpperCase()) && (
-                        <button
-                          onClick={() => handleRejectPayment(req)}
-                          className="text-rose-600 hover:text-rose-700 font-semibold text-[10px] uppercase tracking-widest"
-                          title="Reject this duplicate entry"
-                        >
-                          Reject
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
           </div>
         </div>
       )}
@@ -684,35 +715,21 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
                       </button>
                     </div>
                   </div>
-
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Password Hint</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-mono font-semibold text-slate-900 truncate">
+                      {cred.visible ? cred.password_hint : '••••••••'}
+                    </p>
+                    {cred.visible && (
                       <button
                         onClick={() => {
-                          setAcceptedCredentials(prev => prev.map((c, i) => i === idx ? { ...c, visible: !c.visible } : c))
+                          navigator.clipboard.writeText(cred.password_hint || '')
+                          notifySuccess('Copied to clipboard')
                         }}
-                        className="text-slate-400 hover:text-slate-600"
+                        className="text-xs text-blue-600 hover:underline shrink-0"
                       >
-                        {cred.visible ? <EyeOff size={14} /> : <Eye size={14} />}
+                        Copy
                       </button>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-mono font-semibold text-slate-900 truncate">
-                        {cred.visible ? cred.password_hint : '••••••••'}
-                      </p>
-                      {cred.visible && (
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(cred.password_hint || '')
-                            notifySuccess('Copied to clipboard')
-                          }}
-                          className="text-xs text-blue-600 hover:underline shrink-0"
-                        >
-                          Copy
-                        </button>
-                      )}
-                    </div>
+                    )}
                   </div>
                 </div>
               </div>

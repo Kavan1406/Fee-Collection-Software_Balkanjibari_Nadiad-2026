@@ -140,6 +140,19 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
     // ALWAYS use allEnrollments for search when available, for complete search across all 648 records
     let filtered = allEnrollments && allEnrollments.length > 0 ? allEnrollments : enrollments;
     
+    // Filter by class mode
+    if (classMode !== 'ALL') {
+      filtered = filtered.filter(enrollment => {
+        const subjectClassMode = enrollment.subject?.class_mode || 'BOTH'
+        if (classMode === 'ONLINE') {
+          return subjectClassMode === 'ONLINE' || subjectClassMode === 'BOTH'
+        } else if (classMode === 'OFFLINE') {
+          return subjectClassMode === 'OFFLINE' || subjectClassMode === 'BOTH'
+        }
+        return true
+      })
+    }
+    
     // Filter by subject
     if (selectedSubject !== 0) {
       filtered = filtered.filter(enrollment => enrollment.subject.id === selectedSubject)
@@ -157,7 +170,7 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
     }
     
     setFilteredEnrollments(filtered)
-  }, [selectedSubject, allEnrollments, enrollments, searchTerm])
+  }, [selectedSubject, allEnrollments, enrollments, searchTerm, classMode])
 
   // Sync with Payments page: Auto-refresh when a payment is marked as paid
   useEffect(() => {

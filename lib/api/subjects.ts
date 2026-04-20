@@ -11,6 +11,7 @@ export interface Subject {
     description: string;
     category: 'EDUCATION' | 'MUSIC' | 'ART' | 'SPORTS' | 'DANCE' | 'OTHER';
     activity_type: 'SUMMER_CAMP' | 'YEAR_ROUND';
+    class_mode: 'ONLINE' | 'OFFLINE' | 'BOTH';
     duration_months?: number | null;
     timing_schedule?: string;
     monthly_fee?: string | null;

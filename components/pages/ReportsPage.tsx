@@ -1,8 +1,8 @@
 'use client'
 
 import { Download, FileText, Loader2, Calendar, BarChart3, BookOpen, Users, Info, Upload, CheckCircle, AlertCircle } from 'lucide-react'
-import { useState, useRef } from 'react'
-import { analyticsApi, paymentsApi, studentsApi } from '@/lib/api'
+import { useState, useRef, useEffect } from 'react'
+import { analyticsApi, paymentsApi, studentsApi, subjectsApi, enrollmentsApi } from '@/lib/api'
 import { useNotifications } from '@/hooks/useNotifications'
 
 interface ReportsPageProps {
@@ -35,9 +35,44 @@ export default function ReportsPage({ userRole }: ReportsPageProps) {
   const [subjectwiseTotalLoading, setSubjectwiseTotalLoading] = useState(false)
   const [subjectwiseTotalData, setSubjectwiseTotalData] = useState<any | null>(null)
   
+  // New: Batch-wise Subject Report (Session 15)
+  const [allSubjects, setAllSubjects] = useState<any[]>([])
+  const [selectedSubject, setSelectedSubject] = useState<string>('')
+  const [selectedBatch, setSelectedBatch] = useState<string>('')
+  const [subjectBatches, setSubjectBatches] = useState<string[]>([])
+  const [subjectBatchReportLoading, setSubjectBatchReportLoading] = useState(false)
+  const [subjectBatchReportData, setSubjectBatchReportData] = useState<any | null>(null)
+  const [debugMode, setDebugMode] = useState(false)
+  
   const fileInputRef = useRef<HTMLInputElement>(null)
   const startDateRef = useRef<HTMLInputElement>(null)
   const subjectDateRef = useRef<HTMLInputElement>(null)
+
+  // Fetch all subjects on component mount
+  useEffect(() => {
+    const fetchSubjects = async () => {
+      try {
+        console.log('📚 Fetching all subjects...')
+        const response = await subjectsApi.getAll()
+        const data = (response as any)?.data || response
+        console.log('📦 Subjects response:', response)
+        
+        if (Array.isArray(data)) {
+          console.log(`✅ Loaded ${data.length} subjects`)
+          setAllSubjects(data)
+        } else if (Array.isArray(response)) {
+          console.log(`✅ Loaded ${response.length} subjects`)
+          setAllSubjects(response)
+        } else {
+          console.warn('⚠️ Unexpected response format:', typeof data)
+        }
+      } catch (error: any) {
+        console.error('❌ Failed to fetch subjects:', error)
+        console.error('Error details:', error?.message || error?.response?.data || error)
+      }
+    }
+    fetchSubjects()
+  }, [])
 
   const reports = [
     { id: 'payment', name: 'Monthly Collection Report', type: 'CSV', date: new Date().toISOString().split('T')[0], size: 'Dynamic', desc: 'Revenue trends and cash flow analysis' },
@@ -118,6 +153,183 @@ export default function ReportsPage({ userRole }: ReportsPageProps) {
   }
 
   const formatCurrency = (value: number) => `₹${Number(value || 0).toLocaleString('en-IN')}`
+
+  const handleSubjectSelect = (subjectId: string) => {
+    setSelectedSubject(subjectId)
+    setSelectedBatch('')
+    setSubjectBatchReportData(null)
+    
+    console.log('📚 Subject selected:', subjectId)
+    
+    // Find the selected subject and extract batch times
+    const subject = allSubjects.find(s => s.id.toString() === subjectId)
+    if (subject) {
+      console.log('Subject details:', subject)
+      console.log('Timing schedule:', subject.timing_schedule)
+      
+      if (subject.timing_schedule) {
+        // Parse batch times from timing_schedule string
+        // Format: "Batch A: 7:00 AM - 8:00 AM | Batch B: 6:00 PM - 7:00 PM | ..."
+        const batches = subject.timing_schedule
+          .split('|')
+          .map((batch: string) => batch.trim())
+          .filter((batch: string) => batch.length > 0)
+        
+        console.log('✅ Extracted batches:', batches)
+        setSubjectBatches(batches)
+      } else {
+        console.warn('⚠️ Subject has no timing_schedule')
+        setSubjectBatches([])
+      }
+    } else {
+      console.error('❌ Subject not found in allSubjects')
+      setSubjectBatches([])
+    }
+  }
+
+  const generateSubjectBatchReport = async () => {
+    if (!selectedSubject || !selectedBatch) {
+      notifyError('Please select both subject and batch')
+      return
+    }
+
+    try {
+      setSubjectBatchReportLoading(true)
+      console.log('🔍 Generating report for Subject:', selectedSubject, 'Batch:', selectedBatch)
+      
+      // Fetch enrollments and related data
+      const enrollmentsResponse = await enrollmentsApi.getAll({ page_size: 10000 })
+      console.log('📦 Enrollments Response:', enrollmentsResponse)
+      
+      // Handle different response formats
+      let enrollments = []
+      if (Array.isArray(enrollmentsResponse)) {
+        enrollments = enrollmentsResponse
+      } else if ((enrollmentsResponse as any)?.results && Array.isArray((enrollmentsResponse as any).results)) {
+        enrollments = (enrollmentsResponse as any).results
+      } else if ((enrollmentsResponse as any)?.data && Array.isArray((enrollmentsResponse as any).data)) {
+        enrollments = (enrollmentsResponse as any).data
+      } else if ((enrollmentsResponse as any)?.data?.results && Array.isArray((enrollmentsResponse as any).data.results)) {
+        enrollments = (enrollmentsResponse as any).data.results
+      }
+      
+      console.log(`📋 Total enrollments fetched: ${enrollments.length}`)
+      
+      const subject = allSubjects.find(s => s.id.toString() === selectedSubject)
+      if (!subject) {
+        notifyError('Subject not found')
+        console.error('❌ Subject not found for ID:', selectedSubject)
+        return
+      }
+
+      console.log('✅ Found subject:', subject.name)
+
+      // Filter enrollments for selected subject and batch
+      const filteredEnrollments = enrollments.filter((e: any) => {
+        const subjectMatch = e.subject?.id?.toString() === selectedSubject || e.subject_id?.toString() === selectedSubject
+        const batchMatch = e.batch_time === selectedBatch
+        return subjectMatch && batchMatch
+      })
+
+      console.log(`🎯 Filtered enrollments for ${subject.name} + ${selectedBatch}:`, filteredEnrollments.length)
+
+      if (filteredEnrollments.length === 0) {
+        console.warn('⚠️ No enrollments found for this combination')
+        setSubjectBatchReportData({ 
+          rows: [], 
+          subject: subject.name, 
+          batch: selectedBatch,
+          total_students: 0,
+          total_amount: 0
+        })
+        notifySuccess('No students found for this subject and batch combination')
+        return
+      }
+
+      // Format data for display
+      const reportData = {
+        subject: subject.name,
+        batch: selectedBatch,
+        rows: filteredEnrollments.map((enrollment: any, index: number) => {
+          const paidAmount = parseFloat(enrollment.paid_amount || 0)
+          return {
+            sr_no: index + 1,
+            student_id: enrollment.student?.student_id || enrollment.student_id || 'N/A',
+            student_name: enrollment.student?.name || enrollment.student_name || 'N/A',
+            login_id: enrollment.student?.login_username || enrollment.login_username || 'N/A',
+            batch_time: enrollment.batch_time || 'N/A',
+            enrollment_date: (enrollment.enrollment_date || '').split('T')[0] || 'N/A',
+            payment_status: enrollment.payment_status || 'PENDING',
+            amount_paid: paidAmount,
+            phone: enrollment.student?.phone || enrollment.phone || 'N/A',
+          }
+        }),
+        total_students: filteredEnrollments.length,
+        total_amount: filteredEnrollments.reduce((sum: number, e: any) => {
+          const amount = parseFloat(e.paid_amount || 0)
+          return sum + (isNaN(amount) ? 0 : amount)
+        }, 0)
+      }
+
+      console.log('✨ Report data generated:', reportData)
+      setSubjectBatchReportData(reportData)
+      notifySuccess(`✅ Report generated with ${filteredEnrollments.length} students`)
+    } catch (error: any) {
+      console.error('❌ Report generation failed:', error)
+      console.error('Error details:', error?.message || error?.response?.data || error)
+      notifyError(`Failed to generate report: ${error?.message || 'Unknown error'}`)
+    } finally {
+      setSubjectBatchReportLoading(false)
+    }
+  }
+
+  const handleSubjectBatchDownload = async (format: 'CSV' | 'PDF') => {
+    if (!subjectBatchReportData || !subjectBatchReportData.rows) {
+      notifyError('Please generate report first')
+      return
+    }
+
+    try {
+      setDownloading(`subject_batch_${format}`)
+      
+      if (format === 'CSV') {
+        // Generate CSV
+        const headers = ['Sr No.', 'Student ID', 'Student Name', 'Login ID', 'Batch Time', 'Enrollment Date', 'Payment Status', 'Amount Paid', 'Phone']
+        const csvContent = [
+          headers.join(','),
+          ...subjectBatchReportData.rows.map((row: any) => [
+            row.sr_no,
+            row.student_id,
+            `"${row.student_name}"`,
+            row.login_id,
+            `"${row.batch_time}"`,
+            row.enrollment_date,
+            row.payment_status,
+            row.amount_paid,
+            row.phone
+          ].join(','))
+        ].join('\n')
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+        const link = document.createElement('a')
+        const url = URL.createObjectURL(blob)
+        link.setAttribute('href', url)
+        link.setAttribute('download', `${subjectBatchReportData.subject}_${subjectBatchReportData.batch.replace(/[:\s]+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`)
+        link.click()
+      } else {
+        // For PDF, you would use a library like pdfkit or jspdf
+        // For now, we'll just notify the user
+        notifyError('PDF export will be available in the next update')
+      }
+      
+      notifySuccess(`${format} downloaded successfully`)
+    } catch (error) {
+      console.error('Download failed:', error)
+      notifyError(`Failed to download ${format}`)
+    } finally {
+      setDownloading(null)
+    }
+  }
 
   const generateSubjectWiseReport = async (date: string) => {
     try {
@@ -753,6 +965,194 @@ export default function ReportsPage({ userRole }: ReportsPageProps) {
                     </div>
                 </div>
             ))}
+        </div>
+      </div>
+
+      {/* Subject & Batch-wise Student Report - NEW */}
+      <div className="card-standard p-6">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-5">
+          <div>
+            <h2 className="text-base font-bold text-slate-900 uppercase tracking-widest font-poppins">Subject & Batch-wise Student Report</h2>
+            <p className="text-xs text-slate-500 mt-1 font-inter">Filter students by subject and batch time, then export as CSV/PDF</p>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          {/* Dropdown Row */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* Subject Dropdown */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-600 uppercase tracking-widest font-inter">Select Subject *</label>
+              <select
+                value={selectedSubject}
+                onChange={(e) => handleSubjectSelect(e.target.value)}
+                className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 bg-white focus:outline-none focus:border-indigo-400"
+              >
+                <option value="">Choose a subject...</option>
+                {allSubjects.map((subject) => (
+                  <option key={subject.id} value={subject.id}>
+                    {subject.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Batch Dropdown */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-600 uppercase tracking-widest font-inter">Select Batch *</label>
+              <select
+                value={selectedBatch}
+                onChange={(e) => setSelectedBatch(e.target.value)}
+                disabled={!selectedSubject}
+                className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 bg-white focus:outline-none focus:border-indigo-400 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <option value="">Choose a batch...</option>
+                {subjectBatches.map((batch) => (
+                  <option key={batch} value={batch}>
+                    {batch}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Generate Button */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-600 uppercase tracking-widest font-inter invisible">Action</label>
+              <button
+                onClick={generateSubjectBatchReport}
+                disabled={!selectedSubject || !selectedBatch || subjectBatchReportLoading || !!downloading}
+                className="w-full h-10 px-4 rounded-xl bg-indigo-600 text-white text-xs font-bold uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed font-poppins"
+              >
+                {subjectBatchReportLoading ? <Loader2 size={14} className="animate-spin" /> : <BarChart3 size={14} />}
+                Generate Report
+              </button>
+            </div>
+
+            {/* Download Buttons Container */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-600 uppercase tracking-widest font-inter invisible">Download</label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleSubjectBatchDownload('CSV')}
+                  disabled={!subjectBatchReportData || !!downloading}
+                  className="flex-1 h-10 px-3 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100 font-bold text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-emerald-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-poppins"
+                >
+                  {downloading === 'subject_batch_CSV' ? <Loader2 size={12} className="animate-spin" /> : <Download size={14} />}
+                  CSV
+                </button>
+                <button
+                  onClick={() => handleSubjectBatchDownload('PDF')}
+                  disabled={!subjectBatchReportData || !!downloading}
+                  className="flex-1 h-10 px-3 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100 font-bold text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-indigo-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-poppins"
+                >
+                  {downloading === 'subject_batch_PDF' ? <Loader2 size={12} className="animate-spin" /> : <FileText size={14} />}
+                  PDF
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Debug Panel */}
+          <div className="mt-4 p-3 rounded-lg border border-slate-200 bg-slate-50">
+            <button
+              onClick={() => setDebugMode(!debugMode)}
+              className="text-[10px] font-bold text-slate-600 uppercase tracking-widest hover:text-indigo-600 transition-colors"
+            >
+              {debugMode ? '▼' : '▶'} Debug Info
+            </button>
+            {debugMode && (
+              <div className="mt-3 space-y-2 text-[9px] font-mono bg-white p-2 rounded border border-slate-200 max-h-40 overflow-y-auto">
+                <div><span className="text-slate-500">Subjects Loaded:</span> <span className="text-emerald-600 font-bold">{allSubjects.length}</span></div>
+                <div><span className="text-slate-500">Selected Subject:</span> <span className="text-indigo-600 font-bold">{selectedSubject || 'None'}</span></div>
+                <div><span className="text-slate-500">Available Batches:</span> <span className="text-purple-600 font-bold">{subjectBatches.length}</span></div>
+                <div><span className="text-slate-500">Selected Batch:</span> <span className="text-orange-600 font-bold">{selectedBatch || 'None'}</span></div>
+                <div><span className="text-slate-500">Report Generated:</span> <span className="text-blue-600 font-bold">{subjectBatchReportData ? 'Yes' : 'No'}</span></div>
+                {subjectBatchReportData && (
+                  <div><span className="text-slate-500">Report Rows:</span> <span className="text-emerald-600 font-bold">{subjectBatchReportData.rows?.length || 0}</span></div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Report Results Table */}
+          {subjectBatchReportLoading ? (
+            <div className="py-10 flex items-center justify-center gap-2 text-slate-500">
+              <Loader2 size={18} className="animate-spin" />
+              <span className="text-xs font-bold uppercase tracking-widest font-inter">Generating Report...</span>
+            </div>
+          ) : subjectBatchReportData ? (
+            <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+              {/* Summary Stats */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+                <div className="p-3 rounded-xl border border-indigo-100 bg-indigo-50">
+                  <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest font-inter">Subject</p>
+                  <p className="text-sm font-bold text-indigo-900 mt-1 font-poppins">{subjectBatchReportData.subject}</p>
+                </div>
+                <div className="p-3 rounded-xl border border-purple-100 bg-purple-50">
+                  <p className="text-[10px] font-bold text-purple-500 uppercase tracking-widest font-inter">Batch</p>
+                  <p className="text-sm font-bold text-purple-900 mt-1 line-clamp-2 font-poppins">{subjectBatchReportData.batch}</p>
+                </div>
+                <div className="p-3 rounded-xl border border-emerald-100 bg-emerald-50">
+                  <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest font-inter">Total Students</p>
+                  <p className="text-lg font-bold text-emerald-900 font-poppins">{subjectBatchReportData.total_students}</p>
+                </div>
+                <div className="p-3 rounded-xl border border-orange-100 bg-orange-50">
+                  <p className="text-[10px] font-bold text-orange-500 uppercase tracking-widest font-inter">Amount Collected</p>
+                  <p className="text-sm font-bold text-orange-900 font-poppins">₹{subjectBatchReportData.total_amount.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</p>
+                </div>
+              </div>
+
+              {/* Data Table */}
+              {subjectBatchReportData.rows && subjectBatchReportData.rows.length > 0 ? (
+                <div className="overflow-x-auto border border-slate-100 rounded-2xl">
+                  <table className="w-full">
+                    <thead className="bg-slate-50 border-b border-slate-100">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest font-poppins">Sr No.</th>
+                        <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest font-poppins">Student ID</th>
+                        <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest font-poppins">Student Name</th>
+                        <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest font-poppins">Login ID</th>
+                        <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest font-poppins">Batch Time</th>
+                        <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest font-poppins">Enrollment Date</th>
+                        <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest font-poppins">Payment Status</th>
+                        <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-500 uppercase tracking-widest font-poppins">Amount Paid</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {subjectBatchReportData.rows.map((row: any, index: number) => (
+                        <tr key={index} className="border-b border-slate-100 bg-white hover:bg-slate-50 transition-colors">
+                          <td className="px-4 py-3 text-xs font-bold text-slate-900 font-poppins">{row.sr_no}</td>
+                          <td className="px-4 py-3 text-xs font-semibold text-slate-700 font-inter">{row.student_id}</td>
+                          <td className="px-4 py-3 text-xs font-semibold text-slate-700 font-inter">{row.student_name}</td>
+                          <td className="px-4 py-3 text-xs font-semibold text-indigo-600 font-poppins">{row.login_id}</td>
+                          <td className="px-4 py-3 text-xs font-semibold text-slate-700 font-inter">{row.batch_time}</td>
+                          <td className="px-4 py-3 text-xs font-semibold text-slate-700 font-inter">{row.enrollment_date}</td>
+                          <td className="px-4 py-3">
+                            <span className={`px-2 py-1 rounded-full text-[9px] font-bold uppercase tracking-tighter ${
+                              row.payment_status === 'SUCCESS' ? 'bg-emerald-100 text-emerald-700' :
+                              row.payment_status === 'PENDING' || row.payment_status === 'PENDING_CONFIRMATION' ? 'bg-yellow-100 text-yellow-700' :
+                              'bg-rose-100 text-rose-700'
+                            }`}>
+                              {row.payment_status}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-xs font-bold text-emerald-600 text-right font-poppins">₹{parseFloat(row.amount_paid).toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="py-8 text-center text-slate-400">
+                  <p className="text-xs font-bold uppercase tracking-widest font-inter">No students found for this selection</p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="py-10 text-center text-slate-400">
+              <p className="text-xs font-bold uppercase tracking-widest font-inter">Select subject and batch, then click "Generate Report" to view student details</p>
+            </div>
+          )}
         </div>
       </div>
 

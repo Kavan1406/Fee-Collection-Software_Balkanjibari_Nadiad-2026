@@ -26,6 +26,12 @@ class Subject(models.Model):
         ('SUMMER_CAMP', 'Summer Camp'),
     ]
     
+    CLASS_MODE_CHOICES = [
+        ('ONLINE', 'Online'),
+        ('OFFLINE', 'Offline'),
+        ('BOTH', 'Both Online & Offline'),
+    ]
+    
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True)
     category = models.CharField(
@@ -40,6 +46,14 @@ class Subject(models.Model):
         choices=ACTIVITY_TYPE_CHOICES,
         default='SUMMER_CAMP',
         help_text='Type of activity'
+    )
+    
+    # Class mode (online/offline)
+    class_mode = models.CharField(
+        max_length=20,
+        choices=CLASS_MODE_CHOICES,
+        default='BOTH',
+        help_text='Mode of instruction: Online, Offline, or Both'
     )
     
     # Year-round activity specific fields

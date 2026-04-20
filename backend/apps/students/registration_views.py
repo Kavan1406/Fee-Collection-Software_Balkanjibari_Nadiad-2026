@@ -40,7 +40,7 @@ except ImportError:
 from apps.students.models import Student
 from apps.enrollments.models import Enrollment
 from apps.payments.models import Payment
-from apps.subjects.models import Subject
+from apps.subjects.models import Subject, SubjectBatch
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -87,6 +87,30 @@ def _allocate_unique_username(base_username: str, current_user_id: int | None = 
 
     # Last resort should be practically unreachable.
     return f"{base_username}{secrets.token_hex(2)}"
+
+
+def _check_batch_availability(subject: Subject, batch_time: str) -> tuple[bool, int, int]:
+    """
+    Check if a batch has available seats.
+    Returns: (is_available: bool, current_count: int, capacity_limit: int)
+    """
+    # Get or create batch configuration
+    batch_config, _ = SubjectBatch.objects.get_or_create(
+        subject=subject,
+        batch_time=batch_time,
+        defaults={'capacity_limit': subject.max_seats}
+    )
+    
+    # Count current enrollments in this specific batch
+    enrolled_count = Enrollment.objects.filter(
+        subject=subject,
+        batch_time=batch_time,
+        is_deleted=False,
+        status='ACTIVE'
+    ).count()
+    
+    is_available = enrolled_count < batch_config.capacity_limit
+    return is_available, enrolled_count, batch_config.capacity_limit
 
 
 def _parse_date(val: str):
@@ -326,13 +350,13 @@ def _handle_registration_logic(request):
         except Subject.DoesNotExist:
             continue
 
-        # Check seat availability
-        enrolled_count = Enrollment.objects.filter(subject=subject, is_deleted=False, status='ACTIVE').count()
-        if enrolled_count >= subject.max_seats:
+        # Check batch availability (per subject + batch_time)
+        is_available, current_count, capacity = _check_batch_availability(subject, batch_time)
+        if not is_available:
             transaction.set_rollback(True)
             return Response({
                 'success': False, 
-                'error': f'Sorry, "{subject.name}" is now full. Please pick another subject.'
+                'error': f'Sorry, the batch "{batch_time}" for "{subject.name}" is now full ({current_count}/{capacity}). Please pick another batch timing.'
             }, status=400)
 
         # Calculate subject fee

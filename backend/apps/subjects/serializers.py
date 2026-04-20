@@ -23,9 +23,9 @@ class SubjectSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Subject
-        fields = ['id', 'name', 'description', 'category', 'activity_type', 'duration_months',
-                  'timing_schedule', 'monthly_fee', 'instructor_name', 'default_batch_timing',
-                  'max_seats', 'enrolled_count', 'min_age', 'max_age',
+        fields = ['id', 'name', 'description', 'category', 'activity_type', 'class_mode',
+                  'duration_months', 'timing_schedule', 'monthly_fee', 'instructor_name',
+                  'default_batch_timing', 'max_seats', 'enrolled_count', 'min_age', 'max_age',
                   'is_active', 'current_fee', 'fee_structures', 'created_at']
         read_only_fields = ['id', 'created_at']
     
