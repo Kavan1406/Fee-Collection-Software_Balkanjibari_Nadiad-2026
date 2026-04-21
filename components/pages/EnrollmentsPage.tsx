@@ -18,6 +18,7 @@ interface Enrollment {
     name: string
   }
   enrollment_date: string
+  created_at?: string
   status: 'ACTIVE' | 'COMPLETED' | 'DROPPED'
   total_fee: string
   paid_amount: string
@@ -37,7 +38,7 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
   const [filteredEnrollments, setFilteredEnrollments] = useState<Enrollment[]>([])
   const [subjects, setSubjects] = useState<any[]>([])
   const [selectedSubject, setSelectedSubject] = useState<number>(0)
-  const [activityType, setActivityType] = useState<'SUMMER_CAMP' | 'YEAR_ROUND' | 'ALL'>('ALL')
+  const [activityType] = useState<'SUMMER_CAMP' | 'YEAR_ROUND' | 'ALL'>('SUMMER_CAMP')
   const [classMode, setClassMode] = useState<'ONLINE' | 'OFFLINE' | 'ALL'>('ALL')
   const [searchTerm, setSearchTerm] = useState('')
   const [loading, setLoading] = useState(true)
@@ -45,6 +46,15 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
   const [successMessage, setSuccessMessage] = useState('')
   const [refundConfirm, setRefundConfirm] = useState<{ show: boolean; enrollment: Enrollment | null }>({ show: false, enrollment: null })
   const [processing, setProcessing] = useState(false)
+
+  const getRecentEnrollmentCount = () => {
+    const now = new Date()
+    const startDate = new Date(now.getFullYear(), now.getMonth(), 15)
+    return allEnrollments.filter((enrollment) => {
+      const date = new Date(enrollment.enrollment_date || '')
+      return date >= startDate && date <= now
+    }).length
+  }
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1)
@@ -242,65 +252,20 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
 
   return (
     <div className="space-y-6">
-      {/* Activity Type Filter */}
-      {/* Activity Type Filter */}
-      <div className="card-standard p-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-1">
-          <h3 className="text-xs font-medium text-slate-400 uppercase tracking-widest font-inter">Activity Filter:</h3>
-          <div className="flex flex-wrap gap-2">
-            {[
-              { id: 'ALL', label: 'All Activities' },
-              { id: 'SUMMER_CAMP', label: 'Summer Camp' },
-            ].map((type) => (
-              <button
-                key={type.id}
-                onClick={() => setActivityType(type.id as any)}
-                className={`h-11 px-6 rounded-xl font-medium font-poppins flex items-center justify-center gap-2 transition-all active:scale-[0.98] text-xs uppercase tracking-widest ${activityType === type.id
-                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-                  : 'bg-slate-50 text-slate-500 border border-slate-100 hover:bg-slate-100'
-                  }`}
-              >
-                {type.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Class Mode Filter */}
-      <div className="card-standard p-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-1">
-          <h3 className="text-xs font-medium text-slate-400 uppercase tracking-widest font-inter">Class Mode:</h3>
-          <div className="flex flex-wrap gap-2">
-            {[
-              { id: 'ALL', label: 'Both Online & Offline' },
-              { id: 'ONLINE', label: 'Online Only' },
-              { id: 'OFFLINE', label: 'Offline Only' },
-            ].map((mode) => (
-              <button
-                key={mode.id}
-                onClick={() => setClassMode(mode.id as any)}
-                className={`h-11 px-6 rounded-xl font-medium font-poppins flex items-center justify-center gap-2 transition-all active:scale-[0.98] text-xs uppercase tracking-widest ${classMode === mode.id
-                  ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/20'
-                  : 'bg-slate-50 text-slate-500 border border-slate-100 hover:bg-slate-100'
-                  }`}
-              >
-                {mode.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-4 sm:p-6 rounded-xl border border-slate-200 shadow-sm">
+      <div className="bg-white p-4 sm:p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
         <div>
-          <h1 className="text-xl sm:text-3xl font-bold text-slate-900 font-poppins uppercase tracking-tight">Active Enrollments</h1>
-          <p className="text-slate-500 text-[10px] sm:text-sm mt-1 font-medium font-inter uppercase tracking-widest">Total Enrolled: {allEnrollments.length || enrollments.length} • Filtered: {filteredEnrollments.length}</p>
+          <h1 className="text-xl sm:text-3xl font-bold text-slate-900 font-poppins uppercase tracking-tight">Active Enrollments: Summer Camp 2026</h1>
+          <p className="text-slate-500 text-[10px] sm:text-sm mt-1 font-medium font-inter uppercase tracking-widest">
+            Total Students Enrolled: {allEnrollments.length > 0 ? getRecentEnrollmentCount() : enrollments.length}
+          </p>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full sm:w-auto">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-end">
           {/* Search Bar */}
-          <div className="flex-1 sm:flex-none relative w-full sm:w-64">
+          <div className="flex-1 min-w-0">
+            <label className="text-[10px] sm:text-xs font-medium text-slate-400 uppercase tracking-widest font-inter block mb-1">
+              Search Enrollments
+            </label>
             <div className="relative">
               <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 pointer-events-none" />
               <input
@@ -326,21 +291,39 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
           </div>
 
           {/* Subject Filter */}
-          <label className="text-[10px] sm:text-xs font-medium text-slate-400 uppercase tracking-widest shrink-0 font-inter">
-            Subject:
-          </label>
-          <select
-            value={selectedSubject}
-            onChange={(e) => setSelectedSubject(parseInt(e.target.value))}
-            className="flex-1 sm:w-64 h-11 input-standard text-xs sm:text-sm font-medium uppercase tracking-wider font-inter"
-          >
-            <option value={0}>Show All Subjects</option>
-            {subjects.map((subject) => (
-              <option key={subject.id} value={subject.id}>
-                {subject.name}
-              </option>
-            ))}
-          </select>
+          <div className="w-full xl:w-[260px] min-w-0">
+            <label className="text-[10px] sm:text-xs font-medium text-slate-400 uppercase tracking-widest font-inter block mb-1">
+              Subject
+            </label>
+            <select
+              value={selectedSubject}
+              onChange={(e) => setSelectedSubject(parseInt(e.target.value))}
+              className="w-full h-11 input-standard text-xs sm:text-sm font-medium uppercase tracking-wider font-inter"
+            >
+              <option value={0}>Show All Subjects</option>
+              {subjects.map((subject) => (
+                <option key={subject.id} value={subject.id}>
+                  {subject.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Mode Filter */}
+          <div className="w-full xl:w-[260px] min-w-0">
+            <label className="text-[10px] sm:text-xs font-medium text-slate-400 uppercase tracking-widest font-inter block mb-1">
+              Mode
+            </label>
+            <select
+              value={classMode}
+              onChange={(e) => setClassMode(e.target.value as 'ONLINE' | 'OFFLINE' | 'ALL')}
+              className="w-full h-11 input-standard text-xs sm:text-sm font-medium uppercase tracking-wider font-inter"
+            >
+              <option value="ALL">Online + Offline</option>
+              <option value="ONLINE">Online Only</option>
+              <option value="OFFLINE">Offline Only</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -418,7 +401,7 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
                             <p className="font-semibold text-gray-900 leading-tight uppercase tracking-tight font-inter">{enrollment.student?.name}</p>
                             <p className="text-[10px] font-medium text-gray-400 mt-0.5 uppercase tracking-widest font-inter">{enrollment.subject?.name}</p>
                             <p className="text-[9px] font-medium text-gray-500 mt-1 font-inter">
-                              {new Date(enrollment.enrollment_date).toLocaleDateString('en-IN')} • {new Date(enrollment.enrollment_date).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                              {new Date(enrollment.enrollment_date).toLocaleDateString('en-IN')} • {new Date(enrollment.created_at || enrollment.enrollment_date).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
                             </p>
                           </div>
                         </td>
@@ -518,7 +501,7 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
                         {enrollment.subject?.name}
                       </p>
                       <p className="text-[9px] font-medium text-slate-500 mt-1 font-inter">
-                        {new Date(enrollment.enrollment_date).toLocaleDateString('en-IN')} • {new Date(enrollment.enrollment_date).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                        {new Date(enrollment.enrollment_date).toLocaleDateString('en-IN')} • {new Date(enrollment.created_at || enrollment.enrollment_date).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
                       </p>
                     </div>
                     <div className="text-right flex flex-col items-end shrink-0 gap-2">
