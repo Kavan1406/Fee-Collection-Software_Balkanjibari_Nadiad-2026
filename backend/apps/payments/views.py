@@ -397,6 +397,35 @@ class PaymentViewSet(viewsets.ModelViewSet):
             
         return response
 
+    @action(detail=False, methods=['get'], url_path='pending-fees')
+    def pending_fees_list(self, request):
+        """Return JSON list of students with pending fee dues."""
+        enrollments = Enrollment.objects.filter(
+            is_deleted=False,
+            status='ACTIVE',
+            pending_amount__gt=0
+        ).select_related('student', 'subject').order_by('student__name')
+
+        data = [
+            {
+                'id': enr.id,
+                'student_id': enr.student.student_id,
+                'student_name': enr.student.name,
+                'subject_name': enr.subject.name,
+                'total_fee': float(enr.total_fee),
+                'paid_amount': float(enr.paid_amount),
+                'pending_amount': float(enr.pending_amount),
+                'payment_status': enr.payment_status,
+            }
+            for enr in enrollments
+        ]
+
+        return Response({
+            'success': True,
+            'count': len(data),
+            'data': data,
+        })
+
     @action(detail=False, methods=['get'], url_path='export_pending_fees_csv')
     def export_pending_fees_csv(self, request):
         """

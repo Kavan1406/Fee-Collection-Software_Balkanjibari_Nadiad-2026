@@ -90,6 +90,7 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
   const [showForm, setShowForm] = useState(false)
   const formRef = useRef<HTMLDivElement>(null)
   const [editingStudent, setEditingStudent] = useState<Student | null>(null)
+  const [allowEditEnrollments, setAllowEditEnrollments] = useState(false)
   const [viewingStudentId, setViewingStudentId] = useState<number | null>(null)
 
   // Pagination
@@ -331,8 +332,12 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
       let allowedFields: string[] = [];
       
       if (editingStudent) {
-        // Edit mode: Only allow updating name, phone, and enrollments
-        allowedFields = ['name', 'phone', 'enrollments'];
+        // Edit mode: Only allow updating name and phone by default.
+        // Subject/batch changes are only sent if the admin has enabled them.
+        allowedFields = ['name', 'phone'];
+        if (allowEditEnrollments) {
+          allowedFields.push('enrollments');
+        }
       } else {
         // Create mode: Allow all fields for new registration
         allowedFields = [
@@ -371,7 +376,7 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
       let result;
       if (editingStudent) {
         result = await studentsApi.update(editingStudent.id, submissionData)
-        notifySuccess('Student updated successfully - Name, Phone & Subjects updated')
+        notifySuccess(`Student updated successfully${allowEditEnrollments ? ' - Name, Phone & Subjects updated' : ' - Name and Phone updated'}`)
         setShowForm(false)
         setEditingStudent(null)
         resetForm()
@@ -499,6 +504,7 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
       })
     }
 
+    setAllowEditEnrollments(false)
     setShowForm(true)
   }
 
@@ -524,6 +530,7 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
       payment_method: 'CASH'
     })
     setEditingStudent(null)
+    setAllowEditEnrollments(false)
     setLastCreatedId(null)
     setLastEnrollmentIds([])
     setLastPaymentMethod(null)
@@ -572,23 +579,25 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
     const newEnrollments = [...formData.enrollments]
 
     if (field === 'subject_id') {
-      const sub = availableSubjects.find(s => s.id === value)
+      const normalizedSubjectId = value === '' ? '' : Number(value)
+      const sub = availableSubjects.find(s => s.id === normalizedSubjectId)
       if (sub) {
         const timings = getUniqueBatchTimings(sub)
+        const subjectValue = value === '' ? '' : String(normalizedSubjectId)
         newEnrollments[index] = {
           ...newEnrollments[index],
-          [field]: value,
+          [field]: subjectValue,
           batch_time: timings.length > 0 ? timings[0] : (sub.default_batch_timing || '')
         }
         // Fetch batch capacity data if not already loaded
-        if (value && !batchData[value]) {
-          fetch(`${API_BASE_URL}/api/v1/subjects/${value}/batches/`, {
+        if (subjectValue && !batchData[subjectValue]) {
+          fetch(`${API_BASE_URL}/api/v1/subjects/${subjectValue}/batches/`, {
             headers: { 'Authorization': `Bearer ${sessionStorage.getItem('access_token')}` }
           })
             .then(r => r.json())
             .then(data => {
               const batches = data.data || data.results || []
-              setBatchData(prev => ({ ...prev, [value]: batches }))
+              setBatchData(prev => ({ ...prev, [subjectValue]: batches }))
             })
             .catch(() => {})
         }
@@ -598,8 +607,9 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
     } else if (field === 'batch_time') {
       // Check if selected batch is full
       const subjId = newEnrollments[index].subject_id
-      if (subjId && value) {
-        const batches = batchData[subjId] || []
+      const batchKey = subjId !== undefined && subjId !== null ? String(subjId) : subjId
+      if (batchKey && value) {
+        const batches = batchData[batchKey] || []
         const selectedBatch = batches.find(b => b.batch_time === value)
         if (selectedBatch && selectedBatch.is_full) {
           notifyError(`Sorry, the batch "${value}" is currently full. Please select another batch.`)
@@ -632,7 +642,7 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
   }
 
   const getEnrollmentFeeBreakdown = (enr: any) => {
-    const subject = availableSubjects.find((s: any) => s.id === enr.subject_id)
+    const subject = availableSubjects.find((s: any) => s.id === Number(enr.subject_id))
     const subjectFee = parseFloat(subject?.current_fee?.amount || '0')
     const libraryFee = enr.include_library_fee ? 10 : 0
     return {
@@ -765,7 +775,17 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
           {editingStudent && (
             <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl">
               <p className="text-sm font-bold text-amber-900">
-                ✏️ Editable Fields: <span className="text-amber-700">Name, Phone Number, & Subject/Batch Details</span>
+                ✏️ Editable Fields: <span className="text-amber-700">Name & Phone Number</span>
+                <br />
+                <label className="inline-flex items-center gap-2 mt-2">
+                  <input
+                    type="checkbox"
+                    checked={allowEditEnrollments}
+                    onChange={e => setAllowEditEnrollments(e.target.checked)}
+                    className="form-checkbox h-4 w-4 text-indigo-600 border-gray-300 rounded"
+                  />
+                  <span className="text-xs text-indigo-700 font-semibold">Edit Subject/Batch (tick to enable)</span>
+                </label>
               </p>
               <p className="text-xs text-amber-700 mt-1">Other personal information fields are locked to maintain data integrity.</p>
             </div>
@@ -946,8 +966,9 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
                   <input
                     type="file"
                     accept="image/*"
-                    onChange={(e) => setFormData({ ...formData, photo: e.target.files?.[0] || null })}
-                    className="w-full input-standard border-dashed bg-gray-50/30"
+                    onChange={(e) => editingStudent ? null : setFormData({ ...formData, photo: e.target.files?.[0] || null })}
+                    disabled={editingStudent ? true : false}
+                    className={`w-full input-standard border-dashed bg-gray-50/30 ${editingStudent ? 'bg-gray-50/80 cursor-not-allowed' : ''}`}
                   />
                 </div>
               </div>
@@ -964,7 +985,8 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
                   <button
                     type="button"
                     onClick={addEnrollmentField}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold text-indigo-600 hover:bg-indigo-50 border border-indigo-100 transition-all uppercase tracking-widest"
+                    disabled={editingStudent ? !allowEditEnrollments : false}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-widest transition-all border border-indigo-100 ${editingStudent && !allowEditEnrollments ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'text-indigo-600 hover:bg-indigo-50'}`}
                   >
                     <Plus size={14} /> Add Subject
                   </button>
@@ -979,7 +1001,8 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
                           <button
                             type="button"
                             onClick={() => removeEnrollmentField(index)}
-                            className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+                            disabled={editingStudent ? !allowEditEnrollments : false}
+                            className={`p-1.5 rounded-lg transition-colors ${editingStudent && !allowEditEnrollments ? 'text-slate-300 cursor-not-allowed' : 'text-rose-500 hover:bg-rose-50'}`}
                           >
                             <Trash2 size={16} />
                           </button>
@@ -990,17 +1013,18 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
                         <div className="flex flex-col gap-1">
                           <label className="text-[11px] font-bold text-gray-400 uppercase ml-1">Subject</label>
                           <select
-                            className="w-full input-standard bg-white"
+                            className={`w-full input-standard bg-white ${editingStudent && !allowEditEnrollments ? 'bg-gray-50/80 cursor-not-allowed' : ''}`}
                             value={enr.subject_id}
-                            onChange={(e) => handleEnrollmentChange(index, 'subject_id', parseInt(e.target.value))}
+                            onChange={(e) => handleEnrollmentChange(index, 'subject_id', e.target.value)}
                             required
+                            disabled={editingStudent ? !allowEditEnrollments : false}
                           >
                             <option value="">Select Subject</option>
                             {availableSubjects.map((sub: any) => {
                               const eligible = checkAgeEligibility(formData.age, sub.min_age ?? 0, sub.max_age ?? 100)
                               const ageRange = (sub.min_age > 0 || sub.max_age < 100) ? ` · ${sub.min_age}–${sub.max_age} yrs` : ''
                               return (
-                                <option key={sub.id} value={sub.id} disabled={!eligible}>
+                                <option key={sub.id} value={sub.id.toString()} disabled={!eligible}>
                                   {!eligible ? '✕ ' : ''}{sub.name} (₹{parseFloat(sub.current_fee?.amount || '0')}){ageRange}
                                 </option>
                               )
@@ -1025,16 +1049,17 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
                         <div className="flex flex-col gap-1">
                           <label className="text-[11px] font-bold text-gray-400 uppercase ml-1">Batch Time</label>
                           <select
-                            className="w-full input-standard bg-white"
+                            className={`w-full input-standard bg-white ${editingStudent && !allowEditEnrollments ? 'bg-gray-50/80 cursor-not-allowed' : ''}`}
                             value={enr.batch_time}
                             onChange={(e) => handleEnrollmentChange(index, 'batch_time', e.target.value)}
                             required
+                            disabled={editingStudent ? !allowEditEnrollments : false}
                           >
                             <option value="">Select Time</option>
                             {(() => {
-                                const sub = availableSubjects.find(s => s.id === enr.subject_id)
+                                const sub = availableSubjects.find(s => s.id === Number(enr.subject_id))
                                 const timings = sub ? getUniqueBatchTimings(sub) : []
-                                const batches: any[] = batchData[enr.subject_id] || []
+                                const batches: any[] = batchData[Number(enr.subject_id)] || []
                                 return timings.map(t => {
                                     const batchInfo = batches.find((b: any) => b.batch_time === t)
                                     const isFull = batchInfo?.is_full
@@ -1081,6 +1106,7 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
                           checked={enr.include_library_fee || false}
                           onChange={(e) => handleEnrollmentChange(index, 'include_library_fee', e.target.checked)}
                           className="w-5 h-5 rounded-lg border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                          disabled={editingStudent ? !allowEditEnrollments : false}
                         />
                       </div>
                     </div>
@@ -1098,7 +1124,7 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
                         <span className="text-3xl font-black">
                           ₹{(() => {
                             const totalSubjectFees = formData.enrollments.reduce((acc: number, enr: any) => {
-                              const sub = availableSubjects.find(s => s.id === enr.subject_id);
+                              const sub = availableSubjects.find(s => s.id === Number(enr.subject_id));
                               return acc + (sub?.current_fee?.amount ? parseFloat(sub.current_fee.amount) : 0);
                             }, 0);
                             const libraryFee = formData.enrollments.filter((e: any) => e.include_library_fee).length * 10;

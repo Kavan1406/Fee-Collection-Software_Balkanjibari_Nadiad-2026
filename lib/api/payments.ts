@@ -29,6 +29,17 @@ export interface Payment {
     installment_number?: number;
 }
 
+export interface AdminPendingFee {
+    id: number;
+    student_id: string;
+    student_name: string;
+    subject_name: string;
+    total_fee: number;
+    paid_amount: number;
+    pending_amount: number;
+    payment_status: string;
+}
+
 export interface CreatePaymentData {
     enrollment_id: number;
     amount: number;
@@ -148,6 +159,16 @@ export const paymentsApi = {
     getStudentPendingFees: async (): Promise<ApiResponse<PendingFee[]>> => {
         const response = await apiClient.get<ApiResponse<PendingFee[]>>(
             '/api/v1/payments/student/pending-fees/'
+        );
+        return response.data;
+    },
+
+    /**
+     * Get pending fees list for admin/staff
+     */
+    getPendingFeesList: async (): Promise<ApiResponse<AdminPendingFee[]>> => {
+        const response = await apiClient.get<ApiResponse<AdminPendingFee[]>>(
+            '/api/v1/payments/pending-fees/'
         );
         return response.data;
     },

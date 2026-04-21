@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { TrendingUp, Users, CreditCard, AlertCircle, Plus, IndianRupee, Download, Loader2, ArrowLeft } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { TrendingUp, Users, CreditCard, AlertCircle, Plus, IndianRupee, Download, Loader2, ArrowLeft, FileText, Trash2 } from 'lucide-react'
 import { analyticsApi, DashboardStats, PaymentTrend, SubjectDistribution } from '@/lib/api/analytics'
-import { enrollmentsApi, paymentsApi, subjectsApi } from '@/lib/api'
+import { enrollmentsApi, paymentsApi, subjectsApi, AdminPendingFee } from '@/lib/api'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   AreaChart, Area, PieChart, Pie, Cell
@@ -21,45 +21,71 @@ export default function DashboardPage({ setCurrentPage, userRole = 'staff' }: Da
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [trends, setTrends] = useState<PaymentTrend[]>([])
   const [distribution, setDistribution] = useState<SubjectDistribution[]>([])
-  const [pendingStudents, setPendingStudents] = useState<any[]>([])
+  const [pendingStudents, setPendingStudents] = useState<AdminPendingFee[]>([])
   const [recentOnlinePayments, setRecentOnlinePayments] = useState<any[]>([])
   const [subjects, setSubjects] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState('')
   const [updatingSubjectId, setUpdatingSubjectId] = useState<number | null>(null)
+  const [clearingEnrollmentId, setClearingEnrollmentId] = useState<number | null>(null)
+  const [dueListFilter, setDueListFilter] = useState<'DUES' | 'COMPLETED'>('DUES')
+  const dueListRef = useRef<HTMLDivElement | null>(null)
 
   const fetchData = async (isRefresh = false) => {
     try {
       if (isRefresh) setRefreshing(true)
       else setLoading(true)
-      
-      const [statsRes, enrollmentsRes, paymentsRes, trendsRes, distributionRes, subjectsRes] = await Promise.all([
-        analyticsApi.getDashboardStats(),
-        enrollmentsApi.getAll({ page_size: 100 }),
+
+      const statsRes = await analyticsApi.getDashboardStats()
+      if (statsRes.success) setStats(statsRes.data || null)
+
+      setLoading(false)
+
+      const secondaryTasks = await Promise.allSettled([
+        enrollmentsApi.getAll({ page_size: 50 }),
         paymentsApi.getAll({ page_size: 10 }),
+        paymentsApi.getPendingFeesList(),
         analyticsApi.getPaymentTrends(),
         analyticsApi.getSubjectDistribution(),
         subjectsApi.getAll()
       ])
 
-      if (statsRes.success) setStats(statsRes.data || null)
-      // @ts-ignore
-      if (trendsRes.success) setTrends(trendsRes.data || trendsRes)
-      // @ts-ignore
-      if (distributionRes.success) setDistribution(distributionRes.data || distributionRes)
-      
-      if (subjectsRes.success) setSubjects(subjectsRes.data || [])
+      const [enrollmentsRes, paymentsRes, pendingRes, trendsRes, distributionRes, subjectsRes] = secondaryTasks.map((result) =>
+        result.status === 'fulfilled' ? result.value : null
+      )
 
-      if (enrollmentsRes.results) {
+      // @ts-ignore
+      if (trendsRes?.success) setTrends(trendsRes.data || trendsRes)
+      // @ts-ignore
+      if (distributionRes?.success) setDistribution(distributionRes.data || distributionRes)
+
+      if (subjectsRes?.success) setSubjects(subjectsRes.data || [])
+
+      if (pendingRes?.success) {
+        const pending = (pendingRes.data || []).sort(
+          (a: AdminPendingFee, b: AdminPendingFee) => b.pending_amount - a.pending_amount
+        )
+        setPendingStudents(pending)
+      } else if (enrollmentsRes?.results) {
         const pending = enrollmentsRes.results
           .filter((e: any) => parseFloat(e.pending_amount) > 0)
           .sort((a: any, b: any) => parseFloat(b.pending_amount) - parseFloat(a.pending_amount))
           .slice(0, 10)
+          .map((e: any) => ({
+            id: e.id,
+            student_id: e.student?.student_id,
+            student_name: e.student?.name,
+            subject_name: e.subject?.name,
+            total_fee: parseFloat(e.total_fee || 0),
+            paid_amount: parseFloat(e.paid_amount || 0),
+            pending_amount: parseFloat(e.pending_amount || 0),
+            payment_status: e.payment_status || 'PENDING',
+          }))
         setPendingStudents(pending)
       }
 
-      if (paymentsRes.results) {
+      if (paymentsRes?.results) {
         const successful = paymentsRes.results
           .filter((p: any) => p.status === 'SUCCESS')
           .slice(0, 10)
@@ -163,8 +189,29 @@ export default function DashboardPage({ setCurrentPage, userRole = 'staff' }: Da
     }
   }
 
+  const handleClearDue = async (enrollmentId: number) => {
+    const modeInput = window.prompt('Payment mode for due clearance: CASH or ONLINE', 'CASH')
+    if (!modeInput) return
+    const normalizedMode = modeInput.trim().toUpperCase()
+    if (normalizedMode !== 'CASH' && normalizedMode !== 'ONLINE') {
+      window.alert('Please enter CASH or ONLINE.')
+      return
+    }
+    if (!window.confirm(`Clear this pending due as ${normalizedMode}?`)) return
+    try {
+      setClearingEnrollmentId(enrollmentId)
+      await enrollmentsApi.clearPending(enrollmentId, normalizedMode as 'CASH' | 'ONLINE')
+      await fetchData(true)
+    } catch (err: any) {
+      console.error('Failed to clear due', err)
+      setError(err?.response?.data?.error?.message || 'Failed to clear due')
+    } finally {
+      setClearingEnrollmentId(null)
+    }
+  }
+
   return (
-    <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 no-scrollbar overflow-y-auto h-full bg-slate-50/50">
+    <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto h-full bg-slate-50/50 dashboard-scrollbar">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4">
         <div>
           <h1 className="h1 uppercase font-poppins">Institution Dashboard</h1>
@@ -384,6 +431,89 @@ export default function DashboardPage({ setCurrentPage, userRole = 'staff' }: Da
               </button>
             </div>
           </div>
+
+          <div ref={dueListRef} className="card-standard p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+              <h3 className="h3 flex items-center gap-2">
+                <AlertCircle size={18} className="text-orange-600" />
+                Payment Dues Overview
+              </h3>
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">View</label>
+                <select
+                  value={dueListFilter}
+                  onChange={(e) => setDueListFilter(e.target.value as 'DUES' | 'COMPLETED')}
+                  className="h-9 px-3 rounded-lg border border-slate-200 text-[10px] font-bold uppercase tracking-widest text-slate-600 bg-white"
+                >
+                  <option value="DUES">Payment Dues</option>
+                  <option value="COMPLETED">Completed Payments</option>
+                </select>
+              </div>
+            </div>
+
+            {dueListFilter === 'DUES' ? (
+              <div className="space-y-3">
+                {pendingStudents.length === 0 ? (
+                  <p className="text-center text-gray-500 text-xs py-6 italic">No pending fees</p>
+                ) : (
+                  pendingStudents.map((enrollment) => (
+                    <div key={enrollment.id} className="p-3 border border-orange-100 rounded-xl bg-orange-50/30">
+                      <div className="flex justify-between items-start gap-2">
+                        <div className="min-w-0">
+                          <p className="font-bold text-gray-900 text-xs truncate">{enrollment.student_name}</p>
+                          <p className="text-[10px] text-gray-500 truncate">{enrollment.subject_name}</p>
+                          <p className="text-[9px] text-gray-400 mt-1">ID: {enrollment.student_id}</p>
+                        </div>
+                        <span className="text-xs font-bold text-orange-600 shrink-0">₹{Number(enrollment.pending_amount || 0).toLocaleString()}</span>
+                      </div>
+                      <div className="flex items-center justify-between mt-2 text-[10px]">
+                        <span className="text-gray-500 font-medium">Paid ₹{Number(enrollment.paid_amount || 0).toLocaleString()}</span>
+                        <span className="text-gray-400">Total ₹{Number(enrollment.total_fee || 0).toLocaleString()}</span>
+                      </div>
+                      <div className="mt-3 flex items-center justify-between gap-2">
+                        <button
+                          onClick={() => setCurrentPage('payments')}
+                          className="h-8 px-3 rounded-lg bg-white text-orange-700 text-[10px] font-bold uppercase tracking-widest border border-orange-100 hover:bg-orange-50"
+                        >
+                          View
+                        </button>
+                        <button
+                          onClick={() => handleClearDue(enrollment.id)}
+                          disabled={clearingEnrollmentId === enrollment.id}
+                          className="h-8 px-3 rounded-lg bg-rose-500 text-white text-[10px] font-bold uppercase tracking-widest hover:bg-rose-600 disabled:opacity-60 flex items-center gap-2"
+                        >
+                          <Trash2 size={12} />
+                          {clearingEnrollmentId === enrollment.id ? 'Clearing...' : 'Clear Due'}
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {recentOnlinePayments.length === 0 ? (
+                  <p className="text-center text-gray-500 text-xs py-6 italic">No completed payments found</p>
+                ) : (
+                  recentOnlinePayments.map((payment: any) => (
+                    <div key={payment.id} className="p-3 border border-slate-100 rounded-xl bg-slate-50/40">
+                      <div className="flex justify-between items-start gap-2">
+                        <div className="min-w-0">
+                          <p className="font-bold text-gray-900 text-xs truncate">{payment.student_name}</p>
+                          <p className="text-[10px] text-gray-500 truncate">{payment.subject_name}</p>
+                        </div>
+                        <span className="text-xs font-bold text-emerald-600 shrink-0">₹{parseFloat(payment.amount).toLocaleString()}</span>
+                      </div>
+                      <div className="flex items-center justify-between mt-2 text-[10px]">
+                        <span className="text-gray-500 font-medium">Mode {payment.payment_mode}</span>
+                        <span className="text-gray-400">ID: {payment.student_id}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Sidebar Actions & Stats */}
@@ -406,75 +536,19 @@ export default function DashboardPage({ setCurrentPage, userRole = 'staff' }: Da
                 <ArrowLeft className="rotate-180 opacity-50" size={14} />
               </button>
               <button
-                onClick={() => setCurrentPage('payments')}
+                onClick={() => setCurrentPage('reports')}
                 className="w-full flex items-center justify-between p-3 rounded-2xl bg-emerald-500 text-white hover:scale-[1.02] transition-all active:scale-[0.98] shadow-lg shadow-emerald-500/10"
               >
                 <div className="flex items-center gap-3">
-                   <div className="p-2 bg-white/10 rounded-xl"><IndianRupee size={18} /></div>
-                   <span className="text-xs font-bold uppercase tracking-widest">Record Fee</span>
+                   <div className="p-2 bg-white/10 rounded-xl"><FileText size={18} /></div>
+                   <span className="text-xs font-bold uppercase tracking-widest">View Reports</span>
                 </div>
                 <ArrowLeft className="rotate-180 opacity-50" size={14} />
               </button>
             </div>
           </div>
 
-          {/* Pending Fees Widget */}
-          <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xs font-black font-poppins flex items-center gap-2 text-slate-900 uppercase tracking-widest">
-                <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
-                Due Clearance
-              </h3>
-              {pendingStudents.length > 0 && stats && (
-                <span className="text-[10px] bg-orange-50 text-orange-600 px-2 py-0.5 rounded-full font-black border border-orange-100">
-                  ₹{Math.round(stats.total_pending).toLocaleString()}
-                </span>
-              )}
-            </div>
-            <div className="space-y-3 max-h-[400px] overflow-y-auto no-scrollbar">
-              {pendingStudents.length === 0 ? (
-                <p className="text-center text-gray-500 text-xs py-4 italic">No pending fees</p>
-              ) : (
-                pendingStudents.map((enrollment: any) => (
-                  <div
-                    key={enrollment.id}
-                    className="p-3 bg-orange-50/50 border border-orange-200/50 rounded-xl hover:bg-orange-100 transition-colors cursor-pointer"
-                    onClick={() => setCurrentPage('payments')}
-                  >
-                    <div className="flex justify-between items-start mb-1">
-                      <div className="min-w-0">
-                        <p className="font-bold text-gray-900 text-xs truncate">
-                          {enrollment.student.name}
-                        </p>
-                        <p className="text-[10px] text-gray-500 truncate">
-                          {enrollment.subject.name}
-                        </p>
-                      </div>
-                      <span className="text-xs font-bold text-orange-600 shrink-0">
-                        ₹{parseFloat(enrollment.pending_amount).toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center mt-2 text-[10px]">
-                      <span className="text-gray-500 font-medium">
-                        Progress
-                      </span>
-                      <div className="w-20 h-1 bg-gray-200 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-orange-500"
-                          style={{ width: `${(parseFloat(enrollment.paid_amount) / parseFloat(enrollment.total_fee)) * 100}%` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-            <div className="mt-4 text-center">
-              <button onClick={() => setCurrentPage('reports')} className="btn-standard h-9 px-4 text-[10px] font-bold uppercase tracking-widest text-orange-600 hover:bg-orange-50 border border-orange-100">
-                View detailed report
-              </button>
-            </div>
-          </div>
+          {/* Pending Fees Widget removed as per user request */}
         </div>
       </div>
     </div>

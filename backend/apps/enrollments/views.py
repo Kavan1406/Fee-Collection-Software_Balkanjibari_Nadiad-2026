@@ -7,8 +7,10 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db import transaction
+from django.utils import timezone
 
 from .models import Enrollment
+from apps.payments.models import Payment
 from .serializers import EnrollmentSerializer, EnrollmentCreateSerializer
 from utils.permissions import IsStaffAccountantOrAdmin
 from utils.pagination import StandardResultsSetPagination
@@ -26,7 +28,7 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         """Restrict write operations to staff and admins."""
-        if self.action in ['create', 'update', 'partial_update', 'destroy', 'process_refund']:
+        if self.action in ['create', 'update', 'partial_update', 'destroy', 'process_refund', 'clear_pending']:
             return [IsStaffAccountantOrAdmin()]
         return [IsAuthenticated()]
     
@@ -167,6 +169,55 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
                 'success': False,
                 'error': {'message': f'Failed to process refund: {str(e)}'}
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['post'], url_path='clear-pending')
+    @transaction.atomic
+    def clear_pending(self, request, pk=None):
+        """
+        Clear pending dues by recording a cash payment for the remaining amount.
+        """
+        try:
+            enrollment = Enrollment.objects.select_for_update().get(id=pk, is_deleted=False)
+        except Enrollment.DoesNotExist:
+            return Response({
+                'success': False,
+                'error': {'message': 'Enrollment not found.'}
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        if enrollment.pending_amount <= 0:
+            return Response({
+                'success': False,
+                'error': {'message': 'No pending amount to clear.'}
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        payment_mode = (request.data.get('payment_mode') or 'CASH').upper()
+        if payment_mode not in ['CASH', 'ONLINE']:
+            return Response({
+                'success': False,
+                'error': {'message': 'Invalid payment mode. Use CASH or ONLINE.'}
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        pending_amount = enrollment.pending_amount
+
+        payment = Payment.objects.create(
+            enrollment=enrollment,
+            amount=pending_amount,
+            payment_date=timezone.now().date(),
+            payment_mode=payment_mode,
+            status='SUCCESS',
+            recorded_by=request.user,
+            notes='Due clearance adjustment from dashboard'
+        )
+
+        enrollment.paid_amount += pending_amount
+        enrollment.pending_amount = 0
+        enrollment.save()
+
+        return Response({
+            'success': True,
+            'message': f'Dues cleared for enrollment {enrollment.enrollment_id}.',
+            'payment_id': payment.id
+        }, status=status.HTTP_200_OK)
     
     def destroy(self, request, *args, **kwargs):
         """Enrollment deletion is disabled. Use process-refund action instead."""

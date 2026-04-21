@@ -413,5 +413,16 @@ export const enrollmentsApi = {
             return;
         }
     },
+
+    /**
+     * Clear pending dues by marking enrollment fully paid (Admin/Staff).
+     */
+    clearPending: async (id: number, payment_mode: 'CASH' | 'ONLINE'): Promise<ApiResponse<{ message: string }>> => {
+        const response = await apiClient.post<ApiResponse<{ message: string }>>(
+            `/api/v1/enrollments/${id}/clear-pending/`,
+            { payment_mode }
+        );
+        return response.data;
+    },
 };
 

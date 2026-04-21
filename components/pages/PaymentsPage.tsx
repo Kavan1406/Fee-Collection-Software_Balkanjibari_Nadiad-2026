@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { Plus, Search, AlertCircle, Calendar, Loader2, CreditCard, RefreshCw, CheckCircle, Download, FileText, Trash2 } from 'lucide-react'
-import { paymentsApi, enrollmentsApi, Payment, CreatePaymentData } from '@/lib/api'
+import { paymentsApi, enrollmentsApi, Payment, CreatePaymentData, AdminPendingFee } from '@/lib/api'
 import { API_BASE_URL } from '@/lib/api/client'
 
 interface PaymentsPageProps {
@@ -26,6 +26,8 @@ export default function PaymentsPage({ userRole, canEdit }: PaymentsPageProps) {
   const [deletePaymentId, setDeletePaymentId] = useState<number | null>(null)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [outstandingFees, setOutstandingFees] = useState<AdminPendingFee[]>([])
+  const [outstandingLoading, setOutstandingLoading] = useState(false)
 
   const canAdd = userRole === 'admin' || (userRole === 'staff' && canEdit) || userRole === 'accountant'
 
@@ -57,6 +59,7 @@ export default function PaymentsPage({ userRole, canEdit }: PaymentsPageProps) {
   const [paymentModeFilter, setPaymentModeFilter] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
+  const [summaryView, setSummaryView] = useState<'ALL' | 'COLLECTIONS' | 'OUTSTANDING' | 'TRANSACTIONS'>('ALL')
 
   // Form state
   const [formData, setFormData] = useState<CreatePaymentData>({
@@ -115,6 +118,19 @@ export default function PaymentsPage({ userRole, canEdit }: PaymentsPageProps) {
     }
   }
 
+  const fetchOutstandingFees = async () => {
+    try {
+      setOutstandingLoading(true)
+      const response = await paymentsApi.getPendingFeesList()
+      const list = (response as any)?.data || response
+      setOutstandingFees(Array.isArray(list) ? list : [])
+    } catch (err: any) {
+      setError(err.response?.data?.error?.message || 'Failed to fetch outstanding dues')
+    } finally {
+      setOutstandingLoading(false)
+    }
+  }
+
   // Fetch enrollments for the form
   const fetchEnrollments = async () => {
     try {
@@ -128,6 +144,12 @@ export default function PaymentsPage({ userRole, canEdit }: PaymentsPageProps) {
   useEffect(() => {
     fetchPayments()
   }, [currentPage, searchTerm, paymentModeFilter, startDate, endDate])
+
+  useEffect(() => {
+    if (summaryView === 'OUTSTANDING') {
+      fetchOutstandingFees()
+    }
+  }, [summaryView])
 
   useEffect(() => {
     if (showForm) {
@@ -299,7 +321,17 @@ export default function PaymentsPage({ userRole, canEdit }: PaymentsPageProps) {
           <h1 className="text-xl sm:text-3xl font-bold text-slate-900 font-poppins uppercase tracking-tight">Payments Management</h1>
           <p className="text-slate-500 text-[10px] sm:text-sm mt-1 font-medium font-inter uppercase tracking-widest">Track and manage institution fee collections</p>
         </div>
-        <div className="flex gap-2 w-full sm:w-auto">
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <select
+            value={summaryView}
+            onChange={(e) => setSummaryView(e.target.value as typeof summaryView)}
+            className="h-11 px-3 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs font-bold uppercase tracking-widest"
+          >
+            <option value="ALL">All Summary</option>
+            <option value="COLLECTIONS">Collections</option>
+            <option value="OUTSTANDING">Outstanding</option>
+            <option value="TRANSACTIONS">Transactions</option>
+          </select>
           {(userRole === 'admin' || userRole === 'staff') && (
             <button
               onClick={handleSyncPayments}
@@ -320,36 +352,107 @@ export default function PaymentsPage({ userRole, canEdit }: PaymentsPageProps) {
               )}
             </button>
           )}
-          {canAdd && (
-            <button
-              onClick={() => setShowForm(!showForm)}
-              className="h-11 px-4 sm:px-6 rounded-xl font-medium font-poppins flex items-center justify-center gap-2 transition-all active:scale-[0.98] text-xs uppercase tracking-widest bg-blue-600 text-white shadow-lg shadow-blue-500/20 flex-1 sm:flex-none"
-            >
-              <Plus size={18} />
-              <span>Record Payment</span>
-            </button>
-          )}
+          {canAdd && null}
         </div>
       </div>
 
       {/* Summary Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6 px-1 sm:px-0">
-        <div className="bg-white rounded-[20px] sm:rounded-[28px] p-4 sm:p-6 border border-slate-100 shadow-lg shadow-slate-200/20 group relative overflow-hidden border-l-4 border-l-emerald-500">
-          <p className="text-[8px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 font-inter">Collections</p>
-          <h2 className="text-xl sm:text-2xl font-semibold text-slate-900 font-poppins">{formatCurrency(Number(paymentStats?.total_paid || 0))}</h2>
-          <p className="text-[8px] font-bold text-emerald-600 mt-1 uppercase tracking-tighter sm:tracking-tight font-inter">Confirmed</p>
-        </div>
-        <div className="bg-white rounded-[20px] sm:rounded-[28px] p-4 sm:p-6 border border-slate-100 shadow-lg shadow-slate-200/20 group relative overflow-hidden border-l-4 border-l-rose-500">
-          <p className="text-[8px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 font-inter">Outstanding</p>
-          <h2 className="text-xl sm:text-2xl font-semibold text-slate-900 font-poppins">{formatCurrency(Number(paymentStats?.total_pending || 0))}</h2>
-          <p className="text-[8px] font-bold text-rose-500 mt-1 uppercase tracking-tighter sm:tracking-tight font-inter">Pending Dues</p>
-        </div>
-        <div className="bg-white rounded-[20px] sm:rounded-[28px] p-4 sm:p-6 border border-slate-100 shadow-lg shadow-slate-200/20 group relative overflow-hidden border-l-4 border-l-blue-500 col-span-2 lg:col-span-1">
-          <p className="text-[8px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 font-inter">Transactions</p>
-          <h2 className="text-xl sm:text-2xl font-semibold text-slate-900 font-poppins">{totalCount}</h2>
-          <p className="text-[8px] font-bold text-blue-600 mt-1 uppercase tracking-tighter sm:tracking-tight font-inter">Total entries</p>
-        </div>
+        {(summaryView === 'ALL' || summaryView === 'COLLECTIONS') && (
+          <div className="bg-white rounded-[20px] sm:rounded-[28px] p-4 sm:p-6 border border-slate-100 shadow-lg shadow-slate-200/20 group relative overflow-hidden border-l-4 border-l-emerald-500">
+            <p className="text-[8px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 font-inter">Collections</p>
+            <h2 className="text-xl sm:text-2xl font-semibold text-slate-900 font-poppins">{formatCurrency(Number(paymentStats?.total_paid || 0))}</h2>
+            <p className="text-[8px] font-bold text-emerald-600 mt-1 uppercase tracking-tighter sm:tracking-tight font-inter">Confirmed</p>
+          </div>
+        )}
+        {(summaryView === 'ALL' || summaryView === 'OUTSTANDING') && (
+          <div className="bg-white rounded-[20px] sm:rounded-[28px] p-4 sm:p-6 border border-slate-100 shadow-lg shadow-slate-200/20 group relative overflow-hidden border-l-4 border-l-rose-500">
+            <p className="text-[8px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 font-inter">Outstanding</p>
+            <h2 className="text-xl sm:text-2xl font-semibold text-slate-900 font-poppins">{formatCurrency(Number(paymentStats?.total_pending || 0))}</h2>
+            <p className="text-[8px] font-bold text-rose-500 mt-1 uppercase tracking-tighter sm:tracking-tight font-inter">Pending Dues</p>
+          </div>
+        )}
+        {(summaryView === 'ALL' || summaryView === 'TRANSACTIONS') && (
+          <div className="bg-white rounded-[20px] sm:rounded-[28px] p-4 sm:p-6 border border-slate-100 shadow-lg shadow-slate-200/20 group relative overflow-hidden border-l-4 border-l-blue-500 col-span-2 lg:col-span-1">
+            <p className="text-[8px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 font-inter">Transactions</p>
+            <h2 className="text-xl sm:text-2xl font-semibold text-slate-900 font-poppins">{totalCount}</h2>
+            <p className="text-[8px] font-bold text-blue-600 mt-1 uppercase tracking-tighter sm:tracking-tight font-inter">Total entries</p>
+          </div>
+        )}
       </div>
+
+      <div className="flex items-center justify-between gap-3 bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-sm">
+        <div>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">View Data</p>
+          <p className="text-xs text-slate-600">Select which section to show below</p>
+        </div>
+        <select
+          value={summaryView}
+          onChange={(e) => setSummaryView(e.target.value as typeof summaryView)}
+          className="h-10 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold uppercase tracking-widest"
+        >
+          <option value="ALL">All Summary</option>
+          <option value="COLLECTIONS">Collections</option>
+          <option value="OUTSTANDING">Outstanding</option>
+          <option value="TRANSACTIONS">Transactions</option>
+        </select>
+      </div>
+
+      {summaryView === 'OUTSTANDING' && (
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-200 bg-slate-50">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Outstanding Pending Dues</p>
+                <p className="text-[10px] text-slate-400 font-medium uppercase tracking-widest mt-1">Student-wise pending fees to verify and clear</p>
+              </div>
+              <div className="text-xs font-bold text-slate-500">
+                {outstandingFees.length} entries
+              </div>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            {outstandingLoading ? (
+              <div className="py-16 flex flex-col items-center justify-center text-slate-500">
+                <Loader2 className="animate-spin mb-3" size={28} />
+                <p className="text-sm font-semibold">Loading outstanding dues...</p>
+              </div>
+            ) : outstandingFees.length === 0 ? (
+              <div className="py-16 flex flex-col items-center justify-center text-slate-500">
+                <CheckCircle size={28} className="text-emerald-500 mb-3" />
+                <p className="text-sm font-semibold">No outstanding dues found.</p>
+              </div>
+            ) : (
+              <table className="w-full">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-widest">Student</th>
+                    <th className="px-6 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-widest">Student ID</th>
+                    <th className="px-6 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-widest">Subject</th>
+                    <th className="px-6 py-3 text-right text-[11px] font-bold text-slate-500 uppercase tracking-widest">Total Fee</th>
+                    <th className="px-6 py-3 text-right text-[11px] font-bold text-slate-500 uppercase tracking-widest">Paid</th>
+                    <th className="px-6 py-3 text-right text-[11px] font-bold text-slate-500 uppercase tracking-widest">Pending</th>
+                    <th className="px-6 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-widest">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {outstandingFees.map((fee) => (
+                    <tr key={fee.id} className="hover:bg-slate-50/70">
+                      <td className="px-6 py-4 text-sm font-semibold text-slate-900">{fee.student_name}</td>
+                      <td className="px-6 py-4 text-sm font-mono text-slate-900">{fee.student_id}</td>
+                      <td className="px-6 py-4 text-sm text-slate-700">{fee.subject_name}</td>
+                      <td className="px-6 py-4 text-right text-sm font-semibold text-slate-900">{formatCurrency(fee.total_fee)}</td>
+                      <td className="px-6 py-4 text-right text-sm text-emerald-600">{formatCurrency(fee.paid_amount)}</td>
+                      <td className="px-6 py-4 text-right text-sm font-semibold text-rose-600">{formatCurrency(fee.pending_amount)}</td>
+                      <td className="px-6 py-4 text-left text-xs font-bold uppercase tracking-widest text-slate-500">{fee.payment_status || 'PENDING'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Payment Mode Summary Stats */}
       {!loading && payments.length > 0 && (

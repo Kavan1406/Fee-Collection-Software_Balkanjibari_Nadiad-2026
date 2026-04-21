@@ -76,7 +76,9 @@ export default function SubjectsPage({ userRole, canEdit }: SubjectsPageProps) {
       setLoading(true)
       setError('')
       const response = await subjectsApi.getAll()
-      setSubjects(response.data ?? [])
+      const subjectsList = response.data ?? []
+      subjectsList.sort((a: Subject, b: Subject) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }))
+      setSubjects(subjectsList)
     } catch (err: any) {
       setError(err.message || 'Failed to load subjects')
     } finally {
