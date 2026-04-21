@@ -46,9 +46,9 @@ db_backup.json
 
 # Log files
 *.log
+*.txt
 # Keep the build manifest tracked for Render deployments
 !requirements.txt
-*.txt
 emergency_error.log
 incoming_debug.log
 
