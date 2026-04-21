@@ -62,6 +62,27 @@ export interface SubjectWiseDailyFeeReport {
     grand_total: number;
 }
 
+export interface SubjectBatchEnrollmentReportRow {
+    subject_name: string;
+    batch_time: string;
+    student_name: string;
+    student_id: string;
+    login_id: string;
+    enrollment_date: string;
+}
+
+export interface SubjectBatchEnrollmentReport {
+    subject_id: number;
+    subject_name: string;
+    batch: string;
+    start_date: string;
+    end_date: string;
+    generated_at: string;
+    rows: SubjectBatchEnrollmentReportRow[];
+    totals_by_batch: Array<{ batch_time: string; total_students: number }>;
+    total_students: number;
+}
+
 export const analyticsApi = {
     /**
      * Get high-level dashboard stats
@@ -189,6 +210,43 @@ export const analyticsApi = {
 
     exportSubjectWiseDailyFeeReportPdf: async (date: string) =>
         analyticsApi.downloadFile('/api/v1/analytics/export_subject_wise_daily_fee_report_pdf/', `subject-report-${date}.pdf`, { date }),
+
+    getSubjectBatchEnrollmentReport: async (
+        subject_id: number,
+        batch: string,
+        start_date: string,
+        end_date: string
+    ): Promise<ApiResponse<SubjectBatchEnrollmentReport>> => {
+        const response = await apiClient.get<ApiResponse<SubjectBatchEnrollmentReport>>(
+            '/api/v1/analytics/subject_batch_enrollment_report/',
+            { params: { subject_id, batch, start_date, end_date } }
+        );
+        return response.data;
+    },
+
+    exportSubjectBatchEnrollmentReportCsv: async (
+        subject_id: number,
+        batch: string,
+        start_date: string,
+        end_date: string
+    ) =>
+        analyticsApi.downloadFile(
+            '/api/v1/analytics/export_subject_batch_enrollment_report_csv/',
+            `subject_batch_enrollment_report_${subject_id}_${batch}_${start_date}_to_${end_date}.csv`,
+            { subject_id, batch, start_date, end_date }
+        ),
+
+    exportSubjectBatchEnrollmentReportPdf: async (
+        subject_id: number,
+        batch: string,
+        start_date: string,
+        end_date: string
+    ) =>
+        analyticsApi.downloadFile(
+            '/api/v1/analytics/export_subject_batch_enrollment_report_pdf/',
+            `subject_batch_enrollment_report_${subject_id}_${batch}_${start_date}_to_${end_date}.pdf`,
+            { subject_id, batch, start_date, end_date }
+        ),
 
     /**
      * Get statistics for the current student

@@ -349,6 +349,177 @@ class AnalyticsViewSet(viewsets.ViewSet):
             return Response({'success': False, 'error': {'message': str(e)}}, status=500)
 
     @action(detail=False, methods=['get'])
+    def subject_batch_enrollment_report(self, request):
+        """Return subject-wise, batch-wise enrollment data for a date range."""
+        try:
+            subject_id = request.query_params.get('subject_id')
+            batch = request.query_params.get('batch', 'ALL')
+            start_date_str = request.query_params.get('start_date')
+            end_date_str = request.query_params.get('end_date')
+
+            if not subject_id:
+                return Response({'success': False, 'error': {'message': 'subject_id is required.'}}, status=400)
+
+            filters = {
+                'is_deleted': False,
+                'subject_id': int(subject_id)
+            }
+
+            if batch and batch.upper() != 'ALL':
+                filters['batch_time'] = batch
+
+            enrollments = Enrollment.objects.filter(**filters).select_related('student', 'subject').order_by('batch_time', 'student__name')
+
+            if start_date_str:
+                start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+                enrollments = enrollments.filter(enrollment_date__gte=start_date)
+            if end_date_str:
+                end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+                enrollments = enrollments.filter(enrollment_date__lte=end_date)
+
+            rows = []
+            totals: dict[str, int] = {}
+            for idx, enr in enumerate(enrollments, start=1):
+                student_name = enr.student.name if enr.student else 'N/A'
+                login_id = enr.student.login_username if enr.student and getattr(enr.student, 'login_username', None) else (enr.student.student_id if enr.student else 'N/A')
+                batch_name = enr.batch_time or 'N/A'
+
+                totals[batch_name] = totals.get(batch_name, 0) + 1
+                rows.append({
+                    'subject_name': enr.subject.name if enr.subject else 'N/A',
+                    'batch_time': batch_name,
+                    'student_name': student_name,
+                    'student_id': enr.student.student_id if enr.student else 'N/A',
+                    'login_id': login_id,
+                    'enrollment_date': enr.enrollment_date.strftime('%Y-%m-%d') if getattr(enr, 'enrollment_date', None) else 'N/A',
+                })
+
+            totals_by_batch = [
+                {'batch_time': batch_name, 'total_students': count}
+                for batch_name, count in sorted(totals.items())
+            ]
+
+            subject = Subject.objects.filter(id=int(subject_id), is_deleted=False).first()
+            subject_name = subject.name if subject else 'Selected Subject'
+
+            return Response({
+                'success': True,
+                'data': {
+                    'subject_id': int(subject_id),
+                    'subject_name': subject_name,
+                    'batch': batch,
+                    'start_date': start_date_str or 'All',
+                    'end_date': end_date_str or 'All',
+                    'generated_at': timezone.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    'rows': rows,
+                    'totals_by_batch': totals_by_batch,
+                    'total_students': sum(totals.values()),
+                }
+            })
+        except Exception as e:
+            return Response({'success': False, 'error': {'message': str(e)}}, status=500)
+
+    @action(detail=False, methods=['get'])
+    def export_subject_batch_enrollment_report_csv(self, request):
+        """Export subject/batch enrollment report as CSV."""
+        try:
+            subject_id = request.query_params.get('subject_id')
+            batch = request.query_params.get('batch', 'ALL')
+            start_date_str = request.query_params.get('start_date')
+            end_date_str = request.query_params.get('end_date')
+
+            if not subject_id:
+                return Response({'success': False, 'error': {'message': 'subject_id is required.'}}, status=400)
+
+            filters = {
+                'is_deleted': False,
+                'subject_id': int(subject_id)
+            }
+            if batch and batch.upper() != 'ALL':
+                filters['batch_time'] = batch
+
+            enrollments = Enrollment.objects.filter(**filters).select_related('student', 'subject').order_by('batch_time', 'student__name')
+            if start_date_str:
+                start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+                enrollments = enrollments.filter(enrollment_date__gte=start_date)
+            if end_date_str:
+                end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+                enrollments = enrollments.filter(enrollment_date__lte=end_date)
+
+            file_date = timezone.now().strftime('%Y-%m-%d')
+            response = HttpResponse(content_type='text/csv')
+            response['Content-Disposition'] = f'attachment; filename="subject_batch_enrollment_report_{subject_id}_{batch}_{file_date}.csv"'
+            writer = csv.writer(response)
+
+            writer.writerow(['Sr. No.', 'Student Name', 'Student Login ID', 'Subject Name', 'Batch Name', 'Enrollment Date'])
+            for idx, enr in enumerate(enrollments, start=1):
+                login_id = enr.student.login_username if enr.student and getattr(enr.student, 'login_username', None) else (enr.student.student_id if enr.student else 'N/A')
+                writer.writerow([
+                    idx,
+                    enr.student.name if enr.student else 'N/A',
+                    login_id,
+                    enr.subject.name if enr.subject else 'N/A',
+                    enr.batch_time or 'N/A',
+                    enr.enrollment_date.strftime('%Y-%m-%d') if getattr(enr, 'enrollment_date', None) else 'N/A',
+                ])
+
+            return response
+        except Exception as e:
+            return Response({'success': False, 'error': {'message': str(e)}}, status=500)
+
+    @action(detail=False, methods=['get'])
+    def export_subject_batch_enrollment_report_pdf(self, request):
+        """Export subject/batch enrollment report as PDF."""
+        try:
+            subject_id = request.query_params.get('subject_id')
+            batch = request.query_params.get('batch', 'ALL')
+            start_date_str = request.query_params.get('start_date')
+            end_date_str = request.query_params.get('end_date')
+
+            if not subject_id:
+                return Response({'success': False, 'error': {'message': 'subject_id is required.'}}, status=400)
+
+            filters = {
+                'is_deleted': False,
+                'subject_id': int(subject_id)
+            }
+            if batch and batch.upper() != 'ALL':
+                filters['batch_time'] = batch
+
+            enrollments = Enrollment.objects.filter(**filters).select_related('student', 'subject').order_by('batch_time', 'student__name')
+            if start_date_str:
+                start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+                enrollments = enrollments.filter(enrollment_date__gte=start_date)
+            if end_date_str:
+                end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+                enrollments = enrollments.filter(enrollment_date__lte=end_date)
+
+            subject = Subject.objects.filter(id=int(subject_id), is_deleted=False).first()
+            subject_name = subject.name if subject else 'Selected Subject'
+            file_date = timezone.now().strftime('%Y-%m-%d')
+
+            headers = ['Sr. No.', 'Student Name', 'Student Login ID', 'Subject Name', 'Batch Name', 'Enrollment Date']
+            data = []
+            for idx, enr in enumerate(enrollments, start=1):
+                login_id = enr.student.login_username if enr.student and getattr(enr.student, 'login_username', None) else (enr.student.student_id if enr.student else 'N/A')
+                data.append([
+                    idx,
+                    enr.student.name if enr.student else 'N/A',
+                    login_id,
+                    enr.subject.name if enr.subject else 'N/A',
+                    enr.batch_time or 'N/A',
+                    enr.enrollment_date.strftime('%Y-%m-%d') if getattr(enr, 'enrollment_date', None) else 'N/A',
+                ])
+
+            title = f"Subject-wise Batch-wise Enrollment Report ({subject_name})"
+            pdf_content = generate_pdf_report(title, headers, data)
+            response = HttpResponse(pdf_content, content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="subject_batch_enrollment_report_{subject_id}_{batch}_{file_date}.pdf"'
+            return response
+        except Exception as e:
+            return Response({'success': False, 'error': {'message': str(e)}}, status=500)
+
+    @action(detail=False, methods=['get'])
     def export_subject_wise_daily_fee_report_csv(self, request):
         """Export subject-wise daily fee report as CSV."""
         try:
