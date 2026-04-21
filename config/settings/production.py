@@ -15,7 +15,6 @@ if backend_path not in sys.path:
 # Import all settings from the actual production file
 try:
     from backend.config.settings.production import *
-    print(">>> Settings Bridge: Successfully loaded backend settings")
 except ImportError as e:
     # If the above fails, it might be because the name is just 'config.settings.production'
     # relative to the backend path.

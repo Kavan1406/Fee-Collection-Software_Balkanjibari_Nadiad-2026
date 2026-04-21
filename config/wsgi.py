@@ -24,7 +24,6 @@ try:
     # We use 'backend.config.wsgi' to bridge directly to the actual app file
     # This avoids circular imports with 'config.wsgi' (this file itself)
     from backend.config.wsgi import application
-    print(">>> WSGI Bridge: Successfully linked to backend.config.wsgi")
 except Exception as e:
     print(f">>> WSGI Bridge Error: {e}")
     # Fallback: Try to let Django handle it if paths are already set
