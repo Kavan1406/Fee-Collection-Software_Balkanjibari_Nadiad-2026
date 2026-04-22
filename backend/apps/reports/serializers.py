@@ -35,6 +35,7 @@ class EnrollmentReportSerializer(serializers.Serializer):
     """Serializer for Student Enrollment Report data - same format as Payment Report"""
     receipt_id = serializers.SerializerMethodField()
     payment_ref = serializers.SerializerMethodField()
+    student_id = serializers.CharField(source='student.student_id')
     student_name = serializers.CharField(source='student.name')
     subject_name = serializers.CharField(source='subject.name')
     phone = serializers.CharField(source='student.phone', allow_null=True)
@@ -47,6 +48,7 @@ class EnrollmentReportSerializer(serializers.Serializer):
         fields = [
             'receipt_id',
             'payment_ref',
+            'student_id',
             'student_name',
             'subject_name',
             'phone',

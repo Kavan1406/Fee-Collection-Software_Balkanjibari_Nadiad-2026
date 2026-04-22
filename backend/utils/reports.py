@@ -109,31 +109,75 @@ def generate_pdf_report(title, headers, data):
     )
     
     styles = getSampleStyleSheet()
+
+    header_style = ParagraphStyle(
+        'TableHeader',
+        parent=styles['Normal'],
+        fontSize=10,
+        textColor=white,
+        fontName='Helvetica-Bold',
+        alignment=1,
+        leading=14,
+        wordWrap='LTR',
+    )
+
+    cell_style = ParagraphStyle(
+        'TableCell',
+        parent=styles['Normal'],
+        fontSize=9,
+        fontName='Helvetica',
+        alignment=1,
+        leading=13,
+        wordWrap='LTR',
+    )
+
+    cell_style_left = ParagraphStyle(
+        'TableCellLeft',
+        parent=cell_style,
+        alignment=0,
+    )
+
     elements = []
-    
-    # Table data
-    table_data = [headers] + data
-    
-    # Calculate column widths
+
+    wrapped_headers = [Paragraph(str(h), header_style) for h in headers]
+
+    wrapped_data = []
+    for row in data:
+        wrapped_row = []
+        for i, cell in enumerate(row):
+            style = cell_style_left if i == 1 or (isinstance(cell, str) and len(str(cell)) > 20) else cell_style
+            wrapped_row.append(Paragraph(str(cell) if cell is not None else "", style))
+        wrapped_data.append(wrapped_row)
+
+    table_data = [wrapped_headers] + wrapped_data
+
     col_count = len(headers)
     available_width = A4[0] - 30*mm
-    col_widths = [available_width / col_count] * col_count
-    
-    t = Table(table_data, colWidths=col_widths, repeatRows=1)
-    
-    # Style the table
-    t.setStyle(TableStyle([
+
+    if col_count == 3:
+        col_widths = [18*mm, available_width - 58*mm, 40*mm]
+    else:
+        col_widths = [available_width / col_count] * col_count
+
+    t = Table(table_data, colWidths=col_widths, repeatRows=1, splitByRow=1)
+
+    row_count = len(table_data)
+    style_cmds = [
         ('BACKGROUND', (0, 0), (-1, 0), NAVY_BLUE),
         ('TEXTCOLOR', (0, 0), (-1, 0), white),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 10),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, 1), (-1, -1), colors.whitesmoke),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-        ('FONTSIZE', (0, 1), (-1, -1), 9),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-    ]))
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+    ]
+    for i in range(1, row_count):
+        bg = colors.white if i % 2 == 1 else colors.HexColor('#F0F0F8')
+        style_cmds.append(('BACKGROUND', (0, i), (-1, i), bg))
+
+    t.setStyle(TableStyle(style_cmds))
     
     elements.append(t)
     

@@ -546,30 +546,13 @@ class AnalyticsViewSet(viewsets.ViewSet):
             report = self._build_subject_batch_enrollment_report(subject_id, batch, start_date_str, end_date_str)
             file_date = timezone.now().strftime('%Y-%m-%d')
 
-            headers = ['Sr. No.', 'Enrollment ID', 'Student Name', 'Student ID', 'Login ID', 'Password', 'Subject Name', 'Batch Name', 'Enrollment Date', 'Total Fee', 'Paid Amount', 'Pending Amount', 'Payment Mode', 'Payment Status', 'Payment ID', 'Payment Ref. No', 'Phone Number', 'Receipt ID', 'Payment Date', 'Payment Time']
+            headers = ['Sr. No.', 'Student Name', 'Student ID']
             data = []
             for row in report['rows']:
                 data.append([
                     row.get('sr_no', ''),
-                    row.get('enrollment_id', ''),
                     row.get('student_name', ''),
                     row.get('student_id', ''),
-                    row.get('login_id', ''),
-                    row.get('password', ''),
-                    row.get('subject_name', ''),
-                    row.get('batch_time', ''),
-                    row.get('enrollment_date', ''),
-                    f"₹{float(row.get('total_fee', 0) or 0):,.2f}",
-                    f"₹{float(row.get('paid_amount', 0) or 0):,.2f}",
-                    f"₹{float(row.get('pending_amount', 0) or 0):,.2f}",
-                    row.get('payment_mode', ''),
-                    row.get('payment_status', ''),
-                    row.get('payment_id', ''),
-                    row.get('payment_reference_no', ''),
-                    row.get('phone_number', ''),
-                    row.get('receipt_id', ''),
-                    row.get('payment_date', ''),
-                    row.get('payment_time', ''),
                 ])
 
             title = f"Subject-wise Batch-wise Enrollment Report ({report['subject_name']})"

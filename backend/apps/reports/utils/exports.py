@@ -251,65 +251,80 @@ def generate_enrollment_report_pdf(enrollments_data):
     elements.append(Paragraph(f'Total Records: {len(enrollments_data)}', metadata_style))
     elements.append(Spacer(1, 0.2 * inch))
     
-    # Prepare table data - same format as payment report
+    # Prepare table data - only Sr No, Student Name, Student ID
     table_data = [[
-        'Receipt ID',
-        'Payment Ref',
+        'Sr No',
         'Student Name',
-        'Subject',
-        'Phone',
-        'Amount',
-        'Mode',
-        'Status',
-        'Date',
+        'Student ID',
     ]]
     
-    for enrollment in enrollments_data:
+    # Define styles for table cells
+    header_style = ParagraphStyle(
+        'HeaderStyle',
+        parent=styles['Normal'],
+        fontSize=10,
+        textColor=colors.whitesmoke,
+        fontName='Helvetica-Bold',
+        alignment=TA_CENTER,
+    )
+    
+    cell_style = ParagraphStyle(
+        'CellStyle',
+        parent=styles['Normal'],
+        fontSize=9,
+        fontName='Helvetica',
+        alignment=TA_LEFT,
+        leading=12,  # Space between lines
+    )
+    
+    # Center style for Sr No and Student ID if needed, but keeping it flexible
+    center_cell_style = ParagraphStyle(
+        'CenterCellStyle',
+        parent=cell_style,
+        alignment=TA_CENTER,
+    )
+
+    # Use first row for header with Paragraphs to support wrapping if header is long (though it's not here)
+    table_data = [
+        [
+            Paragraph('Sr No', header_style),
+            Paragraph('Student Name', header_style),
+            Paragraph('Student ID', header_style),
+        ]
+    ]
+
+    for i, enrollment in enumerate(enrollments_data, 1):
         table_data.append([
-            str(enrollment.get('receipt_id', '')),
-            str(enrollment.get('payment_ref', '')),
-            str(enrollment.get('student_name', '')),
-            str(enrollment.get('subject_name', '')),
-            str(enrollment.get('phone', '')),
-            f"₹ {enrollment.get('amount', 0)}",
-            str(enrollment.get('payment_mode', 'NOT_PAID')),
-            str(enrollment.get('payment_status', '')),
-            str(enrollment.get('created_at', '')),
+            Paragraph(str(i), center_cell_style),
+            Paragraph(str(enrollment.get('student_name', '')), cell_style),
+            Paragraph(str(enrollment.get('student_id', '')), center_cell_style),
         ])
     
-    # Create table
+    # Create table with 3 columns
+    # A4 is ~8.27 inches. Subtracting 20 units (10 each side) margins. 
+    # 72 points = 1 inch.
+    # Total width available approx 550 points.
     table = Table(table_data, colWidths=[
-        0.9 * inch,  # Receipt ID
-        1.0 * inch,  # Payment Ref
-        1.2 * inch,  # Student Name
-        1.0 * inch,  # Subject
-        0.9 * inch,  # Phone
-        0.8 * inch,  # Amount
-        0.8 * inch,  # Mode
-        0.9 * inch,  # Status
-        1.0 * inch,  # Date
+        0.7 * inch,  # Sr No
+        4.8 * inch,  # Student Name
+        1.8 * inch,  # Student ID
     ])
     
     table.setStyle(TableStyle([
         # Header styling
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e40af')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
         ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 9),
         ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('TOPPADDING', (0, 0), (-1, 0), 12),
         
         # Row styling
-        ('ALIGN', (0, 1), (-1, -1), 'LEFT'),
-        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 1), (-1, -1), 8),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f3f4f6')]),
         ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#e5e7eb')),
-        ('TOPPADDING', (0, 1), (-1, -1), 8),
-        ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
-        
-        # Number alignment
-        ('ALIGN', (5, 1), (5, -1), 'RIGHT'),  # Amount column
+        ('TOPPADDING', (0, 1), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 10),
+        ('LEFTPADDING', (0, 0), (-1, -1), 8),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 8),
     ]))
     
     elements.append(table)
