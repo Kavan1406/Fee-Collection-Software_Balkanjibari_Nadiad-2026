@@ -69,6 +69,19 @@ export interface SubjectBatchEnrollmentReportRow {
     student_id: string;
     login_id: string;
     enrollment_date: string;
+    enrollment_id: string;
+    password: string;
+    total_fee: number;
+    paid_amount: number;
+    pending_amount: number;
+    payment_mode: string;
+    payment_status: string;
+    payment_id: string;
+    payment_reference_no: string;
+    phone_number: string;
+    receipt_id: string;
+    payment_date: string;
+    payment_time: string;
 }
 
 export interface SubjectBatchEnrollmentReport {
@@ -79,8 +92,15 @@ export interface SubjectBatchEnrollmentReport {
     end_date: string;
     generated_at: string;
     rows: SubjectBatchEnrollmentReportRow[];
-    totals_by_batch: Array<{ batch_time: string; total_students: number }>;
-    total_students: number;
+    summary: {
+        total_students: number;
+        total_fees: number;
+        total_enrolled: number;
+        total_paid: number;
+        total_pending: number;
+        online_payments: number;
+        offline_payments: number;
+    };
 }
 
 export const analyticsApi = {

@@ -322,77 +322,53 @@ export const paymentsApi = {
      * Alias request list endpoint for offline cash workflow.
      */
     getOfflineRequests: async (status: 'PENDING' | 'COMPLETED' | 'REJECTED' | 'ALL' = 'PENDING'): Promise<ApiResponse<OfflineRequestItem[]>> => {
-        try {
-            const response = await apiClient.get<ApiResponse<OfflineRequestItem[]>>(
-                '/api/v1/requests/',
-                { params: { status } }
-            );
-            return response.data;
-        } catch (error: any) {
-            const httpStatus = error?.response?.status;
-            if (httpStatus !== 404 && httpStatus !== 405) {
-                throw error;
-            }
+        if (status === 'PENDING') {
+            const [pendingConfirmation, created] = await Promise.all([
+                apiClient.get('/api/v1/payments/', {
+                    params: { payment_mode: 'CASH', status: 'PENDING_CONFIRMATION', page_size: 1000 },
+                }),
+                apiClient.get('/api/v1/payments/', {
+                    params: { payment_mode: 'CASH', status: 'CREATED', page_size: 1000 },
+                }),
+            ]);
 
-            if (status === 'PENDING') {
-                const [pendingConfirmation, created] = await Promise.all([
-                    apiClient.get('/api/v1/payments/', {
-                        params: { payment_mode: 'CASH', status: 'PENDING_CONFIRMATION', page_size: 1000 },
-                    }),
-                    apiClient.get('/api/v1/payments/', {
-                        params: { payment_mode: 'CASH', status: 'CREATED', page_size: 1000 },
-                    }),
-                ]);
+            const merged = [
+                ...(pendingConfirmation?.data?.results || []),
+                ...(created?.data?.results || []),
+            ].map(paymentsApi.mapPaymentToOfflineRequestItem);
 
-                const merged = [
-                    ...(pendingConfirmation?.data?.results || []),
-                    ...(created?.data?.results || []),
-                ].map(paymentsApi.mapPaymentToOfflineRequestItem);
-
-                return {
-                    success: true,
-                    data: merged,
-                } as ApiResponse<OfflineRequestItem[]>;
-            }
-
-            const fallbackStatus =
-                status === 'COMPLETED'
-                    ? 'SUCCESS'
-                    : status === 'REJECTED'
-                    ? 'FAILED'
-                    : undefined;
-
-            const response = await apiClient.get('/api/v1/payments/', {
-                params: { payment_mode: 'CASH', status: fallbackStatus, page_size: 1000 },
-            });
-
-            const mapped = (response?.data?.results || []).map(paymentsApi.mapPaymentToOfflineRequestItem);
             return {
                 success: true,
-                data: mapped,
+                data: merged,
             } as ApiResponse<OfflineRequestItem[]>;
         }
+
+        const fallbackStatus =
+            status === 'COMPLETED'
+                ? 'SUCCESS'
+                : status === 'REJECTED'
+                ? 'FAILED'
+                : undefined;
+
+        const response = await apiClient.get('/api/v1/payments/', {
+            params: { payment_mode: 'CASH', status: fallbackStatus, page_size: 1000 },
+        });
+
+        const mapped = (response?.data?.results || []).map(paymentsApi.mapPaymentToOfflineRequestItem);
+        return {
+            success: true,
+            data: mapped,
+        } as ApiResponse<OfflineRequestItem[]>;
     },
 
     /**
      * Alias request accept endpoint for offline cash workflow.
      */
     acceptOfflineRequest: async (requestId: number): Promise<any> => {
-        try {
-            const response = await apiClient.post(
-                `/api/v1/requests/accept/${requestId}/`
-            );
-            return response.data;
-        } catch (error: any) {
-            const httpStatus = error?.response?.status;
-            if (httpStatus === 404 || httpStatus === 405) {
-                const fallbackResponse = await apiClient.post(
-                    `/api/v1/payments/${requestId}/confirm/`
-                );
-                return fallbackResponse.data;
-            }
-            throw error;
-        }
+        const response = await apiClient.post(
+            `/api/v1/payments/${requestId}/confirm/`
+        );
+        return response.data;
     },
 
     /**
@@ -400,26 +376,11 @@ export const paymentsApi = {
      * Marks the request as REJECTED
      */
     rejectOfflineRequest: async (requestId: number, reason?: string): Promise<ApiResponse<{ message: string }>> => {
-        try {
-            const response = await apiClient.post<ApiResponse<{ message: string }>>(
-                `/api/v1/requests/reject/${requestId}/`,
-                reason ? { reason } : {}
-            );
-            return response.data;
-        } catch (error: any) {
-            const httpStatus = error?.response?.status;
-            if (httpStatus === 404 || httpStatus === 405) {
-                // Fallback: delete the payment if reject endpoint not available
-                const fallbackResponse = await apiClient.delete(
-                    `/api/v1/payments/${requestId}/`
-                );
-                return {
-                    success: true,
-                    data: { message: 'Payment request rejected and deleted' }
-                };
-            }
-            throw error;
-        }
+        await apiClient.delete(`/api/v1/payments/${requestId}/`);
+        return {
+            success: true,
+            data: { message: reason ? `Payment request rejected: ${reason}` : 'Payment request rejected and deleted' }
+        };
     },
 
     /**

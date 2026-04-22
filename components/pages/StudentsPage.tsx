@@ -80,9 +80,10 @@ const getUniqueBatchTimings = (subject: any): string[] => {
 interface StudentsPageProps {
   userRole: 'admin' | 'staff' | 'student' | 'accountant'
   canEdit?: boolean
+  onNavigateToRequestAcceptance?: (studentId?: string) => void
 }
 
-export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
+export default function StudentsPage({ userRole, canEdit, onNavigateToRequestAcceptance }: StudentsPageProps) {
   const { notifySuccess, notifyError, notifyInfo } = useNotifications()
   const [students, setStudents] = useState<Student[]>([])
   const [loading, setLoading] = useState(true)
@@ -334,7 +335,7 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
       if (editingStudent) {
         // Edit mode: Only allow updating name and phone by default.
         // Subject/batch changes are only sent if the admin has enabled them.
-        allowedFields = ['name', 'phone'];
+        allowedFields = ['name', 'phone', 'date_of_birth'];
         if (allowEditEnrollments) {
           allowedFields.push('enrollments');
         }
@@ -376,7 +377,7 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
       let result;
       if (editingStudent) {
         result = await studentsApi.update(editingStudent.id, submissionData)
-        notifySuccess(`Student updated successfully${allowEditEnrollments ? ' - Name, Phone & Subjects updated' : ' - Name and Phone updated'}`)
+        notifySuccess(`Student updated successfully${allowEditEnrollments ? ' - Name, Mobile, DOB, Subject & Batch updated' : ' - Name, Mobile and DOB updated'}`)
         setShowForm(false)
         setEditingStudent(null)
         resetForm()
@@ -404,7 +405,13 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
               username: createdStudent.login_username,
               password: createdStudent.login_password_hint
             });
-            notifySuccess('Registration Successful. Fees are pending in cash mode.');
+            notifySuccess('Registration successful. Login credentials are shown above.');
+            notifyInfo('Sending this student request to Request Acceptance...');
+            setShowForm(false);
+            resetForm();
+            if (onNavigateToRequestAcceptance) {
+              setTimeout(() => onNavigateToRequestAcceptance(createdStudent.student_id), 1500);
+            }
           } else {
             // For ONLINE payments, just notify user
             notifyInfo('Student created. Receipt and ID card will be available after payment confirmation.');
@@ -775,7 +782,7 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
           {editingStudent && (
             <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl">
               <p className="text-sm font-bold text-amber-900">
-                ✏️ Editable Fields: <span className="text-amber-700">Name & Phone Number</span>
+                ✏️ Editable Fields: <span className="text-amber-700">Name, Mobile Number & Date of Birth</span>
                 <br />
                 <label className="inline-flex items-center gap-2 mt-2">
                   <input
@@ -833,10 +840,10 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
                       type="text"
                       placeholder="DD-MM-YYYY"
                       value={formData.date_of_birth}
-                      onChange={(e) => editingStudent ? null : handleDateInput('date_of_birth', e.target.value)}
-                      disabled={editingStudent ? true : false}
+                      onChange={(e) => handleDateInput('date_of_birth', e.target.value)}
+                      disabled={false}
                       required
-                      className="w-full input-standard bg-gray-50/80 cursor-not-allowed"
+                      className="w-full input-standard"
                     />
                   </div>
                   <div className="flex flex-col gap-1">
@@ -863,21 +870,6 @@ export default function StudentsPage({ userRole, canEdit }: StudentsPageProps) {
                       <option value="OTHER">Other</option>
                     </select>
                   </div>
-                  {editingStudent && (
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[11px] font-bold text-gray-500 uppercase px-1">Student Status *</label>
-                      <select
-                        value={formData.status}
-                        onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                        required
-                        className="w-full input-standard text-indigo-600 font-bold"
-                      >
-                        <option value="ACTIVE">Active (Studying)</option>
-                        <option value="INACTIVE">Inactive (Left)</option>
-                        <option value="GRADUATED">Graduated</option>
-                      </select>
-                    </div>
-                  )}
                 </div>
               </div>
 

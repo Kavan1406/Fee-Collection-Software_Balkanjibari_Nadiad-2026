@@ -285,7 +285,7 @@ def generate_receipt_pdf(payment=None, student=None, order_id=None):
 
     fee_data.append([
         '', '', '', '', '', '',
-        Paragraph(f'<b>₹{grand_total:,.0f}</b>', ParagraphStyle('Total', fontSize=8.5, fontName='Helvetica-Bold', textColor=dark)),
+        Paragraph(f'<b>Rs.{grand_total:,.0f}</b>', ParagraphStyle('Total', fontSize=8.5, fontName='Helvetica-Bold', textColor=dark)),
         Paragraph('<b>TOTAL</b>', ParagraphStyle('TotalLabel', fontSize=7, fontName='Helvetica-Bold', textColor=slate))
     ])
 

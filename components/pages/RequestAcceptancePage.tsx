@@ -20,11 +20,13 @@ interface AcceptedCredential {
 }
 
 interface GroupedStudentRequest {
+  group_key: string
   student_id: string
   student_name: string
   requests: OfflineRequestItem[]
   subjects: string[]
   total_fees: number
+  duplicate_count: number
   status: string
   all_pending: boolean
   all_accepted: boolean
@@ -54,57 +56,102 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
   const [showSlider, setShowSlider] = useState(false)
   const [acceptedCredentials, setAcceptedCredentials] = useState<AcceptedCredential[]>([])
   const [syncing, setSyncing] = useState(false)
+  const [focusedStudentId, setFocusedStudentId] = useState('')
+  const [focusedRefreshCount, setFocusedRefreshCount] = useState(0)
 
   const canAccept = userRole === 'admin' || userRole === 'staff' || userRole === 'accountant'
 
-  // Group requests by student_id
-  const groupedRows = useMemo(() => {
+  const normalizeSubjectKey = (value?: string) => (value || '').trim().toLowerCase()
+
+  const getRequestBucket = (status?: string) => {
+    const normalized = (status || '').toUpperCase()
+    if (PENDING_STATUSES.has(normalized)) return 'pending'
+    if (ACCEPTED_STATUSES.has(normalized)) return 'accepted'
+    if (REJECTED_STATUSES.has(normalized)) return 'rejected'
+    return 'other'
+  }
+
+  const getUniqueRequestsBySubject = (requests: OfflineRequestItem[]) => {
+    const bySubject = new Map<string, OfflineRequestItem>()
+    for (const req of requests) {
+      const key = normalizeSubjectKey(req.subject)
+      const existing = bySubject.get(key)
+      if (!existing) {
+        bySubject.set(key, req)
+        continue
+      }
+
+      const existingTs = new Date(existing.created_at || 0).getTime()
+      const currentTs = new Date(req.created_at || 0).getTime()
+      if (currentTs > existingTs) {
+        bySubject.set(key, req)
+      }
+    }
+    return Array.from(bySubject.values())
+  }
+
+  const buildGroupedStudentRequests = (sourceRows: OfflineRequestItem[]) => {
     const grouped = new Map<string, GroupedStudentRequest>()
-    
-    for (const request of rows) {
+
+    for (const request of sourceRows) {
       const studentId = request.student_id?.toLowerCase().trim() || ''
       if (!studentId) continue
-      
+
       if (!grouped.has(studentId)) {
         grouped.set(studentId, {
+          group_key: studentId,
           student_id: request.student_id || '',
           student_name: request.student_name || '',
           requests: [],
           subjects: [],
           total_fees: 0,
+          duplicate_count: 0,
           status: 'PENDING',
           all_pending: true,
           all_accepted: true,
-          all_rejected: true
+          all_rejected: true,
         })
       }
-      
+
       const group = grouped.get(studentId)!
       group.requests.push(request)
-      group.subjects.push(request.subject || '')
-      group.total_fees += Number(request.total_fees || 0)
-      
-      // Update status flags
-      const requestStatus = (request.status || '').toUpperCase()
+
+      const requestStatus = (request.status || request.payment_status || '').toUpperCase()
       if (!PENDING_STATUSES.has(requestStatus)) group.all_pending = false
       if (!ACCEPTED_STATUSES.has(requestStatus)) group.all_accepted = false
       if (!REJECTED_STATUSES.has(requestStatus)) group.all_rejected = false
     }
-    
+
+    for (const group of grouped.values()) {
+      const uniqueRequests = getUniqueRequestsBySubject(group.requests)
+      group.requests = uniqueRequests
+      group.subjects = uniqueRequests.map((r) => r.subject || '')
+      group.total_fees = uniqueRequests.reduce((sum, r) => sum + Number(r.total_fees || 0), 0)
+      group.duplicate_count = 0
+    }
+
     return Array.from(grouped.values())
-  }, [rows])
+  }
 
-  const pendingCashRows = useMemo(() => {
-    return groupedRows.filter((g) => g.all_pending)
-  }, [groupedRows])
+  const pendingRequestRows = useMemo(
+    () => rows.filter((r) => PENDING_STATUSES.has((r.status || r.payment_status || '').toUpperCase())),
+    [rows]
+  )
 
-  const acceptedCashRows = useMemo(() => {
-    return groupedRows.filter((g) => g.all_accepted)
-  }, [groupedRows])
+  const acceptedRequestRows = useMemo(
+    () => rows.filter((r) => ACCEPTED_STATUSES.has((r.status || r.payment_status || '').toUpperCase())),
+    [rows]
+  )
 
-  const rejectedCashRows = useMemo(() => {
-    return groupedRows.filter((g) => g.all_rejected)
-  }, [groupedRows])
+  const rejectedRequestRows = useMemo(
+    () => rows.filter((r) => REJECTED_STATUSES.has((r.status || r.payment_status || '').toUpperCase())),
+    [rows]
+  )
+
+  const pendingCashRows = useMemo(() => buildGroupedStudentRequests(pendingRequestRows), [pendingRequestRows])
+  const acceptedCashRows = useMemo(() => buildGroupedStudentRequests(acceptedRequestRows), [acceptedRequestRows])
+  const rejectedCashRows = useMemo(() => buildGroupedStudentRequests(rejectedRequestRows), [rejectedRequestRows])
+  const allGroupedRows = useMemo(() => buildGroupedStudentRequests(rows), [rows])
 
   const normalizedSubjectFeeMap = useMemo(() => {
     const normalize = (value: string) =>
@@ -155,14 +202,20 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
     return matched > 0 ? sum : null
   }
 
+  const getResolvedRequestFee = (request: OfflineRequestItem): number => {
+    const directFee = Number(request.total_fees || 0)
+    if (Number.isFinite(directFee) && directFee > 0) return directFee
+    return getActualFeeForSubjectLabel(request.subject) || 0
+  }
+
   const visibleRows = useMemo(() => {
-    let filtered = groupedRows
+    let filtered = pendingCashRows
     
     // Filter by status
-    if (requestFilter === 'ACCEPTED') filtered = filtered.filter((g) => g.all_accepted)
-    else if (requestFilter === 'REJECTED') filtered = filtered.filter((g) => g.all_rejected)
-    else if (requestFilter === 'ALL') filtered = filtered
-    else filtered = filtered.filter((g) => g.all_pending)
+    if (requestFilter === 'ACCEPTED') filtered = acceptedCashRows
+    else if (requestFilter === 'REJECTED') filtered = rejectedCashRows
+    else if (requestFilter === 'ALL') filtered = allGroupedRows
+    else filtered = pendingCashRows
     
     // Filter by search term
     if (searchTerm.trim()) {
@@ -175,7 +228,7 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
     }
     
     return filtered
-  }, [requestFilter, groupedRows, searchTerm])
+  }, [requestFilter, pendingCashRows, acceptedCashRows, rejectedCashRows, allGroupedRows, searchTerm])
 
   const getStatusLabel = (status?: string) => {
     const normalized = (status || '').toUpperCase()
@@ -241,22 +294,61 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
   }
 
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const requestedStudentId = sessionStorage.getItem('request_acceptance_student_id') || ''
+      if (requestedStudentId) {
+        setFocusedStudentId(requestedStudentId)
+        setSearchTerm(requestedStudentId)
+        setRequestFilter('PENDING')
+        sessionStorage.removeItem('request_acceptance_student_id')
+      }
+    }
+
     fetchPendingCashRequests()
     fetchSubjects()
   }, [])
 
+  useEffect(() => {
+    if (!focusedStudentId) return
+    const found = pendingCashRows.some((g) => (g.student_id || '').toLowerCase() === focusedStudentId.toLowerCase())
+    if (found) return
+    if (focusedRefreshCount >= 3) return
+
+    const timer = setTimeout(async () => {
+      await fetchPendingCashRequests()
+      setFocusedRefreshCount((prev) => prev + 1)
+    }, 1200)
+
+    return () => clearTimeout(timer)
+  }, [focusedStudentId, focusedRefreshCount, pendingCashRows])
+
   const handleAcceptPayment = async (groupedRequest: GroupedStudentRequest) => {
-    const ok = window.confirm(`Accept cash payment for ${groupedRequest.student_name} (${groupedRequest.requests.length} subject${groupedRequest.requests.length > 1 ? 's' : ''}) - ₹${groupedRequest.total_fees.toLocaleString('en-IN')}?`)
+    const uniqueRequests = getUniqueRequestsBySubject(groupedRequest.requests)
+    const duplicateRequests = groupedRequest.requests.filter(
+      (req) => !uniqueRequests.some((u) => u.request_id === req.request_id)
+    )
+
+    const totalAmount = uniqueRequests.reduce((sum, req) => sum + getResolvedRequestFee(req), 0)
+    const ok = window.confirm(`Accept cash payment for ${groupedRequest.student_name} (${uniqueRequests.length} subject${uniqueRequests.length > 1 ? 's' : ''}) - ₹${totalAmount.toLocaleString('en-IN')}?`)
     if (!ok) return
 
     try {
-      setProcessingId(groupedRequest.requests[0]?.request_id || 0)
-      notifyInfo(`Confirming ${groupedRequest.requests.length} payment${groupedRequest.requests.length > 1 ? 's' : ''} and generating documents...`)
+      setProcessingId(uniqueRequests[0]?.request_id || 0)
+      notifyInfo(`Confirming ${uniqueRequests.length} payment${uniqueRequests.length > 1 ? 's' : ''} and generating documents...`)
 
       // Accept all payments for this student
       const confirmResults = await Promise.all(
-        groupedRequest.requests.map(req => paymentsApi.acceptOfflineRequest(req.request_id))
+        uniqueRequests.map(req => paymentsApi.acceptOfflineRequest(req.request_id))
       )
+
+      // Auto-reject duplicate pending requests so old duplicate rows are cleaned up.
+      if (duplicateRequests.length > 0) {
+        await Promise.all(
+          duplicateRequests.map((req) =>
+            paymentsApi.rejectOfflineRequest(req.request_id, 'Auto-rejected duplicate subject request during deduplication')
+          )
+        )
+      }
 
       // Collect enrollment and payment IDs
       const enrollmentIds: number[] = []
@@ -264,59 +356,64 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
 
       for (let i = 0; i < confirmResults.length; i++) {
         const result = confirmResults[i]
-        const enrollmentId = Number(result?.data?.enrollment_id || groupedRequest.requests[i]?.enrollment_id)
-        const paymentId = Number(result?.data?.payment_id || groupedRequest.requests[i]?.payment_id)
+        const enrollmentId = Number(result?.data?.enrollment_id || uniqueRequests[i]?.enrollment_id)
+        const paymentId = Number(result?.data?.payment_id || uniqueRequests[i]?.payment_id)
         enrollmentIds.push(enrollmentId)
         paymentIds.push(paymentId)
       }
 
-      // Open receipt tab (single receipt for all subjects)
+      // Use first payment/enrollment for consolidated document generation.
+      // Backend receipt and ID card generators include all active subjects for the student.
+      const primaryEnrollmentId = enrollmentIds[0]
+      const primaryPaymentId = paymentIds[0]
+
+      // Open receipt tab (single consolidated receipt)
       const receiptTab = window.open('about:blank', '_blank')
       if (receiptTab) {
         receiptTab.document.title = 'Generating receipt...'
         receiptTab.document.body.innerHTML = '<p style="font-family: Arial, sans-serif; padding: 16px;">Generating receipt PDF...</p>'
       }
 
-      // Open ID card tabs for each enrollment (one per subject)
-      const idCardTabs = enrollmentIds.map(() => window.open('about:blank', '_blank'))
-      idCardTabs.forEach((tab) => {
-        if (tab) {
-          tab.document.title = 'Generating ID card...'
-          tab.document.body.innerHTML = '<p style="font-family: Arial, sans-serif; padding: 16px;">Generating ID card PDF...</p>'
-        }
-      })
+      // Open one consolidated ID card tab (A5 landscape layout, up to 4 subjects)
+      const idCardTab = window.open('about:blank', '_blank')
+      if (idCardTab) {
+        idCardTab.document.title = 'Generating ID card...'
+        idCardTab.document.body.innerHTML = '<p style="font-family: Arial, sans-serif; padding: 16px;">Generating ID card PDF...</p>'
+      }
 
       // Generate and open documents
       const docResults = await Promise.allSettled([
-        // Receipt (use first payment ID for the receipt)
-        receiptTab ? paymentsApi.openReceiptInNewTab(paymentIds[0], receiptTab) : Promise.reject(),
-        // ID Cards (one for each enrollment)
-        ...idCardTabs.map((tab, idx) => tab ? enrollmentsApi.openIdCardInNewTab(enrollmentIds[idx], tab) : Promise.reject()),
+        // Consolidated receipt
+        receiptTab && primaryPaymentId ? paymentsApi.openReceiptInNewTab(primaryPaymentId, receiptTab) : Promise.reject(),
+        // Consolidated ID card
+        idCardTab && primaryEnrollmentId ? enrollmentsApi.openIdCardInNewTab(primaryEnrollmentId, idCardTab) : Promise.reject(),
         // Downloads
-        paymentsApi.downloadReceipt(paymentIds[0]),
-        ...enrollmentIds.map(id => enrollmentsApi.downloadIdCard(id))
+        primaryPaymentId ? paymentsApi.downloadReceipt(primaryPaymentId) : Promise.reject(),
+        primaryEnrollmentId ? enrollmentsApi.downloadIdCard(primaryEnrollmentId) : Promise.reject()
       ])
 
-      const openedCount = docResults.slice(0, 1 + idCardTabs.length).filter(r => r.status === 'fulfilled').length
-      const downloadedCount = docResults.slice(1 + idCardTabs.length).filter(r => r.status === 'fulfilled').length
+      const openedCount = docResults.slice(0, 2).filter(r => r.status === 'fulfilled').length
+      const downloadedCount = docResults.slice(2).filter(r => r.status === 'fulfilled').length
 
       if (openedCount > 0 && downloadedCount > 0) {
-        notifySuccess(`Payment${groupedRequest.requests.length > 1 ? 's' : ''} accepted. Receipt and ${enrollmentIds.length} ID card${enrollmentIds.length > 1 ? 's' : ''} opened in separate tabs and downloaded successfully.`)
+        notifySuccess(`Payment${uniqueRequests.length > 1 ? 's' : ''} accepted. Consolidated receipt and consolidated ID card opened and downloaded successfully.`)
       } else if (openedCount > 0 || downloadedCount > 0) {
-        notifySuccess(`Payment${groupedRequest.requests.length > 1 ? 's' : ''} accepted. Documents were partially opened/downloaded; you can always re-download from student records.`)
+        notifySuccess(`Payment${uniqueRequests.length > 1 ? 's' : ''} accepted. Documents were partially opened/downloaded; you can always re-download from student records.`)
       } else {
-        notifySuccess(`Payment${groupedRequest.requests.length > 1 ? 's' : ''} accepted. Documents are available in student records for manual open/download.`)
+        notifySuccess(`Payment${uniqueRequests.length > 1 ? 's' : ''} accepted. Documents are available in student records for manual open/download.`)
       }
 
-      if (idCardTabs.some(tab => !tab || tab.closed)) {
+      if (!idCardTab || idCardTab.closed) {
         notifyInfo('Your browser blocked one or more tabs. Please allow pop-ups for this site to auto-open all documents.')
       }
 
       // Fetch student credentials and add to slider
       try {
-        const studentId = parseInt(groupedRequest.student_id, 10)
-        const studentRes = await studentsApi.getById(studentId)
-        const student = (studentRes?.data || {}) as Student
+        const studentSearch = groupedRequest.student_id.trim()
+        const studentList = await studentsApi.getAll({ search: studentSearch, page_size: 100 })
+        const student = (studentList?.results || []).find(
+          (item) => (item.student_id || '').toLowerCase() === studentSearch.toLowerCase()
+        ) || (studentList?.results || [])[0] || ({} as Student)
         
         setAcceptedCredentials(prev => {
           const newCreds = groupedRequest.requests.map(req => ({
@@ -506,7 +603,7 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {visibleRows.map((group) => (
-                  <tr key={group.student_id} className="hover:bg-slate-50/70">
+                  <tr key={group.group_key} className="hover:bg-slate-50/70">
                     <td className="px-6 py-4">
                       <p className="text-sm font-semibold text-slate-900">{group.student_name}</p>
                     </td>
@@ -515,17 +612,22 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
                     </td>
                     <td className="px-6 py-4 text-sm text-slate-700">
                       <div className="flex flex-col gap-1">
-                        {group.subjects.map((subject, idx) => (
-                          <span key={idx} className="text-xs bg-slate-100 px-2 py-1 rounded inline-block w-fit">
-                            {subject}
-                          </span>
-                        ))}
+                        {group.requests.map((request) => {
+                          const fee = getResolvedRequestFee(request)
+                          return (
+                            <span key={request.request_id} className="text-xs bg-slate-100 px-2 py-1 rounded inline-block w-fit">
+                              {request.subject || 'Subject'}{fee > 0 ? ` - ₹${fee.toLocaleString('en-IN')}` : ''}
+                            </span>
+                          )
+                        })}
                       </div>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <div className="text-sm font-semibold text-slate-900">₹{Number(group.total_fees || 0).toLocaleString('en-IN')}</div>
+                      <div className="text-sm font-semibold text-slate-900">
+                        ₹{group.requests.reduce((sum, req) => sum + getResolvedRequestFee(req), 0).toLocaleString('en-IN')}
+                      </div>
                       <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mt-1">
-                        {group.requests.length} payment{group.requests.length > 1 ? 's' : ''}
+                        {group.subjects.length} subject{group.subjects.length > 1 ? 's' : ''} selected
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -586,7 +688,7 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
                 <span className="font-semibold">Subjects:</span> {rejectConfirm.request.subjects.join(', ')}
               </p>
               <p className="text-sm text-slate-700 mt-1">
-                <span className="font-semibold">Amount:</span> ₹{Number(rejectConfirm.request.total_fees || 0).toLocaleString('en-IN')} (${rejectConfirm.request.requests.length} payment${rejectConfirm.request.requests.length > 1 ? 's' : ''})
+                <span className="font-semibold">Amount:</span> ₹{Number(rejectConfirm.request.total_fees || 0).toLocaleString('en-IN')} (${rejectConfirm.request.subjects.length} payment{rejectConfirm.request.subjects.length > 1 ? 's' : ''})
               </p>
             </div>
 

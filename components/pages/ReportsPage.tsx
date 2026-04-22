@@ -66,6 +66,11 @@ export default function ReportsPage({ userRole }: ReportsPageProps) {
         ? data.results
         : []
 
+      setSubjectBatches(
+        batches
+          .map((batch: any) => batch?.batch_time || batch?.name || String(batch || ''))
+          .filter(Boolean)
+      )
     } catch (error) {
       console.error('Failed to load batches for selected subject:', error)
       setSubjectBatches([])
@@ -141,15 +146,22 @@ export default function ReportsPage({ userRole }: ReportsPageProps) {
     }
   }
 
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+    }).format(amount)
+  }
+
   return (
     <div className="p-2.5 sm:p-6 space-y-4">
       <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-100 shadow-sm">
         <div className="mb-4">
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 uppercase tracking-tight font-poppins">Subject-wise Batch-wise Enrollment Report</h1>
-          <p className="text-slate-500 text-sm mt-1 font-medium font-inter">Generate live student enrollment data grouped by batch and subject, with export options for CSV and PDF.</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 uppercase tracking-tight font-poppins">Enrollment & Payment Report</h1>
+          <p className="text-slate-500 text-sm mt-1 font-medium font-inter">Generate detailed enrollment and payment reports with subject and batch filters.</p>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-3">
+        <div className="grid gap-4 lg:grid-cols-4">
           <div>
             <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Subject</label>
             <select
@@ -177,27 +189,26 @@ export default function ReportsPage({ userRole }: ReportsPageProps) {
             </select>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Start Date</label>
-              <input
-                ref={startDateRef}
-                type="date"
-                value={startReportDate}
-                onChange={(event) => setStartReportDate(event.target.value)}
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900"
-              />
-            </div>
-            <div>
-              <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">End Date</label>
-              <input
-                ref={endDateRef}
-                type="date"
-                value={endReportDate}
-                onChange={(event) => setEndReportDate(event.target.value)}
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900"
-              />
-            </div>
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Start Date</label>
+            <input
+              ref={startDateRef}
+              type="date"
+              value={startReportDate}
+              onChange={(event) => setStartReportDate(event.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">End Date</label>
+            <input
+              ref={endDateRef}
+              type="date"
+              value={endReportDate}
+              onChange={(event) => setEndReportDate(event.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900"
+            />
           </div>
         </div>
 
@@ -205,7 +216,7 @@ export default function ReportsPage({ userRole }: ReportsPageProps) {
           <button
             onClick={generateSubjectBatchReport}
             disabled={batchReportLoading}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800"
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800 disabled:opacity-50"
           >
             {batchReportLoading ? <Loader2 size={16} className="animate-spin" /> : <Calendar size={16} />}
             Generate Report
@@ -216,7 +227,7 @@ export default function ReportsPage({ userRole }: ReportsPageProps) {
               <button
                 onClick={() => handleBatchReportDownload('CSV')}
                 disabled={!!downloading}
-                className="inline-flex items-center gap-2 rounded-2xl bg-emerald-50 px-4 py-3 text-xs font-bold uppercase tracking-widest text-emerald-600 border border-emerald-100"
+                className="inline-flex items-center gap-2 rounded-2xl bg-emerald-50 px-4 py-3 text-xs font-bold uppercase tracking-widest text-emerald-600 border border-emerald-100 disabled:opacity-50"
               >
                 {downloading === 'subject_batch_CSV' ? <Loader2 size={12} className="animate-spin" /> : <Download size={14} />}
                 Download CSV
@@ -224,7 +235,7 @@ export default function ReportsPage({ userRole }: ReportsPageProps) {
               <button
                 onClick={() => handleBatchReportDownload('PDF')}
                 disabled={!!downloading}
-                className="inline-flex items-center gap-2 rounded-2xl bg-indigo-50 px-4 py-3 text-xs font-bold uppercase tracking-widest text-indigo-600 border border-indigo-100"
+                className="inline-flex items-center gap-2 rounded-2xl bg-indigo-50 px-4 py-3 text-xs font-bold uppercase tracking-widest text-indigo-600 border border-indigo-100 disabled:opacity-50"
               >
                 {downloading === 'subject_batch_PDF' ? <Loader2 size={12} className="animate-spin" /> : <FileText size={14} />}
                 Download PDF
@@ -241,61 +252,116 @@ export default function ReportsPage({ userRole }: ReportsPageProps) {
         </div>
       ) : batchReportData ? (
         <div className="space-y-4">
-          <div className="grid gap-3 lg:grid-cols-4">
-            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-              <p className="text-[10px] uppercase tracking-widest text-slate-500">Selected Subject</p>
-              <p className="mt-2 text-lg font-bold text-slate-900">{batchReportData.subject_name}</p>
-              <p className="text-xs text-slate-500">{batchReportData.batch === 'ALL' ? 'All batches' : batchReportData.batch}</p>
+          {/* Summary Stats */}
+          <div className="grid gap-3 lg:grid-cols-6">
+            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
+              <p className="text-[10px] uppercase tracking-widest text-slate-500">Subject</p>
+              <p className="mt-1 text-sm font-bold text-slate-900">{batchReportData.subject_name}</p>
             </div>
-            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-              <p className="text-[10px] uppercase tracking-widest text-slate-500">Date Range</p>
-              <p className="mt-2 text-lg font-bold text-slate-900">{batchReportData.start_date} → {batchReportData.end_date}</p>
+            <div className="rounded-2xl border border-slate-100 bg-blue-50 p-3">
+              <p className="text-[10px] uppercase tracking-widest text-blue-600">Total Students</p>
+              <p className="mt-1 text-2xl font-bold text-blue-900">{batchReportData.summary?.total_students || 0}</p>
             </div>
-            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-              <p className="text-[10px] uppercase tracking-widest text-slate-500">Total Students</p>
-              <p className="mt-2 text-3xl font-bold text-slate-900">{batchReportData.total_students}</p>
+            <div className="rounded-2xl border border-slate-100 bg-green-50 p-3">
+              <p className="text-[10px] uppercase tracking-widest text-green-600">Total Paid</p>
+              <p className="mt-1 text-sm font-bold text-green-900">{formatCurrency(batchReportData.summary?.total_paid || 0)}</p>
             </div>
-            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-              <p className="text-[10px] uppercase tracking-widest text-slate-500">Generated</p>
-              <p className="mt-2 text-lg font-bold text-slate-900">{batchReportData.generated_at}</p>
+            <div className="rounded-2xl border border-slate-100 bg-red-50 p-3">
+              <p className="text-[10px] uppercase tracking-widest text-red-600">Total Pending</p>
+              <p className="mt-1 text-sm font-bold text-red-900">{formatCurrency(batchReportData.summary?.total_pending || 0)}</p>
+            </div>
+            <div className="rounded-2xl border border-slate-100 bg-purple-50 p-3">
+              <p className="text-[10px] uppercase tracking-widest text-purple-600">Total Fees</p>
+              <p className="mt-1 text-sm font-bold text-purple-900">{formatCurrency(batchReportData.summary?.total_enrolled || 0)}</p>
+            </div>
+            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
+              <p className="text-[10px] uppercase tracking-widest text-slate-600">Generated</p>
+              <p className="mt-1 text-xs font-bold text-slate-900">{batchReportData.generated_at}</p>
             </div>
           </div>
 
-          {batchReportData.totals_by_batch?.length > 0 ? (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {batchReportData.totals_by_batch.map((entry: any) => (
-                <div key={entry.batch_time} className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-                  <p className="text-[10px] uppercase tracking-widest text-slate-500">Batch</p>
-                  <p className="mt-2 text-sm font-semibold text-slate-900">{entry.batch_time}</p>
-                  <p className="mt-3 text-2xl font-bold text-slate-900">{entry.total_students}</p>
-                </div>
-              ))}
+          {/* Payment Mode Breakdown */}
+          <div className="grid gap-3 lg:grid-cols-2">
+            <div className="rounded-2xl border border-slate-100 bg-cyan-50 p-4">
+              <p className="text-[10px] uppercase tracking-widest text-cyan-600 font-bold">Online Payments</p>
+              <p className="mt-2 text-2xl font-bold text-cyan-900">{formatCurrency(batchReportData.summary?.online_payments || 0)}</p>
             </div>
-          ) : null}
+            <div className="rounded-2xl border border-slate-100 bg-orange-50 p-4">
+              <p className="text-[10px] uppercase tracking-widest text-orange-600 font-bold">Offline Payments</p>
+              <p className="mt-2 text-2xl font-bold text-orange-900">{formatCurrency(batchReportData.summary?.offline_payments || 0)}</p>
+            </div>
+          </div>
 
+          {/* Data Table */}
           <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm">
-            <table className="min-w-full divide-y divide-slate-200">
-              <thead className="bg-slate-50">
+            <table className="min-w-full divide-y divide-slate-200 text-xs">
+              <thead className="bg-slate-900 text-white sticky top-0">
                 <tr>
-                  <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-slate-500">Sr. No.</th>
-                  <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-slate-500">Student Name</th>
-                  <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-slate-500">Login ID</th>
-                  <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-slate-500">Subject</th>
-                  <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-slate-500">Batch</th>
-                  <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-slate-500">Enrollment Date</th>
+                  <th className="px-3 py-2 text-left text-[9px] font-bold uppercase tracking-widest">Sr. No.</th>
+                  <th className="px-3 py-2 text-left text-[9px] font-bold uppercase tracking-widest">Student Name</th>
+                  <th className="px-3 py-2 text-left text-[9px] font-bold uppercase tracking-widest">Student ID</th>
+                  <th className="px-3 py-2 text-left text-[9px] font-bold uppercase tracking-widest">Subject</th>
+                  <th className="px-3 py-2 text-left text-[9px] font-bold uppercase tracking-widest">Batch</th>
+                  <th className="px-3 py-2 text-left text-[9px] font-bold uppercase tracking-widest">Enrollment Date</th>
+                  <th className="px-3 py-2 text-right text-[9px] font-bold uppercase tracking-widest">Total Fee</th>
+                  <th className="px-3 py-2 text-right text-[9px] font-bold uppercase tracking-widest">Paid Amount</th>
+                  <th className="px-3 py-2 text-right text-[9px] font-bold uppercase tracking-widest">Pending</th>
+                  <th className="px-3 py-2 text-left text-[9px] font-bold uppercase tracking-widest">Payment Mode</th>
+                  <th className="px-3 py-2 text-left text-[9px] font-bold uppercase tracking-widest">Payment Status</th>
+                  <th className="px-3 py-2 text-left text-[9px] font-bold uppercase tracking-widest">Payment ID</th>
+                  <th className="px-3 py-2 text-left text-[9px] font-bold uppercase tracking-widest">Ref. No</th>
+                  <th className="px-3 py-2 text-left text-[9px] font-bold uppercase tracking-widest">Phone</th>
+                  <th className="px-3 py-2 text-left text-[9px] font-bold uppercase tracking-widest">Receipt ID</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {batchReportData.rows?.map((row: any, index: number) => (
-                  <tr key={`${row.student_id}-${index}`} className="bg-white">
-                    <td className="px-4 py-3 text-xs font-semibold text-slate-700">{index + 1}</td>
-                    <td className="px-4 py-3 text-xs font-medium text-slate-900">{row.student_name}</td>
-                    <td className="px-4 py-3 text-xs text-slate-700">{row.login_id}</td>
-                    <td className="px-4 py-3 text-xs text-slate-700">{row.subject_name}</td>
-                    <td className="px-4 py-3 text-xs text-slate-700">{row.batch_time}</td>
-                    <td className="px-4 py-3 text-xs text-slate-700">{row.enrollment_date}</td>
+                {batchReportData.rows?.length > 0 ? (
+                  batchReportData.rows.map((row: any, index: number) => (
+                    <tr key={`${row.student_id}-${index}`} className="bg-white hover:bg-slate-50 transition">
+                      <td className="px-3 py-2 font-semibold text-slate-700">{row.sr_no || index + 1}</td>
+                      <td className="px-3 py-2 font-medium text-slate-900">{row.student_name}</td>
+                      <td className="px-3 py-2 text-slate-700">{row.student_id}</td>
+                      <td className="px-3 py-2 text-slate-700">{row.subject}</td>
+                      <td className="px-3 py-2 text-slate-700">{row.batch_time}</td>
+                      <td className="px-3 py-2 text-slate-700">{row.enrollment_date}</td>
+                      <td className="px-3 py-2 text-right font-medium text-slate-900">{formatCurrency(row.total_fee || 0)}</td>
+                      <td className="px-3 py-2 text-right font-medium text-green-600">{formatCurrency(row.paid_amount || 0)}</td>
+                      <td className="px-3 py-2 text-right font-medium text-red-600">{formatCurrency(row.pending_amount || 0)}</td>
+                      <td className="px-3 py-2">
+                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest ${
+                          row.payment_mode === 'Online'
+                            ? 'bg-blue-100 text-blue-700'
+                            : row.payment_mode === 'Offline'
+                            ? 'bg-orange-100 text-orange-700'
+                            : 'bg-slate-100 text-slate-700'
+                        }`}>
+                          {row.payment_mode}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest ${
+                          row.payment_status === 'Success'
+                            ? 'bg-green-100 text-green-700'
+                            : row.payment_status === 'Pending'
+                            ? 'bg-yellow-100 text-yellow-700'
+                            : 'bg-slate-100 text-slate-700'
+                        }`}>
+                          {row.payment_status}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-slate-700 font-mono text-[8px]">{row.payment_id}</td>
+                      <td className="px-3 py-2 text-slate-700 font-mono text-[8px]">{row.payment_reference_no}</td>
+                      <td className="px-3 py-2 text-slate-700">{row.phone_number}</td>
+                      <td className="px-3 py-2 text-slate-700 font-mono text-[8px]">{row.receipt_id}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={15} className="px-4 py-8 text-center text-slate-500">
+                      No enrollment records found for the selected criteria.
+                    </td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>

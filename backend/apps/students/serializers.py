@@ -12,6 +12,45 @@ from apps.authentication.models import User
 logger = logging.getLogger(__name__)
 
 
+def _normalize_unique_enrollments(raw_enrollments):
+    """Normalize enrollments and keep only first unique subject selection."""
+    import json
+
+    if isinstance(raw_enrollments, str):
+        try:
+            enrollments = json.loads(raw_enrollments)
+        except Exception:
+            enrollments = []
+    else:
+        enrollments = raw_enrollments or []
+
+    unique = []
+    seen_subjects = set()
+
+    for item in enrollments:
+        if not isinstance(item, dict):
+            continue
+        try:
+            subject_id = int(item.get('subject_id'))
+        except (TypeError, ValueError):
+            continue
+
+        if subject_id in seen_subjects:
+            continue
+
+        seen_subjects.add(subject_id)
+        unique.append({
+            'subject_id': subject_id,
+            'batch_time': item.get('batch_time', '7-8 AM'),
+            'include_library_fee': bool(item.get('include_library_fee', False)),
+        })
+
+        if len(unique) >= 4:
+            break
+
+    return unique
+
+
 def _send_offline_registration_email(student):
     """Send offline registration acknowledgement with login credentials when email is available."""
     if not student.email:
@@ -277,18 +316,11 @@ class StudentCreateSerializer(serializers.ModelSerializer):
 
     def validate_enrollments(self, value):
         """Validate max 4 subjects - handles both list and JSON string."""
-        import json
-        if isinstance(value, str):
-            try:
-                data = json.loads(value)
-            except:
-                data = []
-        else:
-            data = value
+        data = _normalize_unique_enrollments(value)
 
         if len(data) > 4:
             raise serializers.ValidationError('A student can enroll in a maximum of 4 subjects.')
-        return value
+        return data
     
     def create(self, validated_data):
         """Create student, auto-generate user account, and create enrollments with fee logic."""
@@ -300,14 +332,8 @@ class StudentCreateSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         # Extract enrollments and payment_method from validated_data
         # (they are write-only fields not in the Student model)
-        enrollments_data = validated_data.pop('enrollments', [])
+        enrollments_data = _normalize_unique_enrollments(validated_data.pop('enrollments', []))
         payment_method = validated_data.get('payment_method', 'CASH')
-        
-        if isinstance(enrollments_data, str):
-            try:
-                enrollments_data = json.loads(enrollments_data)
-            except:
-                enrollments_data = []
 
         # Remove payment_method from validated_data
         validated_data.pop('payment_method', None)
@@ -552,20 +578,31 @@ class StudentUpdateSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         """Sync enrollments if provided."""
         import json
+        from django.utils import timezone
         from apps.enrollments.models import Enrollment
         from apps.subjects.models import Subject
         
         enrollments_data = validated_data.pop('enrollments', None)
+
+        # Server-side protection for edit mode:
+        # allow only name, phone, date_of_birth and optional enrollments updates.
+        allowed_scalar_fields = {'name', 'phone', 'date_of_birth'}
+        for key in list(validated_data.keys()):
+            if key not in allowed_scalar_fields:
+                validated_data.pop(key, None)
+
+        # Keep age in sync when DOB is edited.
+        dob = validated_data.get('date_of_birth')
+        if dob:
+            today = timezone.now().date()
+            computed_age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+            validated_data['age'] = computed_age
         
         # Update the student record
         student = super().update(instance, validated_data)
         
         if enrollments_data is not None:
-            if isinstance(enrollments_data, str):
-                try:
-                    enrollments_data = json.loads(enrollments_data)
-                except:
-                    enrollments_data = []
+            enrollments_data = _normalize_unique_enrollments(enrollments_data)
 
             # Get current active enrollments
             current_enrs = Enrollment.objects.filter(student=student, is_deleted=False)

@@ -48,17 +48,16 @@ def generate_id_card_pdf(enrollment, is_provisional=False):
     except Exception:
         pass
         
-    # Positions: 1: Top Left, 2: Top Right, 3: Bottom Left, 4: Bottom Right
-    # Centered 2x2 grid calculation
+    # Positions: Top Left, Top Right, Bottom Left, Bottom Right
+    # Centered 2x2 grid calculation on A5 landscape
     horiz_gap = (page_w - (2 * CARD_W)) / 3
     vert_gap = (page_h - (2 * CARD_H)) / 3
     
     positions = [
         (horiz_gap, page_h - vert_gap - CARD_H),                   # Top Left
         (page_w - horiz_gap - CARD_W, page_h - vert_gap - CARD_H), # Top Right
-        (horiz_gap, page_h - vert_gap - CARD_H),                   # Top Left
-        (page_w - horiz_gap - CARD_W, vert_gap),                   # Bottom Right
-        (horiz_gap, vert_gap)                                      # Bottom Left
+        (horiz_gap, vert_gap),                                     # Bottom Left
+        (page_w - horiz_gap - CARD_W, vert_gap)                    # Bottom Right
     ]
 
     logo_path = os.path.join(settings.BASE_DIR, 'apps', 'payments', 'static', 'images', 'logo.png')
@@ -106,8 +105,8 @@ def generate_id_card_pdf(enrollment, is_provisional=False):
         ib_x = cx + CARD_W - ib_w - l_marg; ib_y = cy + CARD_H - ib_h - l_marg
         c.setLineWidth(0.3)
         c.roundRect(ib_x, ib_y, ib_w, ib_h, radius=1*mm, stroke=1, fill=0)
-        c.setFont("Helvetica-Bold", 4.5)
-        c.drawCentredString(ib_x + ib_w/2, ib_y + ib_h - 3*mm, "ID")
+        c.setFont("Helvetica-Bold", 6.5)
+        c.drawCentredString(ib_x + ib_w/2, ib_y + ib_h - 2.8*mm, "ID")
         
         login_id = str(getattr(student, 'login_username', None) or getattr(student, 'student_id', 'N/A'))
         c.setFont("Helvetica-Bold", 7); c.setFillColor(grey)
@@ -185,7 +184,7 @@ def generate_bulk_id_cards_pdf(enrollments):
             
             ibw=16*mm; ibh=18*mm; ibx=cx+CARD_W-ibw-l_marg; iby=cy+CARD_H-ibh-l_marg
             c.setLineWidth(0.3); c.roundRect(ibx, iby, ibw, ibh, radius=1*mm)
-            c.setFont("Helvetica-Bold", 7); c.drawCentredString(ibx+ibw/2, iby+ibh-3*mm, "ID")
+            c.setFont("Helvetica-Bold", 8); c.drawCentredString(ibx+ibw/2, iby+ibh-2.8*mm, "ID")
             login_id = str(getattr(student, 'login_username', None) or getattr(student, 'student_id', 'N/A'))
             c.setFont("Helvetica-Bold", 8); c.setFillColor(grey); c.drawCentredString(ibx+ibw/2, iby+6*mm, login_id.upper()); c.setFillColor(black)
 

@@ -79,13 +79,14 @@ class PaymentListSerializer(serializers.ModelSerializer):
     """Simplified serializer for payment list."""
     
     student_name = serializers.CharField(source='enrollment.student.name', read_only=True)
+    student_id = serializers.CharField(source='enrollment.student.student_id', read_only=True)
     subject_name = serializers.CharField(source='enrollment.subject.name', read_only=True)
     
     class Meta:
         model = Payment
         fields = [
             'id', 'payment_id', 'receipt_number', 'enrollment',
-            'student_name', 'subject_name',
+            'student_name', 'student_id', 'subject_name',
             'amount', 'payment_date', 'payment_mode', 'status', 'created_at'
         ]
 

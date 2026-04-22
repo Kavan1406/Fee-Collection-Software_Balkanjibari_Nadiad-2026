@@ -13,6 +13,8 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.pdfgen import canvas as pdfcanvas
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 import os
 
 
@@ -55,6 +57,25 @@ class ReceiptCanvasWithBorder(pdfcanvas.Canvas):
                            width=wm_size, height=wm_size,
                            mask='auto', preserveAspectRatio=True)
             self.restoreState()
+
+
+def _get_currency_font_name():
+    font_candidates = [
+        os.path.join(os.environ.get('WINDIR', r'C:\Windows'), 'Fonts', 'seguisym.ttf'),
+        os.path.join(os.environ.get('WINDIR', r'C:\Windows'), 'Fonts', 'segoeui.ttf'),
+        os.path.join(os.environ.get('WINDIR', r'C:\Windows'), 'Fonts', 'arial.ttf'),
+    ]
+
+    for font_path in font_candidates:
+        if not os.path.exists(font_path):
+            continue
+        try:
+            pdfmetrics.registerFont(TTFont('ReceiptCurrencyFont', font_path))
+            return 'ReceiptCurrencyFont'
+        except Exception:
+            continue
+
+    return 'Helvetica'
 
 
 def generate_receipt_pdf(student, razorpay_order_id: str = None) -> bytes:
@@ -173,6 +194,9 @@ def generate_receipt_pdf(student, razorpay_order_id: str = None) -> bytes:
         # ---- Subject Fee Table (NO "Enrolled Subjects" heading, directly table) ----
         fee_data = [['#', 'Subject', 'Batch Time', 'SubFee', 'LibFee', 'Total']]
         grand_total = 0
+        cell_s = ParagraphStyle('Cell', fontSize=7.1, fontName='Helvetica', textColor=dark, leading=8.2)
+        cell_bold_s = ParagraphStyle('CellBold', fontSize=7.1, fontName='Helvetica-Bold', textColor=dark, leading=8.2)
+        currency_font = _get_currency_font_name()
 
         for i, enr in enumerate(enrollments, 1):
             sub_fee = float(enr.total_fee) - (10.0 if enr.include_library_fee else 0)
@@ -181,25 +205,25 @@ def generate_receipt_pdf(student, razorpay_order_id: str = None) -> bytes:
             grand_total += total
             fee_data.append([
                 str(i),
-                enr.subject.name,
-                enr.batch_time,
-                f"Rs.{sub_fee:,.0f}",
-                f"Rs.{lib_fee:,.0f}",
-                f"Rs.{total:,.0f}",
+                Paragraph(enr.subject.name, cell_s),
+                Paragraph(enr.batch_time or 'N/A', cell_s),
+                Paragraph(f"Rs.{sub_fee:,.0f}", cell_s),
+                Paragraph(f"Rs.{lib_fee:,.0f}", cell_s),
+                Paragraph(f"Rs.{total:,.0f}", cell_s),
             ])
 
 
 
-
         fee_data.append(['', '', '', '', Paragraph('<b>TOTAL PAID</b>', lbl_s),
-                          Paragraph(f'<b>Rs.{grand_total:,.0f}</b>', val_s)])
+                  Paragraph(f'<b>Rs.{grand_total:,.0f}</b>', cell_bold_s)])
 
         fee_table = Table(fee_data, colWidths=[0.7 * cm, 6.5 * cm, 4.0 * cm, 2.3 * cm, 2.3 * cm, 2.7 * cm])
         fee_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), indigo),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('FONTSIZE', (0, 0), (-1, -1), 7.5),
+            ('LEADING', (0, 0), (-1, -1), 8.2),
             ('ALIGN', (3, 0), (-1, -1), 'RIGHT'),
             ('ALIGN', (0, 0), (2, -1), 'LEFT'),
             ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#F0FDF4')),

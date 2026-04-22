@@ -78,7 +78,18 @@ export default function DashboardLayout({
       case 'students':
         if (userRole === 'student') return <StudentDashboard setCurrentPage={setCurrentPage} />
         if (userRole === 'staff' && !user?.can_view_students) return <div className="p-8 text-center font-bold text-slate-400">Access Denied</div>
-        return <StudentsPage userRole={userRole} canEdit={user?.role === 'ADMIN' || user?.role === 'ACCOUNTANT' || user?.can_view_students} />
+        return (
+          <StudentsPage
+            userRole={userRole}
+            canEdit={user?.role === 'ADMIN' || user?.role === 'ACCOUNTANT' || user?.can_view_students}
+            onNavigateToRequestAcceptance={(studentId?: string) => {
+              if (studentId && typeof window !== 'undefined') {
+                sessionStorage.setItem('request_acceptance_student_id', studentId)
+              }
+              setCurrentPage('request-acceptance')
+            }}
+          />
+        )
       case 'subjects':
         if (userRole === 'student') return <StudentDashboard setCurrentPage={setCurrentPage} />
         if (userRole === 'staff' && !user?.can_view_subjects) return <div className="p-8 text-center font-bold text-slate-400">Access Denied</div>

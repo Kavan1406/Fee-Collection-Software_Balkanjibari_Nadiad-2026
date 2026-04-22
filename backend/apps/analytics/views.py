@@ -2,7 +2,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from django.db.models import Sum, Count, F, Q
+from django.db.models import Sum, Count, F, Q, Prefetch
 from django.db.models.functions import TruncMonth
 from django.utils import timezone
 from datetime import timedelta, datetime
@@ -30,6 +30,123 @@ class AnalyticsViewSet(viewsets.ViewSet):
             return [IsAuthenticated()]
         # Allow Staff and Accountants to see dashboard analytics
         return [IsAuthenticated(), IsStaffAccountantOrAdmin()]
+
+    def _build_subject_batch_enrollment_report(self, subject_id, batch, start_date_str, end_date_str):
+        filters = {
+            'is_deleted': False,
+            'subject_id': int(subject_id)
+        }
+
+        if batch and batch.upper() != 'ALL':
+            filters['batch_time'] = batch
+
+        enrollments = Enrollment.objects.filter(**filters).select_related('student', 'subject').prefetch_related(
+            Prefetch(
+                'payments',
+                queryset=Payment.objects.filter(is_deleted=False).order_by('-created_at'),
+                to_attr='report_payments'
+            )
+        ).order_by('batch_time', 'student__name')
+
+        if start_date_str:
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+            enrollments = enrollments.filter(enrollment_date__gte=start_date)
+        if end_date_str:
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+            enrollments = enrollments.filter(enrollment_date__lte=end_date)
+
+        rows = []
+        summary_stats = {
+            'total_students': 0,
+            'total_fees': 0,
+            'total_enrolled': 0,
+            'total_paid': 0,
+            'total_pending': 0,
+            'online_payments': 0,
+            'offline_payments': 0,
+        }
+
+        for idx, enr in enumerate(enrollments, start=1):
+            student = enr.student
+            subject = enr.subject
+            payments = list(getattr(enr, 'report_payments', []))
+            latest_payment = payments[0] if payments else None
+
+            total_fee = float(enr.total_fee or 0)
+            paid_amount = float(enr.paid_amount or 0)
+            pending_amount = float(enr.pending_amount or max(total_fee - paid_amount, 0))
+
+            if latest_payment:
+                payment_mode = latest_payment.payment_mode or 'N/A'
+                payment_status = enr.payment_status or latest_payment.status or 'N/A'
+                payment_id = latest_payment.payment_id or 'N/A'
+                payment_reference_no = latest_payment.transaction_id or latest_payment.razorpay_payment_id or latest_payment.payment_id or 'N/A'
+                receipt_id = latest_payment.receipt_number or 'N/A'
+                payment_date = latest_payment.payment_date.strftime('%d-%m-%Y') if getattr(latest_payment, 'payment_date', None) else 'N/A'
+                payment_time = latest_payment.payment_time.strftime('%I:%M %p') if getattr(latest_payment, 'payment_time', None) else 'N/A'
+            else:
+                payment_mode = 'N/A'
+                payment_status = enr.payment_status or 'PAYMENT PENDING'
+                payment_id = 'N/A'
+                payment_reference_no = 'N/A'
+                receipt_id = 'N/A'
+                payment_date = 'N/A'
+                payment_time = 'N/A'
+
+            payment_mode_display = 'Online' if payment_mode == 'ONLINE' else ('Offline' if payment_mode == 'CASH' else 'N/A')
+            login_id = (
+                getattr(student, 'login_username', None)
+                or getattr(getattr(student, 'user', None), 'username', None)
+                or (student.student_id if student else 'N/A')
+            )
+            password_masked = '***ENCRYPTED***' if getattr(student, 'login_password_hint', None) else 'N/A'
+
+            rows.append({
+                'sr_no': idx,
+                'enrollment_id': enr.enrollment_id,
+                'student_name': student.name if student else 'N/A',
+                'student_id': student.student_id if student else 'N/A',
+                'login_id': login_id,
+                'password': password_masked,
+                'subject_name': subject.name if subject else 'N/A',
+                'batch_time': enr.batch_time or 'N/A',
+                'enrollment_date': enr.enrollment_date.strftime('%d-%m-%Y') if enr.enrollment_date else 'N/A',
+                'total_fee': total_fee,
+                'paid_amount': paid_amount,
+                'pending_amount': max(pending_amount, 0),
+                'payment_mode': payment_mode_display,
+                'payment_status': payment_status,
+                'payment_id': payment_id,
+                'payment_reference_no': payment_reference_no,
+                'phone_number': student.phone if student else 'N/A',
+                'receipt_id': receipt_id,
+                'payment_date': payment_date,
+                'payment_time': payment_time,
+            })
+
+            summary_stats['total_students'] += 1
+            summary_stats['total_fees'] += total_fee
+            summary_stats['total_enrolled'] += total_fee
+            summary_stats['total_paid'] += paid_amount
+            summary_stats['total_pending'] += max(pending_amount, 0)
+            if payment_mode == 'ONLINE':
+                summary_stats['online_payments'] += paid_amount
+            elif payment_mode == 'CASH':
+                summary_stats['offline_payments'] += paid_amount
+
+        subject = Subject.objects.filter(id=int(subject_id), is_deleted=False).first()
+        subject_name = subject.name if subject else 'Selected Subject'
+
+        return {
+            'subject_id': int(subject_id),
+            'subject_name': subject_name,
+            'batch': batch,
+            'start_date': start_date_str or 'All',
+            'end_date': end_date_str or 'All',
+            'generated_at': timezone.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'rows': rows,
+            'summary': summary_stats,
+        }
 
     @action(detail=False, methods=['get'], url_path='student-stats')
     def student_stats(self, request):
@@ -359,62 +476,11 @@ class AnalyticsViewSet(viewsets.ViewSet):
 
             if not subject_id:
                 return Response({'success': False, 'error': {'message': 'subject_id is required.'}}, status=400)
-
-            filters = {
-                'is_deleted': False,
-                'subject_id': int(subject_id)
-            }
-
-            if batch and batch.upper() != 'ALL':
-                filters['batch_time'] = batch
-
-            enrollments = Enrollment.objects.filter(**filters).select_related('student', 'subject').order_by('batch_time', 'student__name')
-
-            if start_date_str:
-                start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
-                enrollments = enrollments.filter(enrollment_date__gte=start_date)
-            if end_date_str:
-                end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
-                enrollments = enrollments.filter(enrollment_date__lte=end_date)
-
-            rows = []
-            totals: dict[str, int] = {}
-            for idx, enr in enumerate(enrollments, start=1):
-                student_name = enr.student.name if enr.student else 'N/A'
-                login_id = enr.student.login_username if enr.student and getattr(enr.student, 'login_username', None) else (enr.student.student_id if enr.student else 'N/A')
-                batch_name = enr.batch_time or 'N/A'
-
-                totals[batch_name] = totals.get(batch_name, 0) + 1
-                rows.append({
-                    'subject_name': enr.subject.name if enr.subject else 'N/A',
-                    'batch_time': batch_name,
-                    'student_name': student_name,
-                    'student_id': enr.student.student_id if enr.student else 'N/A',
-                    'login_id': login_id,
-                    'enrollment_date': enr.enrollment_date.strftime('%Y-%m-%d') if getattr(enr, 'enrollment_date', None) else 'N/A',
-                })
-
-            totals_by_batch = [
-                {'batch_time': batch_name, 'total_students': count}
-                for batch_name, count in sorted(totals.items())
-            ]
-
-            subject = Subject.objects.filter(id=int(subject_id), is_deleted=False).first()
-            subject_name = subject.name if subject else 'Selected Subject'
+            report = self._build_subject_batch_enrollment_report(subject_id, batch, start_date_str, end_date_str)
 
             return Response({
                 'success': True,
-                'data': {
-                    'subject_id': int(subject_id),
-                    'subject_name': subject_name,
-                    'batch': batch,
-                    'start_date': start_date_str or 'All',
-                    'end_date': end_date_str or 'All',
-                    'generated_at': timezone.now().strftime('%Y-%m-%d %H:%M:%S'),
-                    'rows': rows,
-                    'totals_by_batch': totals_by_batch,
-                    'total_students': sum(totals.values()),
-                }
+                'data': report,
             })
         except Exception as e:
             return Response({'success': False, 'error': {'message': str(e)}}, status=500)
@@ -430,37 +496,36 @@ class AnalyticsViewSet(viewsets.ViewSet):
 
             if not subject_id:
                 return Response({'success': False, 'error': {'message': 'subject_id is required.'}}, status=400)
-
-            filters = {
-                'is_deleted': False,
-                'subject_id': int(subject_id)
-            }
-            if batch and batch.upper() != 'ALL':
-                filters['batch_time'] = batch
-
-            enrollments = Enrollment.objects.filter(**filters).select_related('student', 'subject').order_by('batch_time', 'student__name')
-            if start_date_str:
-                start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
-                enrollments = enrollments.filter(enrollment_date__gte=start_date)
-            if end_date_str:
-                end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
-                enrollments = enrollments.filter(enrollment_date__lte=end_date)
+            report = self._build_subject_batch_enrollment_report(subject_id, batch, start_date_str, end_date_str)
 
             file_date = timezone.now().strftime('%Y-%m-%d')
             response = HttpResponse(content_type='text/csv')
             response['Content-Disposition'] = f'attachment; filename="subject_batch_enrollment_report_{subject_id}_{batch}_{file_date}.csv"'
             writer = csv.writer(response)
 
-            writer.writerow(['Sr. No.', 'Student Name', 'Student Login ID', 'Subject Name', 'Batch Name', 'Enrollment Date'])
-            for idx, enr in enumerate(enrollments, start=1):
-                login_id = enr.student.login_username if enr.student and getattr(enr.student, 'login_username', None) else (enr.student.student_id if enr.student else 'N/A')
+            writer.writerow(['Sr. No.', 'Enrollment ID', 'Student Name', 'Student ID', 'Login ID', 'Password', 'Subject Name', 'Batch Name', 'Enrollment Date', 'Total Fee', 'Paid Amount', 'Pending Amount', 'Payment Mode', 'Payment Status', 'Payment ID', 'Payment Ref. No', 'Phone Number', 'Receipt ID', 'Payment Date', 'Payment Time'])
+            for row in report['rows']:
                 writer.writerow([
-                    idx,
-                    enr.student.name if enr.student else 'N/A',
-                    login_id,
-                    enr.subject.name if enr.subject else 'N/A',
-                    enr.batch_time or 'N/A',
-                    enr.enrollment_date.strftime('%Y-%m-%d') if getattr(enr, 'enrollment_date', None) else 'N/A',
+                    row.get('sr_no', ''),
+                    row.get('enrollment_id', ''),
+                    row.get('student_name', ''),
+                    row.get('student_id', ''),
+                    row.get('login_id', ''),
+                    row.get('password', ''),
+                    row.get('subject_name', ''),
+                    row.get('batch_time', ''),
+                    row.get('enrollment_date', ''),
+                    f"{float(row.get('total_fee', 0) or 0):.2f}",
+                    f"{float(row.get('paid_amount', 0) or 0):.2f}",
+                    f"{float(row.get('pending_amount', 0) or 0):.2f}",
+                    row.get('payment_mode', ''),
+                    row.get('payment_status', ''),
+                    row.get('payment_id', ''),
+                    row.get('payment_reference_no', ''),
+                    row.get('phone_number', ''),
+                    row.get('receipt_id', ''),
+                    row.get('payment_date', ''),
+                    row.get('payment_time', ''),
                 ])
 
             return response
@@ -478,40 +543,36 @@ class AnalyticsViewSet(viewsets.ViewSet):
 
             if not subject_id:
                 return Response({'success': False, 'error': {'message': 'subject_id is required.'}}, status=400)
-
-            filters = {
-                'is_deleted': False,
-                'subject_id': int(subject_id)
-            }
-            if batch and batch.upper() != 'ALL':
-                filters['batch_time'] = batch
-
-            enrollments = Enrollment.objects.filter(**filters).select_related('student', 'subject').order_by('batch_time', 'student__name')
-            if start_date_str:
-                start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
-                enrollments = enrollments.filter(enrollment_date__gte=start_date)
-            if end_date_str:
-                end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
-                enrollments = enrollments.filter(enrollment_date__lte=end_date)
-
-            subject = Subject.objects.filter(id=int(subject_id), is_deleted=False).first()
-            subject_name = subject.name if subject else 'Selected Subject'
+            report = self._build_subject_batch_enrollment_report(subject_id, batch, start_date_str, end_date_str)
             file_date = timezone.now().strftime('%Y-%m-%d')
 
-            headers = ['Sr. No.', 'Student Name', 'Student Login ID', 'Subject Name', 'Batch Name', 'Enrollment Date']
+            headers = ['Sr. No.', 'Enrollment ID', 'Student Name', 'Student ID', 'Login ID', 'Password', 'Subject Name', 'Batch Name', 'Enrollment Date', 'Total Fee', 'Paid Amount', 'Pending Amount', 'Payment Mode', 'Payment Status', 'Payment ID', 'Payment Ref. No', 'Phone Number', 'Receipt ID', 'Payment Date', 'Payment Time']
             data = []
-            for idx, enr in enumerate(enrollments, start=1):
-                login_id = enr.student.login_username if enr.student and getattr(enr.student, 'login_username', None) else (enr.student.student_id if enr.student else 'N/A')
+            for row in report['rows']:
                 data.append([
-                    idx,
-                    enr.student.name if enr.student else 'N/A',
-                    login_id,
-                    enr.subject.name if enr.subject else 'N/A',
-                    enr.batch_time or 'N/A',
-                    enr.enrollment_date.strftime('%Y-%m-%d') if getattr(enr, 'enrollment_date', None) else 'N/A',
+                    row.get('sr_no', ''),
+                    row.get('enrollment_id', ''),
+                    row.get('student_name', ''),
+                    row.get('student_id', ''),
+                    row.get('login_id', ''),
+                    row.get('password', ''),
+                    row.get('subject_name', ''),
+                    row.get('batch_time', ''),
+                    row.get('enrollment_date', ''),
+                    f"₹{float(row.get('total_fee', 0) or 0):,.2f}",
+                    f"₹{float(row.get('paid_amount', 0) or 0):,.2f}",
+                    f"₹{float(row.get('pending_amount', 0) or 0):,.2f}",
+                    row.get('payment_mode', ''),
+                    row.get('payment_status', ''),
+                    row.get('payment_id', ''),
+                    row.get('payment_reference_no', ''),
+                    row.get('phone_number', ''),
+                    row.get('receipt_id', ''),
+                    row.get('payment_date', ''),
+                    row.get('payment_time', ''),
                 ])
 
-            title = f"Subject-wise Batch-wise Enrollment Report ({subject_name})"
+            title = f"Subject-wise Batch-wise Enrollment Report ({report['subject_name']})"
             pdf_content = generate_pdf_report(title, headers, data)
             response = HttpResponse(pdf_content, content_type='application/pdf')
             response['Content-Disposition'] = f'attachment; filename="subject_batch_enrollment_report_{subject_id}_{batch}_{file_date}.pdf"'
