@@ -1,10 +1,10 @@
 'use client'
 
-import { Download, FileText, Loader2, Calendar, BarChart2 } from 'lucide-react'
+import { Download, FileText, Loader2, Calendar, BarChart2, BookOpen, ChevronDown, ChevronUp, Users } from 'lucide-react'
 import { useState, useRef, useEffect, Fragment } from 'react'
 import { analyticsApi, subjectsApi } from '@/lib/api'
 import { useNotifications } from '@/hooks/useNotifications'
-import type { DateWiseFeeReportRow } from '@/lib/api/analytics'
+import type { DateWiseFeeReportRow, SubjectDateWiseSubjectRow } from '@/lib/api/analytics'
 
 interface ReportsPageProps {
   userRole: 'admin' | 'staff' | 'student' | 'accountant'
@@ -32,6 +32,17 @@ export default function ReportsPage({ userRole }: ReportsPageProps) {
   const [dwLoading, setDwLoading] = useState(false)
   const [dwReportData, setDwReportData] = useState<any | null>(null)
   const [dwDownloading, setDwDownloading] = useState<string | null>(null)
+
+  // ── Report 3: Date-wise Subject-wise Fee Collection State ─────────────────
+  const [r3StartDate, setR3StartDate] = useState(new Date().toISOString().split('T')[0])
+  const [r3EndDate, setR3EndDate] = useState(new Date().toISOString().split('T')[0])
+  const [r3SelectedSubjectIds, setR3SelectedSubjectIds] = useState<number[]>([])
+  const [r3SelectAll, setR3SelectAll] = useState(true)
+  const [r3Loading, setR3Loading] = useState(false)
+  const [r3ReportData, setR3ReportData] = useState<any | null>(null)
+  const [r3Downloading, setR3Downloading] = useState<string | null>(null)
+  const [r3SubjectDropOpen, setR3SubjectDropOpen] = useState(false)
+  const [r3ExpandedSubjects, setR3ExpandedSubjects] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     const fetchSubjects = async () => {
@@ -196,6 +207,69 @@ export default function ReportsPage({ userRole }: ReportsPageProps) {
       notifyError(`Failed to download ${format} report`)
     } finally {
       setDwDownloading(null)
+    }
+  }
+
+  // ── Report 3 Handlers ────────────────────────────────────────────────────
+  const toggleR3Subject = (id: number) => {
+    setR3SelectedSubjectIds(prev => {
+      const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+      setR3SelectAll(next.length === allSubjects.length)
+      return next
+    })
+  }
+
+  const toggleR3SelectAll = () => {
+    if (r3SelectAll) {
+      setR3SelectedSubjectIds([])
+      setR3SelectAll(false)
+    } else {
+      setR3SelectedSubjectIds(allSubjects.map((s: any) => s.id))
+      setR3SelectAll(true)
+    }
+  }
+
+  const generateR3Report = async () => {
+    if (r3StartDate > r3EndDate) {
+      notifyError('Start date cannot be after end date')
+      return
+    }
+    try {
+      setR3Loading(true)
+      const ids = r3SelectAll ? undefined : (r3SelectedSubjectIds.length > 0 ? r3SelectedSubjectIds : undefined)
+      const response = await analyticsApi.getSubjectDateWiseFeeReport(r3StartDate, r3EndDate, ids)
+      const data = (response as any)?.data || response
+      setR3ReportData(data || null)
+      // auto-expand all subjects
+      if (data?.subjects) {
+        const expanded: Record<string, boolean> = {}
+        data.subjects.forEach((s: any) => { expanded[s.subject_name] = true })
+        setR3ExpandedSubjects(expanded)
+      }
+      notifySuccess('Report 3 generated successfully')
+    } catch (error) {
+      console.error('Report 3 generation failed:', error)
+      notifyError('Failed to generate Subject-wise Fee report')
+    } finally {
+      setR3Loading(false)
+    }
+  }
+
+  const handleR3Download = async (format: 'CSV' | 'PDF') => {
+    try {
+      setR3Downloading(format)
+      const ids = r3SelectAll ? undefined : (r3SelectedSubjectIds.length > 0 ? r3SelectedSubjectIds : undefined)
+      if (format === 'CSV') {
+        await analyticsApi.exportSubjectDateWiseFeeReportCsv(r3StartDate, r3EndDate, ids)
+      } else {
+        await analyticsApi.exportSubjectDateWiseFeeReportPdf(r3StartDate, r3EndDate, ids)
+      }
+      notifySuccess(`${format} downloaded successfully`)
+    } catch (error) {
+      console.error('Report 3 download failed:', error)
+      notifyError(`Failed to download ${format} report`)
+    } finally {
+      setR3Downloading(null)
     }
   }
 
@@ -637,6 +711,271 @@ export default function ReportsPage({ userRole }: ReportsPageProps) {
           <BarChart2 size={32} className="mx-auto mb-3 opacity-30" />
           <p className="text-sm font-semibold uppercase tracking-widest">No report generated yet</p>
           <p className="mt-2 text-xs">Choose a date range and payment mode above, then click Generate Report.</p>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════
+          REPORT 3: DATE-WISE SUBJECT-WISE FEE COLLECTION
+      ════════════════════════════════════════════════════════════════ */}
+      <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-100 shadow-sm">
+        <div className="mb-5 flex items-start gap-3">
+          <div className="rounded-xl bg-violet-100 p-2">
+            <BookOpen size={20} className="text-violet-600" />
+          </div>
+          <div>
+            <h2 className="text-xl sm:text-2xl font-bold text-slate-900 uppercase tracking-tight font-poppins">
+              Date-wise Subject-wise Fee Collection Report
+            </h2>
+            <p className="text-slate-500 text-sm mt-0.5 font-medium font-inter">
+              View fees collected per subject &amp; batch within the selected date range, sorted A→Z.
+            </p>
+          </div>
+        </div>
+
+        {/* Filters */}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {/* Start Date */}
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Start Date</label>
+            <input
+              type="date"
+              value={r3StartDate}
+              onChange={(e) => setR3StartDate(e.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900"
+            />
+          </div>
+
+          {/* End Date */}
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">End Date</label>
+            <input
+              type="date"
+              value={r3EndDate}
+              onChange={(e) => setR3EndDate(e.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900"
+            />
+          </div>
+
+          {/* Subject Multi-select */}
+          <div className="sm:col-span-2">
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">
+              Subjects ({r3SelectAll ? 'All' : r3SelectedSubjectIds.length} selected)
+            </label>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setR3SubjectDropOpen(p => !p)}
+                className="w-full flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-medium text-slate-900 text-left"
+              >
+                <span className="truncate">
+                  {r3SelectAll
+                    ? 'All Subjects'
+                    : r3SelectedSubjectIds.length === 0
+                    ? 'Select subjects…'
+                    : `${r3SelectedSubjectIds.length} subject(s) selected`}
+                </span>
+                {r3SubjectDropOpen ? <ChevronUp size={16} className="text-slate-400 shrink-0" /> : <ChevronDown size={16} className="text-slate-400 shrink-0" />}
+              </button>
+
+              {r3SubjectDropOpen && (
+                <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden">
+                  {/* Select All row */}
+                  <label className="flex items-center gap-3 px-4 py-3 hover:bg-violet-50 cursor-pointer border-b border-slate-100 bg-violet-50/50">
+                    <input
+                      type="checkbox"
+                      checked={r3SelectAll}
+                      onChange={toggleR3SelectAll}
+                      className="w-4 h-4 accent-violet-600 rounded"
+                    />
+                    <span className="text-xs font-bold text-violet-700 uppercase tracking-widest">Select All</span>
+                  </label>
+                  <div className="max-h-52 overflow-y-auto">
+                    {[...allSubjects].sort((a: any, b: any) => a.name.localeCompare(b.name)).map((sub: any) => (
+                      <label key={sub.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={r3SelectAll || r3SelectedSubjectIds.includes(sub.id)}
+                          onChange={() => { setR3SelectAll(false); toggleR3Subject(sub.id) }}
+                          className="w-4 h-4 accent-violet-600 rounded"
+                        />
+                        <span className="text-sm text-slate-700 font-medium">{sub.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="px-4 py-3 border-t border-slate-100 bg-slate-50">
+                    <button
+                      onClick={() => setR3SubjectDropOpen(false)}
+                      className="w-full text-xs font-bold text-violet-600 uppercase tracking-widest hover:underline"
+                    >
+                      Done
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Action bar */}
+        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <button
+            onClick={generateR3Report}
+            disabled={r3Loading}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-violet-600 px-6 py-3 text-sm font-bold text-white transition hover:bg-violet-700 disabled:opacity-50 shadow-lg shadow-violet-500/20"
+          >
+            {r3Loading ? <Loader2 size={16} className="animate-spin" /> : <Calendar size={16} />}
+            Generate Report
+          </button>
+
+          {r3ReportData && !r3Loading && (
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => handleR3Download('CSV')}
+                disabled={!!r3Downloading}
+                className="inline-flex items-center gap-2 rounded-2xl bg-emerald-50 px-4 py-3 text-xs font-bold uppercase tracking-widest text-emerald-600 border border-emerald-100 disabled:opacity-50"
+              >
+                {r3Downloading === 'CSV' ? <Loader2 size={12} className="animate-spin" /> : <Download size={14} />}
+                Download CSV
+              </button>
+              <button
+                onClick={() => handleR3Download('PDF')}
+                disabled={!!r3Downloading}
+                className="inline-flex items-center gap-2 rounded-2xl bg-indigo-50 px-4 py-3 text-xs font-bold uppercase tracking-widest text-indigo-600 border border-indigo-100 disabled:opacity-50"
+              >
+                {r3Downloading === 'PDF' ? <Loader2 size={12} className="animate-spin" /> : <FileText size={14} />}
+                Download PDF
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Report 3 Output ─────────────────────────────────────────────── */}
+      {r3Loading ? (
+        <div className="rounded-2xl border border-slate-100 bg-white p-8 text-center text-slate-500 shadow-sm">
+          <Loader2 size={18} className="mx-auto mb-3 animate-spin text-violet-500" />
+          <p className="text-sm font-semibold uppercase tracking-widest">Loading report data…</p>
+        </div>
+      ) : r3ReportData ? (
+        <div className="space-y-4">
+          {/* Summary cards */}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+              <p className="text-[10px] uppercase tracking-widest text-slate-500">Date Range</p>
+              <p className="mt-1 text-sm font-bold text-slate-900">
+                {r3ReportData.start_date} → {r3ReportData.end_date}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-violet-100 bg-violet-50 p-4">
+              <p className="text-[10px] uppercase tracking-widest text-violet-600 font-bold">Subjects</p>
+              <p className="mt-1 text-2xl font-bold text-violet-900">{r3ReportData.subjects?.length ?? 0}</p>
+            </div>
+            <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
+              <p className="text-[10px] uppercase tracking-widest text-blue-600 font-bold">Total Students</p>
+              <p className="mt-1 text-2xl font-bold text-blue-900">{r3ReportData.grand_total_students ?? 0}</p>
+            </div>
+            <div className="rounded-2xl border border-green-100 bg-green-50 p-4">
+              <p className="text-[10px] uppercase tracking-widest text-green-600 font-bold">Grand Total Fees</p>
+              <p className="mt-1 text-2xl font-bold text-green-900">{formatCurrency(r3ReportData.grand_total_fees ?? 0)}</p>
+            </div>
+          </div>
+
+          {/* Data table */}
+          <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm">
+            <table className="min-w-full divide-y divide-slate-200 text-xs">
+              <thead className="bg-slate-900 text-white sticky top-0">
+                <tr>
+                  <th className="px-4 py-3 text-center text-[9px] font-bold uppercase tracking-widest w-14">Sr.</th>
+                  <th className="px-4 py-3 text-left text-[9px] font-bold uppercase tracking-widest">Subject</th>
+                  <th className="px-4 py-3 text-left text-[9px] font-bold uppercase tracking-widest">Batch</th>
+                  <th className="px-4 py-3 text-right text-[9px] font-bold uppercase tracking-widest">Students</th>
+                  <th className="px-4 py-3 text-right text-[9px] font-bold uppercase tracking-widest">Fees Collected</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {r3ReportData.subjects?.length > 0 ? (
+                  <>
+                    {r3ReportData.subjects.map((sub: SubjectDateWiseSubjectRow, subIdx: number) => {
+                      const isExpanded = r3ExpandedSubjects[sub.subject_name] !== false
+                      return (
+                        <Fragment key={`sub-${sub.subject_name}`}>
+                          {/* Subject header row – click to expand/collapse */}
+                          <tr
+                            className="bg-violet-50 border-t-2 border-violet-100 cursor-pointer hover:bg-violet-100 transition"
+                            onClick={() => setR3ExpandedSubjects(p => ({ ...p, [sub.subject_name]: !isExpanded }))}
+                          >
+                            <td className="px-4 py-3 text-center text-violet-400 font-bold">{subIdx + 1}</td>
+                            <td className="px-4 py-3" colSpan={2}>
+                              <div className="flex items-center gap-2">
+                                {isExpanded
+                                  ? <ChevronUp size={14} className="text-violet-500 shrink-0" />
+                                  : <ChevronDown size={14} className="text-violet-500 shrink-0" />}
+                                <span className="text-[11px] font-black uppercase tracking-widest text-violet-800">
+                                  {sub.subject_name}
+                                </span>
+                                <span className="text-[10px] text-violet-500 font-medium">
+                                  ({sub.batches.length} batch{sub.batches.length !== 1 ? 'es' : ''})
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full">
+                                <Users size={10} /> {sub.subject_total_students}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-right font-black text-violet-800">
+                              {formatCurrency(sub.subject_total_fees)}
+                            </td>
+                          </tr>
+
+                          {/* Batch rows – only shown when expanded */}
+                          {isExpanded && sub.batches.map((batch, batchIdx) => (
+                            <tr
+                              key={`${sub.subject_name}-${batch.batch_time}-${batchIdx}`}
+                              className={batchIdx % 2 === 0 ? 'bg-white hover:bg-slate-50 transition' : 'bg-slate-50 hover:bg-slate-100 transition'}
+                            >
+                              <td className="px-4 py-3 text-center text-slate-400 font-medium pl-8">{batchIdx + 1}</td>
+                              <td className="px-4 py-3 text-slate-400 text-[10px] font-medium italic pl-6">↳ {sub.subject_name}</td>
+                              <td className="px-4 py-3 text-slate-700 font-semibold">{batch.batch_time}</td>
+                              <td className="px-4 py-3 text-right font-semibold text-slate-700">{batch.student_count}</td>
+                              <td className="px-4 py-3 text-right font-bold text-green-800">
+                                {formatCurrency(batch.fees_collected)}
+                              </td>
+                            </tr>
+                          ))}
+                        </Fragment>
+                      )
+                    })}
+
+                    {/* Grand total row */}
+                    <tr className="bg-slate-900 text-white">
+                      <td className="px-4 py-3 text-center text-[10px] font-bold uppercase tracking-widest" colSpan={3}>
+                        Grand Total ({r3ReportData.subjects?.length} subjects)
+                      </td>
+                      <td className="px-4 py-3 text-right font-bold text-blue-300">
+                        {r3ReportData.grand_total_students}
+                      </td>
+                      <td className="px-4 py-3 text-right font-bold text-green-300">
+                        {formatCurrency(r3ReportData.grand_total_fees)}
+                      </td>
+                    </tr>
+                  </>
+                ) : (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
+                      No fee collection records found for the selected criteria.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-10 text-center text-slate-400">
+          <BookOpen size={32} className="mx-auto mb-3 opacity-30" />
+          <p className="text-sm font-semibold uppercase tracking-widest">No report generated yet</p>
+          <p className="mt-2 text-xs">Choose a date range and subjects above, then click Generate Report.</p>
         </div>
       )}
     </div>

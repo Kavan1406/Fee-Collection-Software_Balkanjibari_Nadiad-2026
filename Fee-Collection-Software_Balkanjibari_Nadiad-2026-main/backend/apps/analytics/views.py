@@ -681,6 +681,196 @@ class AnalyticsViewSet(viewsets.ViewSet):
         except Exception as e:
             return Response({'success': False, 'error': {'message': str(e)}}, status=500)
 
+    # ════════════════════════════════════════════════════════════════════════
+    # REPORT 3: Date-wise Subject-wise Fee Collection
+    # ════════════════════════════════════════════════════════════════════════
+
+    def _build_subject_date_wise_fee_report(self, start_date, end_date, subject_ids=None):
+        """
+        Group paid fees by Subject (A-Z) → Batch within a date range.
+        Returns: list of subjects, each with batches, student counts and fee totals.
+        """
+        qs = Payment.objects.filter(
+            is_deleted=False,
+            status='SUCCESS',
+            payment_date__range=(start_date, end_date),
+            enrollment__isnull=False,
+            enrollment__subject__isnull=False,
+        ).select_related('enrollment__subject', 'enrollment__student')
+
+        if subject_ids:
+            qs = qs.filter(enrollment__subject__id__in=subject_ids)
+
+        # Aggregate: per subject + batch
+        agg = (
+            qs.values(
+                'enrollment__subject__id',
+                'enrollment__subject__name',
+                'enrollment__batch_time',
+            )
+            .annotate(
+                student_count=Count('enrollment__student_id', distinct=True),
+                fees_collected=Sum('amount'),
+            )
+            .order_by('enrollment__subject__name', 'enrollment__batch_time')
+        )
+
+        subject_map = {}
+        for row in agg:
+            sub_id = row['enrollment__subject__id']
+            sub_name = row['enrollment__subject__name'] or 'Unknown Subject'
+            batch = row['enrollment__batch_time'] or 'Default Batch'
+            sc = int(row['student_count'] or 0)
+            fc = float(row['fees_collected'] or 0)
+
+            if sub_id not in subject_map:
+                subject_map[sub_id] = {
+                    'subject_name': sub_name,
+                    'batches': [],
+                    'subject_total_students': 0,
+                    'subject_total_fees': 0.0,
+                }
+
+            subject_map[sub_id]['batches'].append({
+                'batch_time': batch,
+                'student_count': sc,
+                'fees_collected': fc,
+            })
+            subject_map[sub_id]['subject_total_students'] += sc
+            subject_map[sub_id]['subject_total_fees'] += fc
+
+        subjects = sorted(subject_map.values(), key=lambda x: x['subject_name'])
+        grand_total_students = sum(s['subject_total_students'] for s in subjects)
+        grand_total_fees = sum(s['subject_total_fees'] for s in subjects)
+
+        return {
+            'start_date': start_date.strftime('%Y-%m-%d'),
+            'end_date': end_date.strftime('%Y-%m-%d'),
+            'subjects': subjects,
+            'grand_total_students': grand_total_students,
+            'grand_total_fees': float(grand_total_fees),
+        }
+
+    def _parse_date_range_params(self, request):
+        """Shared helper to parse start_date/end_date from query params."""
+        start_date_str = request.query_params.get('start_date')
+        end_date_str = request.query_params.get('end_date')
+        end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date() if end_date_str else timezone.localdate()
+        start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date() if start_date_str else end_date
+        if start_date > end_date:
+            raise ValueError('Start date cannot be after end date.')
+        return start_date, end_date
+
+    def _parse_subject_ids(self, request):
+        raw = request.query_params.get('subject_ids', '')
+        if not raw:
+            return None
+        try:
+            return [int(x.strip()) for x in raw.split(',') if x.strip()]
+        except ValueError:
+            return None
+
+    @action(detail=False, methods=['get'])
+    def subject_date_wise_fee_report(self, request):
+        """Report 3: Date-wise Subject-wise Fee Collection."""
+        try:
+            start_date, end_date = self._parse_date_range_params(request)
+            subject_ids = self._parse_subject_ids(request)
+            report = self._build_subject_date_wise_fee_report(start_date, end_date, subject_ids)
+            return Response({'success': True, 'data': report})
+        except ValueError as ve:
+            return Response({'success': False, 'error': {'message': str(ve)}}, status=400)
+        except Exception as e:
+            return Response({'success': False, 'error': {'message': str(e)}}, status=500)
+
+    @action(detail=False, methods=['get'])
+    def export_subject_date_wise_fee_report_csv(self, request):
+        """Export Report 3 as CSV."""
+        try:
+            start_date, end_date = self._parse_date_range_params(request)
+            subject_ids = self._parse_subject_ids(request)
+            report = self._build_subject_date_wise_fee_report(start_date, end_date, subject_ids)
+
+            response = HttpResponse(content_type='text/csv')
+            fn = f"subject-date-wise-fee-{report['start_date']}-to-{report['end_date']}.csv"
+            response['Content-Disposition'] = f'attachment; filename="{fn}"'
+
+            writer = csv.writer(response)
+            writer.writerow(['Date Range', f"{report['start_date']} to {report['end_date']}"])
+            writer.writerow([])
+            writer.writerow(['Sr. No.', 'Subject', 'Batch', 'Student Count', 'Fees Collected (Rs.)'])
+
+            sr = 1
+            for sub in report['subjects']:
+                for batch in sub['batches']:
+                    writer.writerow([
+                        sr,
+                        sub['subject_name'],
+                        batch['batch_time'],
+                        batch['student_count'],
+                        f"{batch['fees_collected']:.2f}",
+                    ])
+                    sr += 1
+                # Subject sub-total
+                writer.writerow([
+                    '',
+                    f"  Subtotal: {sub['subject_name']}",
+                    f"{len(sub['batches'])} batch(es)",
+                    sub['subject_total_students'],
+                    f"{sub['subject_total_fees']:.2f}",
+                ])
+                writer.writerow([])
+
+            writer.writerow(['GRAND TOTAL', '', '', report['grand_total_students'], f"{report['grand_total_fees']:.2f}"])
+            return response
+        except ValueError as ve:
+            return Response({'success': False, 'error': {'message': str(ve)}}, status=400)
+        except Exception as e:
+            return Response({'success': False, 'error': {'message': str(e)}}, status=500)
+
+    @action(detail=False, methods=['get'])
+    def export_subject_date_wise_fee_report_pdf(self, request):
+        """Export Report 3 as PDF."""
+        try:
+            start_date, end_date = self._parse_date_range_params(request)
+            subject_ids = self._parse_subject_ids(request)
+            report = self._build_subject_date_wise_fee_report(start_date, end_date, subject_ids)
+
+            headers = ['Sr. No.', 'Subject', 'Batch', 'Students', 'Fees (Rs.)']
+            data = []
+            sr = 1
+            for sub in report['subjects']:
+                for batch in sub['batches']:
+                    data.append([
+                        str(sr),
+                        sub['subject_name'],
+                        batch['batch_time'],
+                        str(batch['student_count']),
+                        f"Rs. {batch['fees_collected']:,.2f}",
+                    ])
+                    sr += 1
+                data.append([
+                    '',
+                    f"Subtotal: {sub['subject_name']}",
+                    f"{len(sub['batches'])} batch(es)",
+                    str(sub['subject_total_students']),
+                    f"Rs. {sub['subject_total_fees']:,.2f}",
+                ])
+                data.append([])
+
+            data.append(['Grand Total', '', '', str(report['grand_total_students']), f"Rs. {report['grand_total_fees']:,.2f}"])
+
+            title = f"Date-wise Subject-wise Fee Report ({report['start_date']} to {report['end_date']})"
+            pdf_content = generate_pdf_report(title, headers, data)
+            fn = f"subject-date-wise-fee-{report['start_date']}-to-{report['end_date']}.pdf"
+            resp = HttpResponse(pdf_content, content_type='application/pdf')
+            resp['Content-Disposition'] = f'attachment; filename="{fn}"'
+            return resp
+        except ValueError as ve:
+            return Response({'success': False, 'error': {'message': str(ve)}}, status=400)
+        except Exception as e:
+            return Response({'success': False, 'error': {'message': str(e)}}, status=500)
+
     @action(detail=False, methods=['get'])
     def dashboard_stats(self, request):
         """

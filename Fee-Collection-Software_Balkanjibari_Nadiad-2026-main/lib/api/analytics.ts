@@ -62,6 +62,28 @@ export interface SubjectWiseDailyFeeReport {
     grand_total: number;
 }
 
+// ── Report 3: Date-wise Subject-wise Fee Collection ───────────────────────────
+export interface SubjectDateWiseBatchRow {
+    batch_time: string;
+    student_count: number;
+    fees_collected: number;
+}
+
+export interface SubjectDateWiseSubjectRow {
+    subject_name: string;
+    batches: SubjectDateWiseBatchRow[];
+    subject_total_students: number;
+    subject_total_fees: number;
+}
+
+export interface SubjectDateWiseFeeReport {
+    start_date: string;
+    end_date: string;
+    subjects: SubjectDateWiseSubjectRow[];
+    grand_total_students: number;
+    grand_total_fees: number;
+}
+
 export interface SubjectBatchEnrollmentReportRow {
     subject_name: string;
     batch_time: string;
@@ -267,6 +289,55 @@ export const analyticsApi = {
             `subject_batch_enrollment_report_${subject_id}_${batch}_${start_date}_to_${end_date}.pdf`,
             { subject_id, batch, start_date, end_date }
         ),
+
+    // ── Report 3: Date-wise Subject-wise Fee Collection ─────────────────────────
+    getSubjectDateWiseFeeReport: async (
+        start_date: string,
+        end_date: string,
+        subject_ids?: number[]
+    ): Promise<ApiResponse<SubjectDateWiseFeeReport>> => {
+        const params: any = { start_date, end_date };
+        if (subject_ids && subject_ids.length > 0) {
+            params.subject_ids = subject_ids.join(',');
+        }
+        const response = await apiClient.get<ApiResponse<SubjectDateWiseFeeReport>>(
+            '/api/v1/analytics/subject_date_wise_fee_report/',
+            { params }
+        );
+        return response.data;
+    },
+
+    exportSubjectDateWiseFeeReportCsv: async (
+        start_date: string,
+        end_date: string,
+        subject_ids?: number[]
+    ) => {
+        const params: any = { start_date, end_date };
+        if (subject_ids && subject_ids.length > 0) {
+            params.subject_ids = subject_ids.join(',');
+        }
+        return analyticsApi.downloadFile(
+            '/api/v1/analytics/export_subject_date_wise_fee_report_csv/',
+            `subject-date-wise-fee-${start_date}-to-${end_date}.csv`,
+            params
+        );
+    },
+
+    exportSubjectDateWiseFeeReportPdf: async (
+        start_date: string,
+        end_date: string,
+        subject_ids?: number[]
+    ) => {
+        const params: any = { start_date, end_date };
+        if (subject_ids && subject_ids.length > 0) {
+            params.subject_ids = subject_ids.join(',');
+        }
+        return analyticsApi.downloadFile(
+            '/api/v1/analytics/export_subject_date_wise_fee_report_pdf/',
+            `subject-date-wise-fee-${start_date}-to-${end_date}.pdf`,
+            params
+        );
+    },
 
     /**
      * Get statistics for the current student
