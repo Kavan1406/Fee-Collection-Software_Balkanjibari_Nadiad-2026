@@ -14,7 +14,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-from .utils import get_or_repair_student
+from .utils import get_or_repair_student, archive_student
 
 from .models import Student, StudentRegistrationRequest
 from apps.notifications.models import Notification
@@ -264,28 +264,26 @@ class StudentViewSet(viewsets.ModelViewSet):
                 'error': {'message': 'Only admins or staff can delete students.'}
             }, status=status.HTTP_403_FORBIDDEN)
 
-        from apps.enrollments.models import Enrollment
-
-        instance = self.get_object()
-
-        with transaction.atomic():
-            # Soft-delete the student
-            instance.is_deleted = True
-            instance.status = 'INACTIVE'
-            instance.save()
-
-            # Deactivate linked User account so student can no longer log in
-            instance.user.is_active = False
-            instance.user.save()
-
-            # Soft-delete all active enrollments
-            Enrollment.objects.filter(
-                student=instance, is_deleted=False
-            ).update(is_deleted=True, status='DROPPED')
+        try:
+            with transaction.atomic():
+                instance = Student.objects.select_related('user').select_for_update().get(
+                    pk=kwargs['pk'],
+                    is_deleted=False,
+                )
+                archive_summary = archive_student(instance)
+        except Student.DoesNotExist:
+            return Response({
+                'success': False,
+                'error': {'message': 'Student not found or already deleted.'}
+            }, status=status.HTTP_404_NOT_FOUND)
 
         return Response({
             'success': True,
-            'message': 'Student deleted successfully.'
+            'message': f"Student deleted successfully. Registration cancelled and cash refund of ₹{float(archive_summary['refund_amount']):.2f} should be issued.",
+            'data': {
+                'refund_amount': float(archive_summary['refund_amount']),
+                'archived_payment_count': archive_summary['archived_payment_count'],
+            }
         }, status=status.HTTP_200_OK)
     
     def list(self, request, *args, **kwargs):

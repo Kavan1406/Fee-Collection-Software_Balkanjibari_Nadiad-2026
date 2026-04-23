@@ -1,4 +1,8 @@
 import logging
+from django.db import transaction
+from django.db.models import Sum
+from django.utils import timezone
+
 from .models import Student
 
 logger = logging.getLogger(__name__)
@@ -93,3 +97,69 @@ def get_or_repair_student(request):
     logger.error(f"[DIAGNOSTIC] HEALING: FAILED. No matching student found for user {user.username}. DB Count: {all_students.count()}, Unlinked: {all_students.filter(user=None).count()}")
     request._student_healed = False
     return None
+
+
+@transaction.atomic
+def archive_student(student):
+    """
+    Soft-delete a student and archive related active records needed by the app.
+    """
+    from apps.authentication.models import RefreshToken
+    from apps.enrollments.models import Enrollment
+    from apps.payments.models import Payment, FeeLedgerEntry
+
+    refund_amount = Payment.objects.filter(
+        enrollment__student=student,
+        is_deleted=False,
+        status='SUCCESS',
+    ).aggregate(total=Sum('amount'))['total'] or 0
+
+    archived_payment_count = Payment.objects.filter(
+        enrollment__student=student,
+        is_deleted=False,
+    ).count()
+
+    student.is_deleted = True
+    student.status = 'INACTIVE'
+    student.save(update_fields=['is_deleted', 'status', 'updated_at'])
+
+    Payment.objects.filter(
+        enrollment__student=student,
+        is_deleted=False,
+    ).update(is_deleted=True)
+
+    FeeLedgerEntry.objects.filter(
+        student=student,
+        is_deleted=False,
+    ).update(is_deleted=True)
+
+    Enrollment.objects.filter(
+        student=student,
+        is_deleted=False,
+    ).update(
+        is_deleted=True,
+        status='DROPPED',
+        updated_at=timezone.now(),
+    )
+
+    user = getattr(student, 'user', None)
+    if user:
+        user.is_active = False
+        if hasattr(user, 'is_authorized'):
+            user.is_authorized = False
+            user.save(update_fields=['is_active', 'is_authorized', 'updated_at'])
+        else:
+            user.save(update_fields=['is_active', 'updated_at'])
+
+        RefreshToken.objects.filter(
+            user=user,
+            is_blacklisted=False,
+        ).update(
+            is_blacklisted=True,
+            blacklisted_at=timezone.now(),
+        )
+
+    return {
+        'refund_amount': refund_amount,
+        'archived_payment_count': archived_payment_count,
+    }

@@ -61,7 +61,7 @@ class EnrollmentReportSerializer(serializers.Serializer):
     def get_receipt_id(self, obj):
         """Get the receipt ID from the related payment"""
         try:
-            payment = Payment.objects.filter(enrollment=obj).first()
+            payment = Payment.objects.filter(enrollment=obj, is_deleted=False).order_by('-created_at').first()
             if payment:
                 return payment.receipt_number or 'N/A'
             return 'N/A'
@@ -71,7 +71,7 @@ class EnrollmentReportSerializer(serializers.Serializer):
     def get_payment_ref(self, obj):
         """Get the payment reference from the related payment"""
         try:
-            payment = Payment.objects.filter(enrollment=obj).first()
+            payment = Payment.objects.filter(enrollment=obj, is_deleted=False).order_by('-created_at').first()
             if payment:
                 return payment.payment_id or 'N/A'
             return 'N/A'
@@ -81,7 +81,7 @@ class EnrollmentReportSerializer(serializers.Serializer):
     def get_payment_status(self, obj):
         """Get the payment status for the enrollment"""
         try:
-            payment = Payment.objects.filter(enrollment=obj).first()
+            payment = Payment.objects.filter(enrollment=obj, is_deleted=False).order_by('-created_at').first()
             if payment:
                 return payment.status
             return 'PENDING'
@@ -91,7 +91,7 @@ class EnrollmentReportSerializer(serializers.Serializer):
     def get_payment_mode(self, obj):
         """Get the payment mode (ONLINE/CASH) for the enrollment"""
         try:
-            payment = Payment.objects.filter(enrollment=obj).first()
+            payment = Payment.objects.filter(enrollment=obj, is_deleted=False).order_by('-created_at').first()
             if payment:
                 return payment.payment_mode  # ONLINE or CASH
             return 'NOT_PAID'

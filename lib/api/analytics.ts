@@ -62,6 +62,83 @@ export interface SubjectWiseDailyFeeReport {
     grand_total: number;
 }
 
+// ── Report 3: Date-wise Subject-wise Fee Collection ───────────────────────────
+export interface SubjectDateWiseBatchRow {
+    batch_time: string;
+    student_count: number;
+    fees_collected: number;
+}
+
+export interface SubjectDateWiseSubjectRow {
+    subject_name: string;
+    batches: SubjectDateWiseBatchRow[];
+    subject_total_students: number;
+    subject_total_fees: number;
+}
+
+export interface SubjectDateWiseFeeReport {
+    start_date: string;
+    end_date: string;
+    subjects: SubjectDateWiseSubjectRow[];
+    grand_total_students: number;
+    grand_total_fees: number;
+}
+
+// ── Report 4: Enrollment & Payment Report ────────────────────────────────────
+export interface EnrollmentPaymentReportRow {
+    sr_no: number;
+    student_name: string;
+    student_id: string;
+    subject: string;
+    batch_time: string;
+    enrollment_dt: string;
+    paid_amount: number;
+    pending_amount: number;
+    total_fee: number;
+    pay_mode: string;
+    pay_status: string;
+    pay_id: string;
+    pay_ref: string;
+    phone: string;
+    receipt_id: string;
+}
+
+export interface EnrollmentPaymentReport {
+    rows: EnrollmentPaymentReportRow[];
+    summary: {
+        total_records: number;
+        grand_paid: number;
+        grand_pending: number;
+        grand_total: number;
+    };
+    filters: {
+        start_date: string;
+        end_date: string;
+        subject_id: string | null;
+        batch_time: string | null;
+    };
+}
+
+// ── Report 5: Subject-wise Total Summary ─────────────────────────────────────
+export interface SubjectTotalSummaryRow {
+    sr_no: number;
+    subject_name: string;
+    total_students: number;
+    total_fees: number;
+}
+
+export interface SubjectTotalSummaryReport {
+    rows: SubjectTotalSummaryRow[];
+    summary: {
+        grand_students: number;
+        grand_fees: number;
+    };
+    filters: {
+        start_date: string;
+        end_date: string;
+    };
+}
+
 export interface SubjectBatchEnrollmentReportRow {
     subject_name: string;
     batch_time: string;
@@ -316,6 +393,142 @@ export const analyticsApi = {
 
     exportSubjectwiseTotalReportPdf: async () =>
         analyticsApi.downloadFile('/api/v1/analytics/export_subjectwise_total_report_pdf/', 'subjectwise_total_report.pdf'),
+
+    // ── Report 3: Date-wise Subject-wise Fee Collection ─────────────────────
+    getSubjectDateWiseFeeReport: async (
+        start_date: string,
+        end_date: string,
+        subject_ids?: number[]
+    ): Promise<ApiResponse<SubjectDateWiseFeeReport>> => {
+        const params: any = { start_date, end_date };
+        if (subject_ids && subject_ids.length > 0) {
+            params.subject_ids = subject_ids.join(',');
+        }
+        const response = await apiClient.get<ApiResponse<SubjectDateWiseFeeReport>>(
+            '/api/v1/analytics/subject_date_wise_fee_report/',
+            { params }
+        );
+        return response.data;
+    },
+
+    exportSubjectDateWiseFeeReportCsv: async (
+        start_date: string,
+        end_date: string,
+        subject_ids?: number[]
+    ) => {
+        const params: any = { start_date, end_date };
+        if (subject_ids && subject_ids.length > 0) {
+            params.subject_ids = subject_ids.join(',');
+        }
+        return analyticsApi.downloadFile(
+            '/api/v1/analytics/export_subject_date_wise_fee_report_csv/',
+            `subject-date-wise-fee-${start_date}-to-${end_date}.csv`,
+            params
+        );
+    },
+
+    exportSubjectDateWiseFeeReportPdf: async (
+        start_date: string,
+        end_date: string,
+        subject_ids?: number[]
+    ) => {
+        const params: any = { start_date, end_date };
+        if (subject_ids && subject_ids.length > 0) {
+            params.subject_ids = subject_ids.join(',');
+        }
+        return analyticsApi.downloadFile(
+            '/api/v1/analytics/export_subject_date_wise_fee_report_pdf/',
+            `subject-date-wise-fee-${start_date}-to-${end_date}.pdf`,
+            params
+        );
+    },
+
+    // ── Report 4: Enrollment & Payment Report ────────────────────────────────
+    getEnrollmentPaymentReport: async (
+        startDate: string,
+        endDate: string,
+        subjectId?: string,
+        batchTime?: string
+    ): Promise<ApiResponse<EnrollmentPaymentReport>> => {
+        const params: Record<string, string> = { start_date: startDate, end_date: endDate };
+        if (subjectId) params.subject_id = subjectId;
+        if (batchTime)  params.batch_time  = batchTime;
+        const response = await apiClient.get<ApiResponse<EnrollmentPaymentReport>>(
+            '/api/v1/analytics/enrollment_payment_report/', { params }
+        );
+        return response.data;
+    },
+
+    exportEnrollmentPaymentReportCsv: async (
+        startDate: string,
+        endDate: string,
+        subjectId?: string,
+        batchTime?: string
+    ): Promise<void> => {
+        const params: Record<string, string> = { start_date: startDate, end_date: endDate };
+        if (subjectId) params.subject_id = subjectId;
+        if (batchTime)  params.batch_time  = batchTime;
+        const response = await apiClient.get(
+            '/api/v1/analytics/export_enrollment_payment_report_csv/', { params, responseType: 'blob' }
+        );
+        const url = window.URL.createObjectURL(new Blob([response.data]));
+        const a   = document.createElement('a');
+        a.href     = url;
+        a.download = `Enrollment_Payment_Report_${startDate}_to_${endDate}.csv`;
+        document.body.appendChild(a); a.click(); a.remove();
+        window.URL.revokeObjectURL(url);
+    },
+
+    exportEnrollmentPaymentReportPdf: async (
+        startDate: string,
+        endDate: string,
+        subjectId?: string,
+        batchTime?: string
+    ): Promise<void> => {
+        const params: Record<string, string> = { start_date: startDate, end_date: endDate };
+        if (subjectId) params.subject_id = subjectId;
+        if (batchTime)  params.batch_time  = batchTime;
+        const response = await apiClient.get(
+            '/api/v1/analytics/export_enrollment_payment_report_pdf/', { params, responseType: 'blob' }
+        );
+        const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+        const a   = document.createElement('a');
+        a.href     = url;
+        a.download = `Enrollment_Payment_Report_${startDate}_to_${endDate}.pdf`;
+        document.body.appendChild(a); a.click(); a.remove();
+        window.URL.revokeObjectURL(url);
+    },
+
+    // ── Report 5: Subject-wise Total Summary ─────────────────────────────────
+    getSubjectTotalSummaryReport: async (
+        start_date: string,
+        end_date: string,
+        subject_ids?: number[]
+    ): Promise<ApiResponse<SubjectTotalSummaryReport>> => {
+        const params: any = { start_date, end_date };
+        if (subject_ids && subject_ids.length > 0) {
+            params.subject_ids = subject_ids.join(',');
+        }
+        const response = await apiClient.get<ApiResponse<SubjectTotalSummaryReport>>(
+            '/api/v1/analytics/subject_total_summary_report/',
+            { params }
+        );
+        return response.data;
+    },
+
+    exportSubjectTotalSummaryCsv: async (start_date: string, end_date: string) =>
+        analyticsApi.downloadFile(
+            '/api/v1/analytics/export_subject_total_summary_csv/',
+            `Subject_Total_Summary_Report_${start_date}_to_${end_date}.csv`,
+            { start_date, end_date }
+        ),
+
+    exportSubjectTotalSummaryPdf: async (start_date: string, end_date: string) =>
+        analyticsApi.downloadFile(
+            '/api/v1/analytics/export_subject_total_summary_pdf/',
+            `Subject_Total_Summary_Report_${start_date}_to_${end_date}.pdf`,
+            { start_date, end_date }
+        ),
 
     // ===== Session 14: Comprehensive Admin Analytics =====
 

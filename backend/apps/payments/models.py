@@ -244,6 +244,7 @@ class FeeLedgerEntry(models.Model):
         related_name='created_ledger_entries'
     )
     notes = models.TextField(blank=True)
+    is_deleted = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -251,6 +252,7 @@ class FeeLedgerEntry(models.Model):
         ordering = ['-created_at']
         indexes = [
             models.Index(fields=['student', '-created_at']),
+            models.Index(fields=['student', 'is_deleted']),
         ]
 
     def __str__(self):

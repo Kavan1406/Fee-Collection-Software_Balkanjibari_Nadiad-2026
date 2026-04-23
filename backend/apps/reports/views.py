@@ -2,7 +2,6 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
-from django.db.models import Q, Prefetch
 from django.http import HttpResponse
 from datetime import datetime, timedelta
 from django.utils import timezone
@@ -27,6 +26,48 @@ class ReportsViewSet(viewsets.ViewSet):
     """
     permission_classes = [IsAuthenticated, IsAdminUser]
 
+    def _base_active_enrollment_queryset(self):
+        return Enrollment.objects.filter(
+            is_deleted=False,
+            student__is_deleted=False,
+            student__status='ACTIVE',
+            subject__is_deleted=False,
+            subject__is_active=True,
+        )
+
+    def _base_active_payment_queryset(self):
+        return Payment.objects.filter(
+            is_deleted=False,
+            enrollment__is_deleted=False,
+            enrollment__student__is_deleted=False,
+            enrollment__student__status='ACTIVE',
+            enrollment__subject__is_deleted=False,
+            enrollment__subject__is_active=True,
+        )
+
+    def _get_date_range(self, request):
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+
+        if not end_date:
+            end_date = timezone.now().date()
+        else:
+            end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+
+        if not start_date:
+            start_date = end_date - timedelta(days=30)
+        else:
+            start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+
+        start_datetime = timezone.make_aware(
+            datetime.combine(start_date, datetime.min.time())
+        )
+        end_datetime = timezone.make_aware(
+            datetime.combine(end_date, datetime.max.time())
+        )
+
+        return start_date, end_date, start_datetime, end_datetime
+
     @action(detail=False, methods=['get'], url_path='payments')
     def payment_report(self, request):
         """
@@ -37,33 +78,11 @@ class ReportsViewSet(viewsets.ViewSet):
             - end_date: ISO format date (YYYY-MM-DD) - default: today
         """
         try:
-            # Get date range from query params
-            start_date = request.query_params.get('start_date')
-            end_date = request.query_params.get('end_date')
-            
-            # Set defaults
-            if not end_date:
-                end_date = timezone.now().date()
-            else:
-                end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
-            
-            if not start_date:
-                start_date = end_date - timedelta(days=30)
-            else:
-                start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
-            
-            # Convert to datetime for filtering
-            start_datetime = timezone.make_aware(
-                datetime.combine(start_date, datetime.min.time())
-            )
-            end_datetime = timezone.make_aware(
-                datetime.combine(end_date, datetime.max.time())
-            )
-            
-            # Query payments with date filter - remove duplicates by receipt_number
-            payments = Payment.objects.filter(
+            start_date, end_date, start_datetime, end_datetime = self._get_date_range(request)
+
+            payments = self._base_active_payment_queryset().filter(
                 created_at__gte=start_datetime,
-                created_at__lte=end_datetime
+                created_at__lte=end_datetime,
             ).select_related('enrollment__student', 'enrollment__subject').order_by('-created_at').distinct('receipt_number')
             
             # Serialize data
@@ -92,33 +111,11 @@ class ReportsViewSet(viewsets.ViewSet):
             - end_date: ISO format date (YYYY-MM-DD) - default: today
         """
         try:
-            # Get date range from query params
-            start_date = request.query_params.get('start_date')
-            end_date = request.query_params.get('end_date')
-            
-            # Set defaults
-            if not end_date:
-                end_date = timezone.now().date()
-            else:
-                end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
-            
-            if not start_date:
-                start_date = end_date - timedelta(days=30)
-            else:
-                start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
-            
-            # Convert to datetime for filtering
-            start_datetime = timezone.make_aware(
-                datetime.combine(start_date, datetime.min.time())
-            )
-            end_datetime = timezone.make_aware(
-                datetime.combine(end_date, datetime.max.time())
-            )
-            
-            # Query enrollments with date filter - remove duplicates by id (primary key)
-            enrollments = Enrollment.objects.filter(
+            start_date, end_date, start_datetime, end_datetime = self._get_date_range(request)
+
+            enrollments = self._base_active_enrollment_queryset().filter(
                 created_at__gte=start_datetime,
-                created_at__lte=end_datetime
+                created_at__lte=end_datetime,
             ).select_related('student', 'subject').order_by('-created_at').distinct('id')
             
             # Serialize data
@@ -147,33 +144,11 @@ class ReportsViewSet(viewsets.ViewSet):
             - end_date: ISO format date (YYYY-MM-DD)
         """
         try:
-            # Get date range from query params
-            start_date = request.query_params.get('start_date')
-            end_date = request.query_params.get('end_date')
-            
-            # Set defaults
-            if not end_date:
-                end_date = timezone.now().date()
-            else:
-                end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
-            
-            if not start_date:
-                start_date = end_date - timedelta(days=30)
-            else:
-                start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
-            
-            # Convert to datetime for filtering
-            start_datetime = timezone.make_aware(
-                datetime.combine(start_date, datetime.min.time())
-            )
-            end_datetime = timezone.make_aware(
-                datetime.combine(end_date, datetime.max.time())
-            )
-            
-            # Query payments - remove duplicates
-            payments = Payment.objects.filter(
+            start_date, end_date, start_datetime, end_datetime = self._get_date_range(request)
+
+            payments = self._base_active_payment_queryset().filter(
                 created_at__gte=start_datetime,
-                created_at__lte=end_datetime
+                created_at__lte=end_datetime,
             ).select_related('enrollment__student', 'enrollment__subject').order_by('-created_at').distinct('receipt_number')
             
             # Serialize data
@@ -202,33 +177,11 @@ class ReportsViewSet(viewsets.ViewSet):
             - end_date: ISO format date (YYYY-MM-DD)
         """
         try:
-            # Get date range from query params
-            start_date = request.query_params.get('start_date')
-            end_date = request.query_params.get('end_date')
-            
-            # Set defaults
-            if not end_date:
-                end_date = timezone.now().date()
-            else:
-                end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
-            
-            if not start_date:
-                start_date = end_date - timedelta(days=30)
-            else:
-                start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
-            
-            # Convert to datetime for filtering
-            start_datetime = timezone.make_aware(
-                datetime.combine(start_date, datetime.min.time())
-            )
-            end_datetime = timezone.make_aware(
-                datetime.combine(end_date, datetime.max.time())
-            )
-            
-            # Query enrollments - remove duplicates
-            enrollments = Enrollment.objects.filter(
+            start_date, end_date, start_datetime, end_datetime = self._get_date_range(request)
+
+            enrollments = self._base_active_enrollment_queryset().filter(
                 created_at__gte=start_datetime,
-                created_at__lte=end_datetime
+                created_at__lte=end_datetime,
             ).select_related('student', 'subject').order_by('-created_at').distinct('id')
             
             # Serialize data
@@ -257,33 +210,11 @@ class ReportsViewSet(viewsets.ViewSet):
             - end_date: ISO format date (YYYY-MM-DD)
         """
         try:
-            # Get date range from query params
-            start_date = request.query_params.get('start_date')
-            end_date = request.query_params.get('end_date')
-            
-            # Set defaults
-            if not end_date:
-                end_date = timezone.now().date()
-            else:
-                end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
-            
-            if not start_date:
-                start_date = end_date - timedelta(days=30)
-            else:
-                start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
-            
-            # Convert to datetime for filtering
-            start_datetime = timezone.make_aware(
-                datetime.combine(start_date, datetime.min.time())
-            )
-            end_datetime = timezone.make_aware(
-                datetime.combine(end_date, datetime.max.time())
-            )
-            
-            # Query payments - remove duplicates
-            payments = Payment.objects.filter(
+            start_date, end_date, start_datetime, end_datetime = self._get_date_range(request)
+
+            payments = self._base_active_payment_queryset().filter(
                 created_at__gte=start_datetime,
-                created_at__lte=end_datetime
+                created_at__lte=end_datetime,
             ).select_related('enrollment__student', 'enrollment__subject').order_by('-created_at').distinct('receipt_number')
             
             # Serialize data
@@ -312,33 +243,11 @@ class ReportsViewSet(viewsets.ViewSet):
             - end_date: ISO format date (YYYY-MM-DD)
         """
         try:
-            # Get date range from query params
-            start_date = request.query_params.get('start_date')
-            end_date = request.query_params.get('end_date')
-            
-            # Set defaults
-            if not end_date:
-                end_date = timezone.now().date()
-            else:
-                end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
-            
-            if not start_date:
-                start_date = end_date - timedelta(days=30)
-            else:
-                start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
-            
-            # Convert to datetime for filtering
-            start_datetime = timezone.make_aware(
-                datetime.combine(start_date, datetime.min.time())
-            )
-            end_datetime = timezone.make_aware(
-                datetime.combine(end_date, datetime.max.time())
-            )
-            
-            # Query enrollments - remove duplicates
-            enrollments = Enrollment.objects.filter(
+            start_date, end_date, start_datetime, end_datetime = self._get_date_range(request)
+
+            enrollments = self._base_active_enrollment_queryset().filter(
                 created_at__gte=start_datetime,
-                created_at__lte=end_datetime
+                created_at__lte=end_datetime,
             ).select_related('student', 'subject').order_by('-created_at').distinct('id')
             
             # Serialize data

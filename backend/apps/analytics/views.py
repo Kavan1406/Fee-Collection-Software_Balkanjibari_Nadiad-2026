@@ -17,7 +17,7 @@ from apps.payments.models import Payment
 from apps.enrollments.models import Enrollment
 from apps.subjects.models import Subject
 from utils.permissions import IsStaffOrAdmin, IsAccountantOrAdmin, IsStaffAccountantOrAdmin
-from utils.reports import generate_pdf_report
+from utils.reports import generate_pdf_report, generate_landscape_pdf_report
 
 class AnalyticsViewSet(viewsets.ViewSet):
     """
@@ -31,19 +31,40 @@ class AnalyticsViewSet(viewsets.ViewSet):
         # Allow Staff and Accountants to see dashboard analytics
         return [IsAuthenticated(), IsStaffAccountantOrAdmin()]
 
+    def _report_subject_queryset(self):
+        return Subject.objects.filter(is_deleted=False, is_active=True)
+
+    def _report_enrollment_queryset(self):
+        return Enrollment.objects.filter(
+            is_deleted=False,
+            student__is_deleted=False,
+            student__status='ACTIVE',
+            subject__is_deleted=False,
+            subject__is_active=True,
+        )
+
+    def _report_payment_queryset(self):
+        return Payment.objects.filter(
+            is_deleted=False,
+            enrollment__is_deleted=False,
+            enrollment__student__is_deleted=False,
+            enrollment__student__status='ACTIVE',
+            enrollment__subject__is_deleted=False,
+            enrollment__subject__is_active=True,
+        )
+
     def _build_subject_batch_enrollment_report(self, subject_id, batch, start_date_str, end_date_str):
         filters = {
-            'is_deleted': False,
             'subject_id': int(subject_id)
         }
 
         if batch and batch.upper() != 'ALL':
             filters['batch_time'] = batch
 
-        enrollments = Enrollment.objects.filter(**filters).select_related('student', 'subject').prefetch_related(
+        enrollments = self._report_enrollment_queryset().filter(**filters).select_related('student', 'subject').prefetch_related(
             Prefetch(
                 'payments',
-                queryset=Payment.objects.filter(is_deleted=False).order_by('-created_at'),
+                queryset=self._report_payment_queryset().order_by('-created_at'),
                 to_attr='report_payments'
             )
         ).order_by('batch_time', 'student__name')
@@ -134,7 +155,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
             elif payment_mode == 'CASH':
                 summary_stats['offline_payments'] += paid_amount
 
-        subject = Subject.objects.filter(id=int(subject_id), is_deleted=False).first()
+        subject = self._report_subject_queryset().filter(id=int(subject_id)).first()
         subject_name = subject.name if subject else 'Selected Subject'
 
         return {
@@ -249,8 +270,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
 
     def _build_date_wise_fee_report(self, start_date, end_date):
         """Build date-wise fee report payload for a date range (inclusive)."""
-        base_qs = Payment.objects.filter(
-            is_deleted=False,
+        base_qs = self._report_payment_queryset().filter(
             status='SUCCESS',
             payment_date__range=(start_date, end_date)
         )
@@ -431,8 +451,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
             else:
                 target_date = timezone.localdate()
 
-            subject_rows = Payment.objects.filter(
-                is_deleted=False,
+            subject_rows = self._report_payment_queryset().filter(
                 status='SUCCESS',
                 payment_date=target_date
             ).values(
@@ -595,8 +614,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
             else:
                 target_date = timezone.localdate()
 
-            subject_rows = Payment.objects.filter(
-                is_deleted=False,
+            subject_rows = self._report_payment_queryset().filter(
                 status='SUCCESS',
                 payment_date=target_date
             ).values(
@@ -643,8 +661,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
             else:
                 target_date = timezone.localdate()
 
-            subject_rows = Payment.objects.filter(
-                is_deleted=False,
+            subject_rows = self._report_payment_queryset().filter(
                 status='SUCCESS',
                 payment_date=target_date
             ).values(
@@ -1042,7 +1059,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
     def export_enrollment_report_csv(self, request):
         """Student Enrollment Report CSV - Subject distribution and trends."""
         try:
-            enrollments = Enrollment.objects.filter(is_deleted=False).select_related('student', 'subject').order_by('-enrollment_date')
+            enrollments = self._report_enrollment_queryset().select_related('student', 'subject').order_by('-enrollment_date')
             
             response = HttpResponse(content_type='text/csv')
             response['Content-Disposition'] = 'attachment; filename=\"enrollment_report.csv\"'
@@ -1069,7 +1086,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
     def export_enrollment_report_pdf(self, request):
         """Student Enrollment Report PDF - Subject distribution and trends."""
         try:
-            enrollments = Enrollment.objects.filter(is_deleted=False).select_related('student', 'subject').order_by('-enrollment_date')
+            enrollments = self._report_enrollment_queryset().select_related('student', 'subject').order_by('-enrollment_date')
             
             headers = ['Student ID', 'Name', 'Subject', 'Batch', 'Date', 'Fee', 'Paid', 'Pending']
             data = []
@@ -1098,12 +1115,12 @@ class AnalyticsViewSet(viewsets.ViewSet):
     def export_subject_report_pdf(self, request):
         """Detailed Subject-wise Report."""
         try:
-            subjects = Subject.objects.filter(is_deleted=False)
+            subjects = self._report_subject_queryset()
             headers = ['Subject', 'Enrolled', 'Paid', 'Pending', 'Total Revenue']
             data = []
             
             for sub in subjects:
-                enrolls = Enrollment.objects.filter(subject=sub, is_deleted=False)
+                enrolls = self._report_enrollment_queryset().filter(subject=sub)
                 stats = enrolls.aggregate(
                     total=Count('id'),
                     paid=Sum('paid_amount'),
@@ -1129,7 +1146,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
     def export_monthly_collection_pdf(self, request):
         """PDF version of collection report."""
         try:
-            monthly_stats = Payment.objects.filter(is_deleted=False).annotate(
+            monthly_stats = self._report_payment_queryset().annotate(
                 month=TruncMonth('payment_date')
             ).values('month').annotate(
                 total_amount=Sum('amount'),
@@ -1169,7 +1186,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
     def export_batch_report_pdf(self, request):
         """Batch-wise Statistics Report."""
         try:
-            batches = Enrollment.objects.filter(is_deleted=False).values(
+            batches = self._report_enrollment_queryset().values(
                 'batch_time', 'subject__name'
             ).annotate(count=Count('id')).order_by('batch_time', 'subject__name')
             
@@ -1191,16 +1208,14 @@ class AnalyticsViewSet(viewsets.ViewSet):
     def online_razorpay_report(self, request):
         """Get online Razorpay payments report data."""
         try:
-            payments = Payment.objects.filter(
-                is_deleted=False,
+            payments = self._report_payment_queryset().filter(
                 payment_mode='ONLINE',
                 razorpay_order_id__isnull=False,
                 razorpay_order_id__exact=''  # Has razorpay_order_id
             ).exclude(razorpay_order_id='').select_related('enrollment__student', 'enrollment__subject').order_by('-payment_date')
             
             # Alternative: simpler check
-            payments = Payment.objects.filter(
-                is_deleted=False,
+            payments = self._report_payment_queryset().filter(
                 payment_mode='ONLINE'
             ).select_related('enrollment__student', 'enrollment__subject').order_by('-payment_date')
             
@@ -1237,8 +1252,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
     def export_online_razorpay_report_csv(self, request):
         """Export online Razorpay payments as CSV."""
         try:
-            payments = Payment.objects.filter(
-                is_deleted=False,
+            payments = self._report_payment_queryset().filter(
                 payment_mode='ONLINE'
             ).select_related('enrollment__student', 'enrollment__subject').order_by('-payment_date')
             
@@ -1274,8 +1288,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
     def export_online_razorpay_report_pdf(self, request):
         """Export online Razorpay payments as PDF."""
         try:
-            payments = Payment.objects.filter(
-                is_deleted=False,
+            payments = self._report_payment_queryset().filter(
                 payment_mode='ONLINE'
             ).select_related('enrollment__student', 'enrollment__subject').order_by('-payment_date')
             
@@ -1310,8 +1323,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
     def online_balkanji_bari_report(self, request):
         """Get all online payments report data (Balkanji Bari online channel)."""
         try:
-            payments = Payment.objects.filter(
-                is_deleted=False,
+            payments = self._report_payment_queryset().filter(
                 payment_mode='ONLINE'
             ).select_related('enrollment__student', 'enrollment__subject').order_by('-payment_date')
             
@@ -1356,8 +1368,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
     def export_online_balkanji_bari_report_csv(self, request):
         """Export all online payments (Balkanji Bari) as CSV."""
         try:
-            payments = Payment.objects.filter(
-                is_deleted=False,
+            payments = self._report_payment_queryset().filter(
                 payment_mode='ONLINE'
             ).select_related('enrollment__student', 'enrollment__subject').order_by('-payment_date')
             
@@ -1392,8 +1403,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
     def export_online_balkanji_bari_report_pdf(self, request):
         """Export all online payments (Balkanji Bari) as PDF."""
         try:
-            payments = Payment.objects.filter(
-                is_deleted=False,
+            payments = self._report_payment_queryset().filter(
                 payment_mode='ONLINE'
             ).select_related('enrollment__student', 'enrollment__subject').order_by('-payment_date')
             
@@ -1428,7 +1438,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
     def subjectwise_total_report(self, request):
         """Get comprehensive subject-wise statistics report."""
         try:
-            subjects = Subject.objects.filter(is_deleted=False)
+            subjects = self._report_subject_queryset()
             
             rows = []
             grand_total_enrollments = 0
@@ -1437,7 +1447,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
             grand_total_pending = 0
             
             for subject in subjects:
-                enrollments = Enrollment.objects.filter(subject=subject, is_deleted=False)
+                enrollments = self._report_enrollment_queryset().filter(subject=subject)
                 stats = enrollments.aggregate(
                     total_enrollments=Count('id'),
                     total_fees=Sum('total_fee'),
@@ -1487,7 +1497,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
     def export_subjectwise_total_report_csv(self, request):
         """Export comprehensive subject-wise statistics as CSV."""
         try:
-            subjects = Subject.objects.filter(is_deleted=False)
+            subjects = self._report_subject_queryset()
             
             response = HttpResponse(content_type='text/csv')
             response['Content-Disposition'] = 'attachment; filename="subjectwise_total_report.csv"'
@@ -1501,7 +1511,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
             grand_total_pending = 0
             
             for subject in subjects:
-                enrollments = Enrollment.objects.filter(subject=subject, is_deleted=False)
+                enrollments = self._report_enrollment_queryset().filter(subject=subject)
                 stats = enrollments.aggregate(
                     total_enrollments=Count('id'),
                     total_fees=Sum('total_fee'),
@@ -1548,7 +1558,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
     def export_subjectwise_total_report_pdf(self, request):
         """Export comprehensive subject-wise statistics as PDF."""
         try:
-            subjects = Subject.objects.filter(is_deleted=False)
+            subjects = self._report_subject_queryset()
             
             headers = ['Subject', 'Enrollments', 'Total Fees', 'Paid', 'Pending', 'Collection %']
             data = []
@@ -1559,7 +1569,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
             grand_total_pending = 0
             
             for subject in subjects:
-                enrollments = Enrollment.objects.filter(subject=subject, is_deleted=False)
+                enrollments = self._report_enrollment_queryset().filter(subject=subject)
                 stats = enrollments.aggregate(
                     total_enrollments=Count('id'),
                     total_fees=Sum('total_fee'),
@@ -1611,7 +1621,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
     def export_total_enrollments_pdf(self, request):
         """Detailed Total Enrollments Report."""
         try:
-            enrolls = Enrollment.objects.filter(is_deleted=False).select_related('student', 'subject').order_by('-created_at')
+            enrolls = self._report_enrollment_queryset().select_related('student', 'subject').order_by('-created_at')
             headers = ['Name', 'ID', 'Phone', 'Subject', 'Batch', 'Date']
             data = []
             
@@ -1636,7 +1646,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
     def export_batch_report_csv(self, request):
         """Batch-wise Statistics CSV."""
         try:
-            batches = Enrollment.objects.filter(is_deleted=False).values(
+            batches = self._report_enrollment_queryset().values(
                 'batch_time', 'subject__name'
             ).annotate(count=Count('id')).order_by('batch_time', 'subject__name')
             response = HttpResponse(content_type='text/csv')
@@ -1653,7 +1663,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
     def export_total_enrollments_csv(self, request):
         """Detailed Total Enrollments CSV."""
         try:
-            enrolls = Enrollment.objects.filter(is_deleted=False).select_related('student', 'subject').order_by('-created_at')
+            enrolls = self._report_enrollment_queryset().select_related('student', 'subject').order_by('-created_at')
             response = HttpResponse(content_type='text/csv')
             response['Content-Disposition'] = 'attachment; filename="detailed_enrollments.csv"'
             writer = csv.writer(response)
@@ -1670,7 +1680,10 @@ class AnalyticsViewSet(viewsets.ViewSet):
         try:
             start_hour = int(request.query_params.get('start_hour', 9))
             end_hour = int(request.query_params.get('end_hour', 12))
-            enrolls = Enrollment.objects.filter(is_deleted=False, created_at__hour__gte=start_hour, created_at__hour__lt=end_hour).select_related('student', 'subject')
+            enrolls = self._report_enrollment_queryset().filter(
+                created_at__hour__gte=start_hour,
+                created_at__hour__lt=end_hour,
+            ).select_related('student', 'subject')
             response = HttpResponse(content_type='text/csv')
             response['Content-Disposition'] = 'attachment; filename="entry_timing_report.csv"'
             writer = csv.writer(response)
@@ -1868,7 +1881,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
             total_revenue = Payment.objects.filter(is_deleted=False).aggregate(total=Sum('amount'))['total'] or 0
             pending_fees = Enrollment.objects.filter(is_deleted=False, status='ACTIVE').aggregate(total=Sum('pending_amount'))['total'] or 0
             total_enrollments = Enrollment.objects.filter(is_deleted=False).count()
-            
+
             return Response({
                 'success': True,
                 'data': {
@@ -1879,9 +1892,481 @@ class AnalyticsViewSet(viewsets.ViewSet):
                     'collection_rate': round((float(total_revenue) / (float(total_revenue) + float(pending_fees)) * 100), 1) if (float(total_revenue) + float(pending_fees)) > 0 else 0
                 }
             })
-            
+
         except Exception as e:
             return Response({
                 'success': False,
                 'error': {'message': str(e)}
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Shared helpers for Reports 3-5
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _parse_date_range_params(self, request):
+        start_date_str = request.query_params.get('start_date')
+        end_date_str = request.query_params.get('end_date')
+        end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date() if end_date_str else timezone.localdate()
+        start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date() if start_date_str else end_date
+        if start_date > end_date:
+            raise ValueError('Start date cannot be after end date.')
+        return start_date, end_date
+
+    def _parse_subject_ids(self, request):
+        raw = request.query_params.get('subject_ids', '')
+        if not raw:
+            return None
+        try:
+            return [int(x.strip()) for x in raw.split(',') if x.strip()]
+        except ValueError:
+            return None
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # REPORT 3: Date-wise Subject-wise Fee Collection
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _build_subject_date_wise_fee_report(self, start_date, end_date, subject_ids=None):
+        qs = Payment.objects.filter(
+            is_deleted=False,
+            status='SUCCESS',
+            payment_date__range=(start_date, end_date),
+            enrollment__isnull=False,
+            enrollment__subject__isnull=False,
+        ).select_related('enrollment__subject', 'enrollment__student')
+
+        if subject_ids:
+            qs = qs.filter(enrollment__subject__id__in=subject_ids)
+
+        agg = (
+            qs.values(
+                'enrollment__subject__id',
+                'enrollment__subject__name',
+                'enrollment__batch_time',
+            )
+            .annotate(
+                student_count=Count('enrollment__student_id', distinct=True),
+                fees_collected=Sum('amount'),
+            )
+            .order_by('enrollment__subject__name', 'enrollment__batch_time')
+        )
+
+        subject_map = {}
+        for row in agg:
+            sub_id = row['enrollment__subject__id']
+            sub_name = row['enrollment__subject__name'] or 'Unknown Subject'
+            batch = row['enrollment__batch_time'] or 'Default Batch'
+            sc = int(row['student_count'] or 0)
+            fc = float(row['fees_collected'] or 0)
+
+            if sub_id not in subject_map:
+                subject_map[sub_id] = {
+                    'subject_name': sub_name,
+                    'batches': [],
+                    'subject_total_students': 0,
+                    'subject_total_fees': 0.0,
+                }
+
+            subject_map[sub_id]['batches'].append({
+                'batch_time': batch,
+                'student_count': sc,
+                'fees_collected': fc,
+            })
+            subject_map[sub_id]['subject_total_students'] += sc
+            subject_map[sub_id]['subject_total_fees'] += fc
+
+        subjects = sorted(subject_map.values(), key=lambda x: x['subject_name'])
+        grand_total_students = sum(s['subject_total_students'] for s in subjects)
+        grand_total_fees = sum(s['subject_total_fees'] for s in subjects)
+
+        return {
+            'start_date': start_date.strftime('%Y-%m-%d'),
+            'end_date': end_date.strftime('%Y-%m-%d'),
+            'subjects': subjects,
+            'grand_total_students': grand_total_students,
+            'grand_total_fees': float(grand_total_fees),
+        }
+
+    @action(detail=False, methods=['get'])
+    def subject_date_wise_fee_report(self, request):
+        try:
+            start_date, end_date = self._parse_date_range_params(request)
+            subject_ids = self._parse_subject_ids(request)
+            report = self._build_subject_date_wise_fee_report(start_date, end_date, subject_ids)
+            return Response({'success': True, 'data': report})
+        except ValueError as ve:
+            return Response({'success': False, 'error': {'message': str(ve)}}, status=400)
+        except Exception as e:
+            return Response({'success': False, 'error': {'message': str(e)}}, status=500)
+
+    @action(detail=False, methods=['get'])
+    def export_subject_date_wise_fee_report_csv(self, request):
+        try:
+            start_date, end_date = self._parse_date_range_params(request)
+            subject_ids = self._parse_subject_ids(request)
+            report = self._build_subject_date_wise_fee_report(start_date, end_date, subject_ids)
+
+            response = HttpResponse(content_type='text/csv')
+            fn = f"subject-date-wise-fee-{report['start_date']}-to-{report['end_date']}.csv"
+            response['Content-Disposition'] = f'attachment; filename="{fn}"'
+
+            writer = csv.writer(response)
+            writer.writerow(['Date Range', f"{report['start_date']} to {report['end_date']}"])
+            writer.writerow([])
+            writer.writerow(['Sr. No.', 'Subject', 'Batch', 'Student Count', 'Fees Collected (Rs.)'])
+
+            sr = 1
+            for sub in report['subjects']:
+                for batch in sub['batches']:
+                    writer.writerow([
+                        sr, sub['subject_name'], batch['batch_time'],
+                        batch['student_count'], f"{batch['fees_collected']:.2f}",
+                    ])
+                    sr += 1
+                writer.writerow([
+                    '', f"  Subtotal: {sub['subject_name']}",
+                    f"{len(sub['batches'])} batch(es)",
+                    sub['subject_total_students'],
+                    f"{sub['subject_total_fees']:.2f}",
+                ])
+                writer.writerow([])
+
+            writer.writerow(['GRAND TOTAL', '', '', report['grand_total_students'], f"{report['grand_total_fees']:.2f}"])
+            return response
+        except ValueError as ve:
+            return Response({'success': False, 'error': {'message': str(ve)}}, status=400)
+        except Exception as e:
+            return Response({'success': False, 'error': {'message': str(e)}}, status=500)
+
+    @action(detail=False, methods=['get'])
+    def export_subject_date_wise_fee_report_pdf(self, request):
+        try:
+            start_date, end_date = self._parse_date_range_params(request)
+            subject_ids = self._parse_subject_ids(request)
+            report = self._build_subject_date_wise_fee_report(start_date, end_date, subject_ids)
+
+            headers = ['Sr. No.', 'Subject', 'Batch', 'Students', 'Fees (Rs.)']
+            data = []
+            sr = 1
+            for sub in report['subjects']:
+                for batch in sub['batches']:
+                    data.append([
+                        str(sr), sub['subject_name'], batch['batch_time'],
+                        str(batch['student_count']), f"Rs. {batch['fees_collected']:,.2f}",
+                    ])
+                    sr += 1
+                data.append([
+                    '', f"Subtotal: {sub['subject_name']}",
+                    f"{len(sub['batches'])} batch(es)",
+                    str(sub['subject_total_students']),
+                    f"Rs. {sub['subject_total_fees']:,.2f}",
+                ])
+                data.append([])
+
+            data.append(['Grand Total', '', '', str(report['grand_total_students']), f"Rs. {report['grand_total_fees']:,.2f}"])
+
+            title = f"Date-wise Subject-wise Fee Report ({report['start_date']} to {report['end_date']})"
+            pdf_content = generate_pdf_report(title, headers, data)
+            fn = f"subject-date-wise-fee-{report['start_date']}-to-{report['end_date']}.pdf"
+            resp = HttpResponse(pdf_content, content_type='application/pdf')
+            resp['Content-Disposition'] = f'attachment; filename="{fn}"'
+            return resp
+        except ValueError as ve:
+            return Response({'success': False, 'error': {'message': str(ve)}}, status=400)
+        except Exception as e:
+            return Response({'success': False, 'error': {'message': str(e)}}, status=500)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # REPORT 4: Enrollment & Payment Report (Date-wise)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _build_enrollment_payment_rows(self, start_date, end_date, subject_id=None, batch_time=None):
+        qs = (
+            self._report_enrollment_queryset()
+            .filter(enrollment_date__gte=start_date, enrollment_date__lte=end_date)
+            .select_related('student', 'subject')
+            .prefetch_related('payments')
+            .order_by('student__student_id')
+        )
+        if subject_id:
+            qs = qs.filter(subject_id=subject_id)
+        if batch_time:
+            qs = qs.filter(batch_time__iexact=batch_time)
+
+        rows = []
+        sr = 1
+        for enr in qs:
+            student = enr.student
+            payment = enr.payments.filter(
+                is_deleted=False,
+                enrollment__student__is_deleted=False,
+                enrollment__student__status='ACTIVE',
+                enrollment__subject__is_deleted=False,
+                enrollment__subject__is_active=True,
+            ).order_by('-created_at').first()
+
+            total_fee   = float(enr.total_fee or 0)
+            paid_amount = float(enr.paid_amount or 0)
+            pending     = max(0.0, total_fee - paid_amount)
+
+            pay_mode = pay_status = ''
+            pay_id = pay_ref = receipt_id = 'N/A'
+
+            if payment:
+                pay_mode   = payment.payment_mode or ''
+                pay_status = payment.status or ''
+                if pay_mode.upper() in ('ONLINE', 'RAZORPAY'):
+                    pay_id  = payment.razorpay_payment_id or payment.transaction_id or 'N/A'
+                    pay_ref = payment.transaction_id or 'N/A'
+                else:
+                    pay_ref = payment.transaction_id or 'N/A'
+                receipt_id = str(payment.receipt_number or payment.id or 'N/A')
+
+            enr_dt = enr.enrollment_date
+            enr_dt_str = enr_dt.strftime('%d-%m-%Y') if enr_dt else ''
+
+            rows.append({
+                'sr_no'         : sr,
+                'student_name'  : student.name if student else '',
+                'student_id'    : student.student_id if student else '',
+                'subject'       : enr.subject.name if enr.subject else '',
+                'batch_time'    : enr.batch_time or '',
+                'enrollment_dt' : enr_dt_str,
+                'paid_amount'   : paid_amount,
+                'pending_amount': pending,
+                'total_fee'     : total_fee,
+                'pay_mode'      : pay_mode,
+                'pay_status'    : pay_status,
+                'pay_id'        : pay_id,
+                'pay_ref'       : pay_ref,
+                'phone'         : student.phone if student else '',
+                'receipt_id'    : receipt_id,
+            })
+            sr += 1
+        return rows
+
+    @action(detail=False, methods=['get'])
+    def enrollment_payment_report(self, request):
+        try:
+            start_date, end_date = self._parse_date_range_params(request)
+        except ValueError as ve:
+            return Response({'success': False, 'error': {'message': str(ve)}}, status=400)
+        subject_id = request.query_params.get('subject_id') or None
+        batch_time = request.query_params.get('batch_time') or None
+        try:
+            rows = self._build_enrollment_payment_rows(start_date, end_date, subject_id, batch_time)
+            grand_paid    = sum(r['paid_amount']    for r in rows)
+            grand_pending = sum(r['pending_amount'] for r in rows)
+            grand_total   = sum(r['total_fee']      for r in rows)
+            return Response({
+                'success': True,
+                'data': {
+                    'rows': rows,
+                    'summary': {
+                        'total_records': len(rows),
+                        'grand_paid'   : grand_paid,
+                        'grand_pending': grand_pending,
+                        'grand_total'  : grand_total,
+                    },
+                    'filters': {
+                        'start_date': str(start_date),
+                        'end_date'  : str(end_date),
+                        'subject_id': subject_id,
+                        'batch_time': batch_time,
+                    }
+                }
+            })
+        except Exception as exc:
+            return Response({'success': False, 'error': {'message': str(exc)}}, status=500)
+
+    @action(detail=False, methods=['get'])
+    def export_enrollment_payment_report_csv(self, request):
+        try:
+            start_date, end_date = self._parse_date_range_params(request)
+        except ValueError as ve:
+            return Response({'success': False, 'error': {'message': str(ve)}}, status=400)
+        subject_id = request.query_params.get('subject_id') or None
+        batch_time = request.query_params.get('batch_time') or None
+        try:
+            rows = self._build_enrollment_payment_rows(start_date, end_date, subject_id, batch_time)
+            response = HttpResponse(content_type='text/csv')
+            fname = f"Enrollment_Payment_Report_{start_date}_to_{end_date}.csv"
+            response['Content-Disposition'] = f'attachment; filename="{fname}"'
+            writer = csv.writer(response)
+            writer.writerow([
+                'Sr.No', 'Student Name', 'Student ID', 'Subject', 'Batch Time',
+                'Enrollment Date', 'Paid Amount (Rs)', 'Pending Amount (Rs)',
+                'Total Fee (Rs)', 'Payment Mode', 'Payment Status',
+                'Payment ID (Online)', 'Reference No (Offline)', 'Phone', 'Receipt ID'
+            ])
+            for r in rows:
+                writer.writerow([
+                    r['sr_no'], r['student_name'], r['student_id'],
+                    r['subject'], r['batch_time'], r['enrollment_dt'],
+                    r['paid_amount'], r['pending_amount'], r['total_fee'],
+                    r['pay_mode'], r['pay_status'], r['pay_id'],
+                    r['pay_ref'], r['phone'], r['receipt_id']
+                ])
+            writer.writerow([])
+            grand_paid    = sum(r['paid_amount']    for r in rows)
+            grand_pending = sum(r['pending_amount'] for r in rows)
+            grand_total   = sum(r['total_fee']      for r in rows)
+            writer.writerow(['', 'GRAND TOTAL', '', '', '', '',
+                             grand_paid, grand_pending, grand_total,
+                             '', '', '', '', '', ''])
+            return response
+        except Exception as exc:
+            return Response({'success': False, 'error': {'message': str(exc)}}, status=500)
+
+    @action(detail=False, methods=['get'])
+    def export_enrollment_payment_report_pdf(self, request):
+        try:
+            start_date, end_date = self._parse_date_range_params(request)
+        except ValueError as ve:
+            return Response({'success': False, 'error': {'message': str(ve)}}, status=400)
+        subject_id = request.query_params.get('subject_id') or None
+        batch_time = request.query_params.get('batch_time') or None
+        try:
+            rows = self._build_enrollment_payment_rows(start_date, end_date, subject_id, batch_time)
+            headers = [
+                'Sr.', 'Student Name', 'Student ID', 'Subject', 'Batch',
+                'Enroll Date', 'Paid (Rs)', 'Pending (Rs)',
+                'Mode', 'Status', 'Pay ID', 'Ref No', 'Phone', 'Receipt'
+            ]
+            data = []
+            for r in rows:
+                data.append([
+                    r['sr_no'], r['student_name'], r['student_id'],
+                    r['subject'], r['batch_time'], r['enrollment_dt'],
+                    f"Rs {r['paid_amount']:.2f}", f"Rs {r['pending_amount']:.2f}",
+                    r['pay_mode'], r['pay_status'], r['pay_id'],
+                    r['pay_ref'], r['phone'], r['receipt_id']
+                ])
+            grand_paid    = sum(r['paid_amount']    for r in rows)
+            grand_pending = sum(r['pending_amount'] for r in rows)
+            data.append([
+                '', 'GRAND TOTAL', '', '', '', '',
+                f"Rs {grand_paid:.2f}", f"Rs {grand_pending:.2f}",
+                '', '', '', '', '', ''
+            ])
+            title = f"Enrollment & Payment Report ({start_date} to {end_date})"
+            pdf_content = generate_landscape_pdf_report(title, headers, data)
+            response = HttpResponse(pdf_content, content_type='application/pdf')
+            fname = f"Enrollment_Payment_Report_{start_date}_to_{end_date}.pdf"
+            response['Content-Disposition'] = f'attachment; filename="{fname}"'
+            return response
+        except Exception as exc:
+            return Response({'success': False, 'error': {'message': str(exc)}}, status=500)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # REPORT 5: Subject-wise Total Summary Report (Date-filtered)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _build_subject_total_summary_rows(self, start_date, end_date, subject_ids=None):
+        from django.db.models.functions import Coalesce
+        from decimal import Decimal
+
+        qs = Enrollment.objects.filter(
+            is_deleted=False,
+            enrollment_date__gte=start_date,
+            enrollment_date__lte=end_date
+        )
+        if subject_ids:
+            qs = qs.filter(subject_id__in=subject_ids)
+
+        agg = (
+            qs.values('subject__name')
+            .annotate(
+                total_students=Count('id'),
+                total_fees=Coalesce(Sum('paid_amount'), Decimal('0.00'))
+            )
+            .order_by('subject__name')
+        )
+
+        rows = []
+        sr = 1
+        for item in agg:
+            rows.append({
+                'sr_no': sr,
+                'subject_name': item['subject__name'],
+                'total_students': item['total_students'],
+                'total_fees': float(item['total_fees']),
+            })
+            sr += 1
+        return rows
+
+    @action(detail=False, methods=['get'])
+    def subject_total_summary_report(self, request):
+        try:
+            start_date, end_date = self._parse_date_range_params(request)
+        except ValueError as ve:
+            return Response({'success': False, 'error': {'message': str(ve)}}, status=400)
+        subject_ids = self._parse_subject_ids(request)
+        try:
+            rows = self._build_subject_total_summary_rows(start_date, end_date, subject_ids)
+            grand_students = sum(r['total_students'] for r in rows)
+            grand_fees = sum(r['total_fees'] for r in rows)
+            return Response({
+                'success': True,
+                'data': {
+                    'rows': rows,
+                    'summary': {
+                        'grand_students': grand_students,
+                        'grand_fees': grand_fees,
+                    },
+                    'filters': {
+                        'start_date': str(start_date),
+                        'end_date': str(end_date),
+                    }
+                }
+            })
+        except Exception as exc:
+            return Response({'success': False, 'error': {'message': str(exc)}}, status=500)
+
+    @action(detail=False, methods=['get'])
+    def export_subject_total_summary_csv(self, request):
+        try:
+            start_date, end_date = self._parse_date_range_params(request)
+        except ValueError as ve:
+            return Response({'success': False, 'error': {'message': str(ve)}}, status=400)
+        subject_ids = self._parse_subject_ids(request)
+        try:
+            rows = self._build_subject_total_summary_rows(start_date, end_date, subject_ids)
+            response = HttpResponse(content_type='text/csv')
+            fname = f"Subject_Total_Summary_Report_{start_date}_to_{end_date}.csv"
+            response['Content-Disposition'] = f'attachment; filename="{fname}"'
+            writer = csv.writer(response)
+            writer.writerow(['Sr.No', 'Subject Name', 'Total Students', 'Total Fees Collected (Rs)'])
+            for r in rows:
+                writer.writerow([r['sr_no'], r['subject_name'], r['total_students'], f"{r['total_fees']:.2f}"])
+            writer.writerow([])
+            grand_students = sum(r['total_students'] for r in rows)
+            grand_fees = sum(r['total_fees'] for r in rows)
+            writer.writerow(['', 'GRAND TOTAL', grand_students, f"{grand_fees:.2f}"])
+            return response
+        except Exception as exc:
+            return Response({'success': False, 'error': {'message': str(exc)}}, status=500)
+
+    @action(detail=False, methods=['get'])
+    def export_subject_total_summary_pdf(self, request):
+        try:
+            start_date, end_date = self._parse_date_range_params(request)
+        except ValueError as ve:
+            return Response({'success': False, 'error': {'message': str(ve)}}, status=400)
+        subject_ids = self._parse_subject_ids(request)
+        try:
+            rows = self._build_subject_total_summary_rows(start_date, end_date, subject_ids)
+            headers = ['Sr. No.', 'Subject Name', 'Total Students', 'Total Fees Collected']
+            data = []
+            for r in rows:
+                data.append([r['sr_no'], r['subject_name'], str(r['total_students']), f"Rs {r['total_fees']:.2f}"])
+            grand_students = sum(r['total_students'] for r in rows)
+            grand_fees = sum(r['total_fees'] for r in rows)
+            data.append(['', 'GRAND TOTAL', str(grand_students), f"Rs {grand_fees:.2f}"])
+            title = f"Subject-wise Total Summary Report ({start_date} to {end_date})"
+            pdf_content = generate_pdf_report(title, headers, data)
+            response = HttpResponse(pdf_content, content_type='application/pdf')
+            fname = f"Subject_Total_Summary_Report_{start_date}_to_{end_date}.pdf"
+            response['Content-Disposition'] = f'attachment; filename="{fname}"'
+            return response
+        except Exception as exc:
+            return Response({'success': False, 'error': {'message': str(exc)}}, status=500)

@@ -225,5 +225,114 @@ def generate_pdf_report(title, headers, data):
     
     # Compress PDF to reduce size
     pdf_content = compress_pdf(pdf_content)
-    
+
     return pdf_content
+
+
+def generate_landscape_pdf_report(title, headers, data):
+    """Like generate_pdf_report but uses landscape(A4) for wide tables (Report 4)."""
+    PAGE = landscape(A4)
+    PAGE_W, PAGE_H = PAGE
+    buffer = BytesIO()
+
+    class LandscapeCanvas(canvas.Canvas):
+        def draw_watermark(self):
+            self.saveState()
+            logo_path = os.path.join(settings.BASE_DIR, 'apps', 'payments', 'static', 'images', 'logo.png')
+            if os.path.exists(logo_path):
+                self.setFillAlpha(0.05)
+                wm = 120 * mm
+                self.drawImage(logo_path, (PAGE_W - wm) / 2, (PAGE_H - wm) / 2,
+                               width=wm, height=wm, mask='auto')
+            self.restoreState()
+
+        def draw_header(self, t):
+            self.saveState()
+            self.setFillColor(NAVY_BLUE)
+            self.rect(0, PAGE_H - 28 * mm, PAGE_W, 28 * mm, fill=1, stroke=0)
+            self.setFillColor(white)
+            self.setFont("Helvetica-Bold", 18)
+            self.drawCentredString(PAGE_W / 2, PAGE_H - 11 * mm, "Balkan-Ji-Bari, NADIAD")
+            self.setFont("Helvetica", 9)
+            self.drawCentredString(PAGE_W / 2, PAGE_H - 17 * mm, "Mill Road, Nadiad - 387001")
+            self.setFont("Helvetica-Bold", 12)
+            self.drawCentredString(PAGE_W / 2, PAGE_H - 24 * mm, t.upper())
+            self.restoreState()
+
+    def on_page(canv, doc):
+        canv.draw_watermark()
+        canv.draw_header(title)
+
+    doc = SimpleDocTemplate(
+        buffer, pagesize=PAGE,
+        rightMargin=8 * mm, leftMargin=8 * mm,
+        topMargin=35 * mm, bottomMargin=12 * mm,
+        compression=True,
+    )
+    styles = getSampleStyleSheet()
+    hdr_s = ParagraphStyle('LsHdr', parent=styles['Normal'],
+        fontSize=6.5, textColor=white, fontName='Helvetica-Bold',
+        alignment=1, leading=9, wordWrap='LTR')
+    cell_s = ParagraphStyle('LsCell', parent=styles['Normal'],
+        fontSize=6.5, fontName='Helvetica', alignment=1, leading=9, wordWrap='LTR')
+    cell_l = ParagraphStyle('LsCellL', parent=cell_s, alignment=0)
+    sec_s = ParagraphStyle('LsSec', parent=styles['Normal'],
+        fontSize=8, fontName='Helvetica-Bold', alignment=0,
+        textColor=NAVY_BLUE, leading=11, wordWrap='LTR')
+
+    col_count = len(headers)
+    avail = PAGE_W - 16 * mm
+    sr_w = 9 * mm
+    col_widths = ([sr_w] + [(avail - sr_w) / (col_count - 1)] * (col_count - 1)
+                  if col_count > 1 else [avail])
+
+    wrapped_headers = [Paragraph(str(h), hdr_s) for h in headers]
+    section_row_indices = []
+    wrapped_data = []
+    for row in data:
+        ri = len(wrapped_data) + 1
+        if len(row) == 1:
+            section_row_indices.append(ri)
+            wrapped_data.append(
+                [Paragraph(str(row[0]) if row[0] else '', sec_s)]
+                + [Paragraph('', cell_s)] * (col_count - 1))
+        else:
+            wr = []
+            for i, cell in enumerate(row):
+                s = cell_l if i in (1, 2) else cell_s
+                wr.append(Paragraph(str(cell) if cell is not None else '', s))
+            while len(wr) < col_count:
+                wr.append(Paragraph('', cell_s))
+            wrapped_data.append(wr)
+
+    table_data = [wrapped_headers] + wrapped_data
+    t = Table(table_data, colWidths=col_widths, repeatRows=1, splitByRow=1)
+    rc = len(table_data)
+    sr_set = set(section_row_indices)
+    cmds = [
+        ('BACKGROUND', (0, 0), (-1, 0), NAVY_BLUE),
+        ('TEXTCOLOR', (0, 0), (-1, 0), white),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -1), 0.4, colors.grey),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('LEFTPADDING', (0, 0), (-1, -1), 3),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+    ]
+    for i in range(1, rc):
+        if i not in sr_set:
+            cmds.append(('BACKGROUND', (0, i), (-1, i),
+                         colors.white if i % 2 == 1 else colors.HexColor('#F0F0F8')))
+    for i in section_row_indices:
+        cmds.extend([
+            ('SPAN', (0, i), (-1, i)),
+            ('BACKGROUND', (0, i), (-1, i), HexColor('#E8EAF6')),
+            ('ALIGN', (0, i), (-1, i), 'LEFT'),
+            ('TEXTCOLOR', (0, i), (-1, i), NAVY_BLUE),
+        ])
+    t.setStyle(TableStyle(cmds))
+    doc.build([t], onFirstPage=on_page, onLaterPages=on_page, canvasmaker=LandscapeCanvas)
+    pdf_content = buffer.getvalue()
+    buffer.close()
+    return compress_pdf(pdf_content)

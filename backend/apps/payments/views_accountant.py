@@ -62,7 +62,7 @@ class FeeLedgerViewSet(viewsets.ReadOnlyModelViewSet):
     """
     ViewSet for viewing student fee ledgers.
     """
-    queryset = FeeLedgerEntry.objects.all()
+    queryset = FeeLedgerEntry.objects.filter(is_deleted=False)
     serializer_class = FeeLedgerEntrySerializer
     permission_classes = [IsStaffAccountantOrAdmin]
     pagination_class = StandardResultsSetPagination
@@ -84,7 +84,10 @@ class FeeLedgerViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=['get'], url_path=r'student/(?P<student_id>\d+)')
     def student_ledger(self, request, student_id=None):
         """Get ledger for a specific student with running balance."""
-        entries = FeeLedgerEntry.objects.filter(student_id=student_id).order_by('created_at')
+        entries = FeeLedgerEntry.objects.filter(
+            student_id=student_id,
+            is_deleted=False,
+        ).order_by('created_at')
         
         # In a real ledger, we might want to calculate running balance
         # For now, we return the entries. The frontend can calculate balance if needed.
