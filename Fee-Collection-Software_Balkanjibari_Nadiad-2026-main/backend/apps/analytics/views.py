@@ -1,4 +1,4 @@
-from rest_framework import viewsets, status
+﻿from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -17,7 +17,7 @@ from apps.payments.models import Payment
 from apps.enrollments.models import Enrollment
 from apps.subjects.models import Subject
 from utils.permissions import IsStaffOrAdmin, IsAccountantOrAdmin, IsStaffAccountantOrAdmin
-from utils.reports import generate_pdf_report
+from utils.reports import generate_pdf_report, generate_landscape_pdf_report
 
 class AnalyticsViewSet(viewsets.ViewSet):
     """
@@ -2075,3 +2075,351 @@ class AnalyticsViewSet(viewsets.ViewSet):
                 'success': False,
                 'error': {'message': str(e)}
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    # ═══════════════════════════════════════════════════════════════
+    # REPORT 4: ENROLLMENT & PAYMENT REPORT (DATE-WISE)
+    # ═══════════════════════════════════════════════════════════════
+
+    def _build_enrollment_payment_rows(self, start_date, end_date, subject_id=None, batch_time=None):
+        """
+        Return list of dicts for every enrollment whose enrollment_date falls
+        within [start_date, end_date].  Each dict contains all columns for R4.
+        """
+        import pytz
+        from django.utils import timezone as tz
+
+        qs = (
+            Enrollment.objects
+            .filter(is_deleted=False, enrollment_date__gte=start_date,
+                    enrollment_date__lte=end_date)
+            .select_related('student', 'subject')
+            .prefetch_related('payments')
+            .order_by('student__student_id')
+        )
+        if subject_id:
+            qs = qs.filter(subject_id=subject_id)
+        if batch_time:
+            qs = qs.filter(batch_time__iexact=batch_time)
+
+        rows = []
+        sr = 1
+        for enr in qs:
+            student = enr.student
+            # Get the most recent valid payment, if any
+            payment = enr.payments.filter(is_deleted=False).order_by('-created_at').first()
+
+            total_fee   = float(enr.total_fee or 0)
+            paid_amount = float(enr.paid_amount or 0)
+            pending     = max(0.0, total_fee - paid_amount)
+
+            pay_mode   = ''
+            pay_status = ''
+            pay_id     = 'N/A'
+            pay_ref    = 'N/A'
+            receipt_id = 'N/A'
+
+            if payment:
+                pay_mode   = payment.payment_mode or ''
+                pay_status = payment.status or ''
+                if pay_mode.upper() in ('ONLINE', 'RAZORPAY'):
+                    pay_id  = payment.razorpay_payment_id or payment.transaction_id or 'N/A'
+                    pay_ref = payment.transaction_id or 'N/A'
+                else:
+                    pay_ref = payment.transaction_id or 'N/A'
+                receipt_id = str(payment.receipt_number or payment.id or 'N/A')
+
+            # Format enrollment date
+            enr_dt = enr.enrollment_date
+            enr_dt_str = enr_dt.strftime('%d-%m-%Y') if enr_dt else ''
+
+            rows.append({
+                'sr_no'         : sr,
+                'student_name'  : student.name if student else '',
+                'student_id'    : student.student_id if student else '',
+                'subject'       : enr.subject.name if enr.subject else '',
+                'batch_time'    : enr.batch_time or '',
+                'enrollment_dt' : enr_dt_str,
+                'paid_amount'   : paid_amount,
+                'pending_amount': pending,
+                'total_fee'     : total_fee,
+                'pay_mode'      : pay_mode,
+                'pay_status'    : pay_status,
+                'pay_id'        : pay_id,
+                'pay_ref'       : pay_ref,
+                'phone'         : student.phone if student else '',
+                'receipt_id'    : receipt_id,
+            })
+            sr += 1
+        return rows
+
+    @action(detail=False, methods=['get'], url_path='enrollment_payment_report',
+            permission_classes=[IsStaffAccountantOrAdmin])
+    def enrollment_payment_report(self, request):
+        """Report 4 – Enrollment & Payment Report (Date-wise)."""
+        try:
+            start_date, end_date = self._parse_date_range_params(request)
+        except ValueError as ve:
+            return Response({'success': False, 'error': {'message': str(ve)}}, status=400)
+        subject_id = request.query_params.get('subject_id') or None
+        batch_time = request.query_params.get('batch_time') or None
+
+        try:
+            rows = self._build_enrollment_payment_rows(start_date, end_date, subject_id, batch_time)
+            grand_paid    = sum(r['paid_amount']    for r in rows)
+            grand_pending = sum(r['pending_amount'] for r in rows)
+            grand_total   = sum(r['total_fee']      for r in rows)
+            return Response({
+                'success': True,
+                'data': {
+                    'rows': rows,
+                    'summary': {
+                        'total_records': len(rows),
+                        'grand_paid'   : grand_paid,
+                        'grand_pending': grand_pending,
+                        'grand_total'  : grand_total,
+                    },
+                    'filters': {
+                        'start_date': str(start_date),
+                        'end_date'  : str(end_date),
+                        'subject_id': subject_id,
+                        'batch_time': batch_time,
+                    }
+                }
+            })
+        except Exception as exc:
+            return Response({'success': False, 'error': {'message': str(exc)}},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'], url_path='export_enrollment_payment_report_csv',
+            permission_classes=[IsStaffAccountantOrAdmin])
+    def export_enrollment_payment_report_csv(self, request):
+        """Report 4 – CSV export."""
+        try:
+            start_date, end_date = self._parse_date_range_params(request)
+        except ValueError as ve:
+            return Response({'success': False, 'error': {'message': str(ve)}}, status=400)
+        subject_id = request.query_params.get('subject_id') or None
+        batch_time = request.query_params.get('batch_time') or None
+
+        try:
+            rows = self._build_enrollment_payment_rows(start_date, end_date, subject_id, batch_time)
+            response = HttpResponse(content_type='text/csv')
+            fname = f"Enrollment_Payment_Report_{start_date}_to_{end_date}.csv"
+            response['Content-Disposition'] = f'attachment; filename="{fname}"'
+
+            writer = csv.writer(response)
+            writer.writerow([
+                'Sr.No', 'Student Name', 'Student ID', 'Subject', 'Batch Time',
+                'Enrollment Date & Time', 'Paid Amount (Rs)', 'Pending Amount (Rs)',
+                'Total Fee (Rs)', 'Payment Mode', 'Payment Status',
+                'Payment ID (Online)', 'Reference No (Offline)', 'Phone', 'Receipt ID'
+            ])
+            for r in rows:
+                writer.writerow([
+                    r['sr_no'], r['student_name'], r['student_id'],
+                    r['subject'], r['batch_time'], r['enrollment_dt'],
+                    r['paid_amount'], r['pending_amount'], r['total_fee'],
+                    r['pay_mode'], r['pay_status'], r['pay_id'],
+                    r['pay_ref'], r['phone'], r['receipt_id']
+                ])
+            # Grand totals row
+            writer.writerow([])
+            grand_paid    = sum(r['paid_amount']    for r in rows)
+            grand_pending = sum(r['pending_amount'] for r in rows)
+            grand_total   = sum(r['total_fee']      for r in rows)
+            writer.writerow(['', 'GRAND TOTAL', '', '', '', '',
+                             grand_paid, grand_pending, grand_total,
+                             '', '', '', '', '', ''])
+            return response
+        except Exception as exc:
+            return Response({'success': False, 'error': {'message': str(exc)}},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'], url_path='export_enrollment_payment_report_pdf',
+            permission_classes=[IsStaffAccountantOrAdmin])
+    def export_enrollment_payment_report_pdf(self, request):
+        """Report 4 – PDF export (landscape A4)."""
+        try:
+            start_date, end_date = self._parse_date_range_params(request)
+        except ValueError as ve:
+            return Response({'success': False, 'error': {'message': str(ve)}}, status=400)
+        subject_id = request.query_params.get('subject_id') or None
+        batch_time = request.query_params.get('batch_time') or None
+
+        try:
+            rows = self._build_enrollment_payment_rows(start_date, end_date, subject_id, batch_time)
+            headers = [
+                'Sr.', 'Student Name', 'Student ID', 'Subject', 'Batch',
+                'Enroll Date', 'Paid (Rs)', 'Pending (Rs)',
+                'Mode', 'Status', 'Pay ID', 'Ref No', 'Phone', 'Receipt'
+            ]
+            data = []
+            for r in rows:
+                data.append([
+                    r['sr_no'], r['student_name'], r['student_id'],
+                    r['subject'], r['batch_time'], r['enrollment_dt'],
+                    f"Rs {r['paid_amount']:.2f}", f"Rs {r['pending_amount']:.2f}",
+                    r['pay_mode'], r['pay_status'], r['pay_id'],
+                    r['pay_ref'], r['phone'], r['receipt_id']
+                ])
+            # Grand total row
+            grand_paid    = sum(r['paid_amount']    for r in rows)
+            grand_pending = sum(r['pending_amount'] for r in rows)
+            data.append([
+                '', 'GRAND TOTAL', '', '', '', '',
+                f"Rs {grand_paid:.2f}", f"Rs {grand_pending:.2f}",
+                '', '', '', '', '', ''
+            ])
+
+            title = f"Enrollment & Payment Report  ({start_date} to {end_date})"
+            pdf_content = generate_landscape_pdf_report(title, headers, data)
+
+            response = HttpResponse(pdf_content, content_type='application/pdf')
+            fname = f"Enrollment_Payment_Report_{start_date}_to_{end_date}.pdf"
+            response['Content-Disposition'] = f'attachment; filename="{fname}"'
+            return response
+        except Exception as exc:
+            return Response({'success': False, 'error': {'message': str(exc)}},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    # ═══════════════════════════════════════════════════════════════
+    # REPORT 5: SUBJECT-WISE TOTAL SUMMARY REPORT
+    # ═══════════════════════════════════════════════════════════════
+
+    def _build_subject_total_summary_rows(self, start_date, end_date, subject_ids=None):
+        from django.db.models import Count, Sum
+        from django.db.models.functions import Coalesce
+        from decimal import Decimal
+
+        qs = Enrollment.objects.filter(
+            is_deleted=False,
+            enrollment_date__gte=start_date,
+            enrollment_date__lte=end_date
+        )
+        if subject_ids:
+            qs = qs.filter(subject_id__in=subject_ids)
+
+        agg = (
+            qs.values('subject__name')
+            .annotate(
+                total_students=Count('id'),
+                total_fees=Coalesce(Sum('paid_amount'), Decimal('0.00'))
+            )
+            .order_by('subject__name')
+        )
+
+        rows = []
+        sr = 1
+        for item in agg:
+            rows.append({
+                'sr_no': sr,
+                'subject_name': item['subject__name'],
+                'total_students': item['total_students'],
+                'total_fees': float(item['total_fees']),
+            })
+            sr += 1
+        return rows
+
+    @action(detail=False, methods=['get'], url_path='subject_total_summary_report',
+            permission_classes=[IsStaffAccountantOrAdmin])
+    def subject_total_summary_report(self, request):
+        """Report 5 - Subject-wise Total Summary Report."""
+        try:
+            start_date, end_date = self._parse_date_range_params(request)
+        except ValueError as ve:
+            return Response({'success': False, 'error': {'message': str(ve)}}, status=400)
+        
+        subject_ids = self._parse_subject_ids(request)
+
+        try:
+            rows = self._build_subject_total_summary_rows(start_date, end_date, subject_ids)
+            grand_students = sum(r['total_students'] for r in rows)
+            grand_fees = sum(r['total_fees'] for r in rows)
+
+            return Response({
+                'success': True,
+                'data': {
+                    'rows': rows,
+                    'summary': {
+                        'grand_students': grand_students,
+                        'grand_fees': grand_fees,
+                    },
+                    'filters': {
+                        'start_date': str(start_date),
+                        'end_date': str(end_date),
+                    }
+                }
+            })
+        except Exception as exc:
+            return Response({'success': False, 'error': {'message': str(exc)}},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'], url_path='export_subject_total_summary_csv',
+            permission_classes=[IsStaffAccountantOrAdmin])
+    def export_subject_total_summary_csv(self, request):
+        """Report 5 - CSV Export."""
+        try:
+            start_date, end_date = self._parse_date_range_params(request)
+        except ValueError as ve:
+            return Response({'success': False, 'error': {'message': str(ve)}}, status=400)
+        
+        subject_ids = self._parse_subject_ids(request)
+
+        try:
+            rows = self._build_subject_total_summary_rows(start_date, end_date, subject_ids)
+            response = HttpResponse(content_type='text/csv')
+            fname = f"Subject_Total_Summary_Report_{start_date}_to_{end_date}.csv"
+            response['Content-Disposition'] = f'attachment; filename="{fname}"'
+
+            writer = csv.writer(response)
+            writer.writerow(['Sr.No', 'Subject Name', 'Total Students Count', 'Total Fees Collected (Rs)'])
+            
+            for r in rows:
+                writer.writerow([
+                    r['sr_no'], r['subject_name'], r['total_students'], r['total_fees']
+                ])
+            
+            writer.writerow([])
+            grand_students = sum(r['total_students'] for r in rows)
+            grand_fees = sum(r['total_fees'] for r in rows)
+            writer.writerow(['', 'GRAND TOTAL', grand_students, grand_fees])
+            
+            return response
+        except Exception as exc:
+            return Response({'success': False, 'error': {'message': str(exc)}},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'], url_path='export_subject_total_summary_pdf',
+            permission_classes=[IsStaffAccountantOrAdmin])
+    def export_subject_total_summary_pdf(self, request):
+        """Report 5 - PDF Export."""
+        try:
+            start_date, end_date = self._parse_date_range_params(request)
+        except ValueError as ve:
+            return Response({'success': False, 'error': {'message': str(ve)}}, status=400)
+        
+        subject_ids = self._parse_subject_ids(request)
+
+        try:
+            rows = self._build_subject_total_summary_rows(start_date, end_date, subject_ids)
+            headers = ['Sr. No.', 'Subject Name', 'Total Students Count', 'Total Fees Collected']
+            data = []
+            
+            for r in rows:
+                data.append([
+                    r['sr_no'], r['subject_name'], str(r['total_students']), f"Rs {r['total_fees']:.2f}"
+                ])
+                
+            grand_students = sum(r['total_students'] for r in rows)
+            grand_fees = sum(r['total_fees'] for r in rows)
+            data.append(['', 'GRAND TOTAL', str(grand_students), f"Rs {grand_fees:.2f}"])
+
+            title = f"Subject-wise Total Summary Report ({start_date} to {end_date})"
+            pdf_content = generate_pdf_report(title, headers, data)
+
+            response = HttpResponse(pdf_content, content_type='application/pdf')
+            fname = f"Subject_Total_Summary_Report_{start_date}_to_{end_date}.pdf"
+            response['Content-Disposition'] = f'attachment; filename="{fname}"'
+            return response
+        except Exception as exc:
+            return Response({'success': False, 'error': {'message': str(exc)}},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)

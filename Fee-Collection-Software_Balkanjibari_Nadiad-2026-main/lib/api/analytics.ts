@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Analytics API service
  */
 
@@ -82,6 +82,61 @@ export interface SubjectDateWiseFeeReport {
     subjects: SubjectDateWiseSubjectRow[];
     grand_total_students: number;
     grand_total_fees: number;
+}
+
+// ── Report 4: Enrollment & Payment Report (Date-wise) ─────────────────────────
+export interface EnrollmentPaymentReportRow {
+    sr_no: number;
+    student_name: string;
+    student_id: string;
+    subject: string;
+    batch_time: string;
+    enrollment_dt: string;
+    paid_amount: number;
+    pending_amount: number;
+    total_fee: number;
+    pay_mode: string;
+    pay_status: string;
+    pay_id: string;
+    pay_ref: string;
+    phone: string;
+    receipt_id: string;
+}
+
+export interface EnrollmentPaymentReport {
+    rows: EnrollmentPaymentReportRow[];
+    summary: {
+        total_records: number;
+        grand_paid: number;
+        grand_pending: number;
+        grand_total: number;
+    };
+    filters: {
+        start_date: string;
+        end_date: string;
+        subject_id: string | null;
+        batch_time: string | null;
+    };
+}
+
+
+export interface SubjectTotalSummaryRow {
+    sr_no: number;
+    subject_name: string;
+    total_students: number;
+    total_fees: number;
+}
+
+export interface SubjectTotalSummaryReport {
+    rows: SubjectTotalSummaryRow[];
+    summary: {
+        grand_students: number;
+        grand_fees: number;
+    };
+    filters: {
+        start_date: string;
+        end_date: string;
+    };
 }
 
 export interface SubjectBatchEnrollmentReportRow {
@@ -411,4 +466,62 @@ export const analyticsApi = {
         );
         return response.data;
     },
+
+    // ── Report 4 ──────────────────────────────────────────────────────────────
+    getEnrollmentPaymentReport: async (
+        startDate: string,
+        endDate: string,
+        subjectId?: string,
+        batchTime?: string
+    ): Promise<ApiResponse<EnrollmentPaymentReport>> => {
+        const params: Record<string, string> = { start_date: startDate, end_date: endDate };
+        if (subjectId) params.subject_id = subjectId;
+        if (batchTime)  params.batch_time  = batchTime;
+        const response = await apiClient.get<ApiResponse<EnrollmentPaymentReport>>(
+            '/api/v1/analytics/enrollment_payment_report/', { params }
+        );
+        return response.data;
+    },
+
+    exportEnrollmentPaymentReportCsv: async (
+        startDate: string,
+        endDate: string,
+        subjectId?: string,
+        batchTime?: string
+    ): Promise<void> => {
+        const params: Record<string, string> = { start_date: startDate, end_date: endDate };
+        if (subjectId) params.subject_id = subjectId;
+        if (batchTime)  params.batch_time  = batchTime;
+        const response = await apiClient.get(
+            '/api/v1/analytics/export_enrollment_payment_report_csv/', { params, responseType: 'blob' }
+        );
+        const url = window.URL.createObjectURL(new Blob([response.data]));
+        const a   = document.createElement('a');
+        a.href     = url;
+        a.download = `Enrollment_Payment_Report_${startDate}_to_${endDate}.csv`;
+        document.body.appendChild(a); a.click(); a.remove();
+        window.URL.revokeObjectURL(url);
+    },
+
+    exportEnrollmentPaymentReportPdf: async (
+        startDate: string,
+        endDate: string,
+        subjectId?: string,
+        batchTime?: string
+    ): Promise<void> => {
+        const params: Record<string, string> = { start_date: startDate, end_date: endDate };
+        if (subjectId) params.subject_id = subjectId;
+        if (batchTime)  params.batch_time  = batchTime;
+        const response = await apiClient.get(
+            '/api/v1/analytics/export_enrollment_payment_report_pdf/', { params, responseType: 'blob' }
+        );
+        const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+        const a   = document.createElement('a');
+        a.href     = url;
+        a.download = `Enrollment_Payment_Report_${startDate}_to_${endDate}.pdf`;
+        document.body.appendChild(a); a.click(); a.remove();
+        window.URL.revokeObjectURL(url);
+    },
 };
+
+
