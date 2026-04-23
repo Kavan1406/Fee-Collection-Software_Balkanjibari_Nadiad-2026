@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Clear Browser Cache</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        button {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background: #c82333;
+        }
+        .success {
+            background: #28a745;
+        }
+        .success:hover {
+            background: #218838;
+        }
+        .info {
+            background: #f8f9fa;
+            border-left: 4px solid #0d6efd;
+            padding: 15px;
+            margin: 20px 0;
+            color: #333;
+        }
+        .step {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 Clear Authentication Cache</h1>
+        
+        <div class="info">
+            <strong>Issue:</strong> Your browser has cached authentication tokens, causing the admin panel to show directly instead of the login page.
+        </div>
+
+        <h2>Quick Fix (Recommended)</h2>
+        <button onclick="clearAuth()" class="success">Clear Authentication & Reload</button>
+        
+        <h2>Manual Steps</h2>
+        <div class="step">
+            <strong>Option 1: Use Incognito/Private Mode</strong>
+            <ol>
+                <li>Open a new incognito/private window</li>
+                <li>Navigate to <code>http://localhost:3000</code></li>
+                <li>You should see the login page</li>
+            </ol>
+        </div>
+        
+        <div class="step">
+            <strong>Option 2: Clear Browser Storage</strong>
+            <ol>
+                <li>Press <code>F12</code> to open Developer Tools</li>
+                <li>Go to <strong>Application</strong> tab (Chrome) or <strong>Storage</strong> tab (Firefox)</li>
+                <li>Click on <strong>Local Storage</strong> → <code>http://localhost:3000</code></li>
+                <li>Delete <code>access_token</code> and <code>refresh_token</code></li>
+                <li>Refresh the page</li>
+            </ol>
+        </div>
+
+        <div class="step">
+            <strong>Option 3: Hard Refresh</strong>
+            <ol>
+                <li>Press <code>Ctrl + Shift + Delete</code> (Windows) or <code>Cmd + Shift + Delete</code> (Mac)</li>
+                <li>Select "Cached images and files" and "Cookies and other site data"</li>
+                <li>Click "Clear data"</li>
+                <li>Navigate to <code>http://localhost:3000</code></li>
+            </ol>
+        </div>
+
+        <div id="result" style="margin-top: 20px; padding: 15px; display: none; border-radius: 4px;"></div>
+    </div>
+
+    <script>
+        function clearAuth() {
+            try {
+                // Clear all authentication-related items
+                localStorage.removeItem('access_token');
+                localStorage.removeItem('refresh_token');
+                sessionStorage.clear();
+                
+                const result = document.getElementById('result');
+                result.style.display = 'block';
+                result.style.background = '#d4edda';
+                result.style.color = '#155724';
+                result.style.border = '1px solid #c3e6cb';
+                result.innerHTML = '✅ Authentication cache cleared successfully! Redirecting to login page...';
+                
+                // Redirect to home page after 2 seconds
+                setTimeout(() => {
+                    window.location.href = 'http://localhost:3000';
+                }, 2000);
+            } catch (error) {
+                const result = document.getElementById('result');
+                result.style.display = 'block';
+                result.style.background = '#f8d7da';
+                result.style.color = '#721c24';
+                result.style.border = '1px solid #f5c6cb';
+                result.innerHTML = '❌ Error clearing cache: ' + error.message;
+            }
+        }
+    </script>
+</body>
+</html>

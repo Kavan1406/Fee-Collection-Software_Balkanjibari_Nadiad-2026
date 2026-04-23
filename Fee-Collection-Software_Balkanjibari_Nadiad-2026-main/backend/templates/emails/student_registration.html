@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 5px; margin-bottom: 20px; }
+        .content { background: #f9f9f9; padding: 20px; border-radius: 5px; border: 1px solid #ddd; }
+        .credential-box { background: white; padding: 15px; border-left: 4px solid #667eea; margin: 15px 0; }
+        .button { display: inline-block; background: #667eea; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; margin-top: 10px; }
+        .footer { margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd; color: #666; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Welcome to Balkanj Bari!</h1>
+            <p>Your account has been successfully created.</p>
+        </div>
+        
+        <div class="content">
+            <p>Dear {{ student_name }},</p>
+            
+            <p>Thank you for registering with us! Your account has been created and is ready to use.</p>
+            
+            <h3>Your Login Credentials:</h3>
+            <div class="credential-box">
+                <p><strong>Student ID:</strong> {{ student_id }}</p>
+                <p><strong>Username:</strong> {{ username }}</p>
+                <p><strong>Password:</strong> {{ password }}</p>
+                <p><strong>Phone:</strong> {{ phone }}</p>
+            </div>
+            
+            <p><strong>Important:</strong> Please change your password after your first login for security.</p>
+            
+            <a href="{{ login_url }}" class="button">Login to Your Dashboard</a>
+            
+            <p>If you have any questions or need assistance, please contact us.</p>
+        </div>
+        
+        <div class="footer">
+            <p>&copy; 2026 Balkanj Bari, Nadiad. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>
