@@ -35,8 +35,8 @@ class SubjectViewSet(viewsets.ModelViewSet):
     ).prefetch_related('fee_structures')
     
     def get_permissions(self):
-        """Allow public access to list and retrieve actions."""
-        if self.action in ['list', 'retrieve']:
+        """Allow public access to list, retrieve, and batches actions."""
+        if self.action in ['list', 'retrieve', 'batches']:
             return [AllowAny()]
         return [IsAuthenticated(), IsStaffAccountantOrAdmin()]
     
