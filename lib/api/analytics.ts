@@ -119,23 +119,27 @@ export interface EnrollmentPaymentReport {
     };
 }
 
-// ── Report 5: Subject-wise Total Summary ─────────────────────────────────────
-export interface SubjectTotalSummaryRow {
+// ── Report 5: Pending / Outstanding Fees Report ─────────────────────────────
+export interface PendingOutstandingFeesRow {
     sr_no: number;
-    subject_name: string;
-    total_students: number;
+    student_name: string;
+    student_id: string;
+    subject: string;
+    batch_time: string;
     total_fees: number;
+    paid_amount: number;
+    pending_amount: number;
+    status: string;
+    pay_mode: string;
 }
 
-export interface SubjectTotalSummaryReport {
-    rows: SubjectTotalSummaryRow[];
+export interface PendingOutstandingFeesReport {
+    rows: PendingOutstandingFeesRow[];
     summary: {
-        grand_students: number;
-        grand_fees: number;
-    };
-    filters: {
-        start_date: string;
-        end_date: string;
+        total_records: number;
+        grand_total: number;
+        grand_paid: number;
+        grand_pending: number;
     };
 }
 
@@ -519,34 +523,34 @@ export const analyticsApi = {
         window.URL.revokeObjectURL(url);
     },
 
-    // ── Report 5: Subject-wise Total Summary ─────────────────────────────────
-    getSubjectTotalSummaryReport: async (
+    // ── Report 5: Pending / Outstanding Fees Report ──────────────────────────
+    getPendingOutstandingFeesReport: async (
         start_date: string,
         end_date: string,
-        subject_ids?: number[]
-    ): Promise<ApiResponse<SubjectTotalSummaryReport>> => {
+        subject_id?: string,
+        batch_time?: string
+    ): Promise<ApiResponse<PendingOutstandingFeesReport>> => {
         const params: any = { start_date, end_date };
-        if (subject_ids && subject_ids.length > 0) {
-            params.subject_ids = subject_ids.join(',');
-        }
-        const response = await apiClient.get<ApiResponse<SubjectTotalSummaryReport>>(
-            '/api/v1/analytics/subject_total_summary_report/',
+        if (subject_id) params.subject_id = subject_id;
+        if (batch_time) params.batch_time = batch_time;
+        const response = await apiClient.get<ApiResponse<PendingOutstandingFeesReport>>(
+            '/api/v1/analytics/pending_outstanding_fees_report/',
             { params }
         );
         return response.data;
     },
 
-    exportSubjectTotalSummaryCsv: async (start_date: string, end_date: string) =>
+    exportPendingOutstandingFeesCsv: async (start_date: string, end_date: string) =>
         analyticsApi.downloadFile(
-            '/api/v1/analytics/export_subject_total_summary_csv/',
-            `Subject_Total_Summary_Report_${start_date}_to_${end_date}.csv`,
+            '/api/v1/analytics/export_pending_outstanding_fees_csv/',
+            `Pending_Fees_Report_${start_date}_to_${end_date}.csv`,
             { start_date, end_date }
         ),
 
-    exportSubjectTotalSummaryPdf: async (start_date: string, end_date: string) =>
+    exportPendingOutstandingFeesPdf: async (start_date: string, end_date: string) =>
         analyticsApi.downloadFile(
-            '/api/v1/analytics/export_subject_total_summary_pdf/',
-            `Subject_Total_Summary_Report_${start_date}_to_${end_date}.pdf`,
+            '/api/v1/analytics/export_pending_outstanding_fees_pdf/',
+            `Pending_Fees_Report_${start_date}_to_${end_date}.pdf`,
             { start_date, end_date }
         ),
 

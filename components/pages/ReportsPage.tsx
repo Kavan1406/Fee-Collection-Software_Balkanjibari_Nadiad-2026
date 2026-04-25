@@ -9,8 +9,8 @@ import type {
   SubjectDateWiseSubjectRow,
   EnrollmentPaymentReportRow,
   EnrollmentPaymentReport,
-  SubjectTotalSummaryReport,
-  SubjectTotalSummaryRow,
+  PendingOutstandingFeesReport,
+  PendingOutstandingFeesRow,
   SubjectRevenueTotalReport,
   SubjectRevenueTotalRow,
 } from '@/lib/api/analytics'
@@ -62,11 +62,14 @@ export default function ReportsPage({ userRole }: ReportsPageProps) {
   const [r4ReportData, setR4ReportData] = useState<EnrollmentPaymentReport | null>(null)
   const [r4Downloading, setR4Downloading] = useState<string | null>(null)
 
-  // ── Report 5: Subject-wise Total Summary ─────────────────────────────────
+  // ── Report 5: Pending / Outstanding Fees Report ───────────────────────────
   const [r5StartDate, setR5StartDate] = useState('2026-04-15')
   const [r5EndDate, setR5EndDate] = useState(new Date().toISOString().split('T')[0])
+  const [r5SelectedSubject, setR5SelectedSubject] = useState<string>('')
+  const [r5SelectedBatch, setR5SelectedBatch] = useState<string>('ALL')
+  const [r5SubjectBatches, setR5SubjectBatches] = useState<string[]>([])
   const [r5Loading, setR5Loading] = useState(false)
-  const [r5ReportData, setR5ReportData] = useState<SubjectTotalSummaryReport | null>(null)
+  const [r5ReportData, setR5ReportData] = useState<PendingOutstandingFeesReport | null>(null)
   const [r5Downloading, setR5Downloading] = useState<string | null>(null)
  
   // ── Report 6: Subject-wise Revenue Total ─────────────────────────────────
@@ -120,6 +123,24 @@ export default function ReportsPage({ userRole }: ReportsPageProps) {
     setSelectedBatch('ALL')
     setBatchReportData(null)
     await loadSubjectBatches(subjectId)
+  }
+
+  const handleR5SubjectChange = async (subjectId: string) => {
+    setR5SelectedSubject(subjectId)
+    setR5SelectedBatch('ALL')
+    setR5ReportData(null)
+    if (!subjectId) { setR5SubjectBatches([]); return }
+    try {
+      const response = await subjectsApi.getBatches(Number(subjectId))
+      const data = (response as any)?.data || response
+      const batches = Array.isArray(data) ? data : Array.isArray(data?.results) ? data.results : []
+      setR5SubjectBatches(
+        batches.map((batch: any) => batch?.batch_time || batch?.name || String(batch || '')).filter(Boolean)
+      )
+    } catch (error) {
+      console.error('Failed to load batches for R5:', error)
+      setR5SubjectBatches([])
+    }
   }
 
   // ── Report 1 Handlers ─────────────────────────────────────────────────────
@@ -292,13 +313,18 @@ export default function ReportsPage({ userRole }: ReportsPageProps) {
     if (r5StartDate > r5EndDate) { notifyError('Start date cannot be after end date'); return }
     setR5Loading(true)
     try {
-      const response = await analyticsApi.getSubjectTotalSummaryReport(r5StartDate, r5EndDate)
+      const response = await analyticsApi.getPendingOutstandingFeesReport(
+        r5StartDate, 
+        r5EndDate, 
+        r5SelectedSubject || undefined, 
+        r5SelectedBatch === 'ALL' ? undefined : r5SelectedBatch
+      )
       const data = (response as any)?.data || response
       setR5ReportData(data || null)
-      notifySuccess('Report 5 generated successfully')
+      notifySuccess('Pending Fees Report generated successfully')
     } catch (error) {
       console.error('Report 5 failed:', error)
-      notifyError('Failed to generate Subject-wise Total Summary report')
+      notifyError('Failed to generate Pending / Outstanding Fees report')
     } finally {
       setR5Loading(false)
     }
@@ -308,9 +334,9 @@ export default function ReportsPage({ userRole }: ReportsPageProps) {
     try {
       setR5Downloading(format)
       if (format === 'CSV') {
-        await analyticsApi.exportSubjectTotalSummaryCsv(r5StartDate, r5EndDate)
+        await analyticsApi.exportPendingOutstandingFeesCsv(r5StartDate, r5EndDate)
       } else {
-        await analyticsApi.exportSubjectTotalSummaryPdf(r5StartDate, r5EndDate)
+        await analyticsApi.exportPendingOutstandingFeesPdf(r5StartDate, r5EndDate)
       }
       notifySuccess(`${format} downloaded successfully`)
     } catch (error) {
@@ -1043,22 +1069,23 @@ export default function ReportsPage({ userRole }: ReportsPageProps) {
       )}
 
       {/* ════════════════════════════════════════════════════════════════
-          REPORT 5: SUBJECT-WISE TOTAL SUMMARY REPORT
+          REPORT 5: PENDING / OUTSTANDING FEES REPORT
       ════════════════════════════════════════════════════════════════ */}
-      <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-100 shadow-sm">
+      <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-100 shadow-sm mt-6">
         <div className="mb-5">
           <div className="flex items-center gap-3 mb-1">
-            <span className="inline-flex items-center justify-center rounded-xl bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1.5 shadow-sm shrink-0">
+            <span className="inline-flex items-center justify-center rounded-xl bg-red-600 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1.5 shadow-sm shrink-0">
               Report 5
             </span>
             <h2 className="text-xl sm:text-2xl font-bold text-slate-900 uppercase tracking-tight font-poppins">
-              Subject-wise Total Summary Report
+              Pending / Outstanding Fees Report
             </h2>
           </div>
           <p className="text-slate-500 text-sm mt-0.5 font-medium font-inter">
-            Total enrollments and fees collected per subject within the selected date range.
+            List of students with their paid and pending fee status.
           </p>
         </div>
+
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Start Date</label>
@@ -1070,94 +1097,152 @@ export default function ReportsPage({ userRole }: ReportsPageProps) {
             <input type="date" value={r5EndDate} onChange={(e) => setR5EndDate(e.target.value)}
               className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900" />
           </div>
-          <div className="lg:col-span-2 flex items-end">
-            <button onClick={generateR5Report} disabled={r5Loading}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-8 py-3 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:opacity-50 shadow-sm">
-              {r5Loading ? <Loader2 size={16} className="animate-spin" /> : <TrendingUp size={16} />}
-              Generate Report
-            </button>
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Subject (Optional)</label>
+            <select
+              value={r5SelectedSubject}
+              onChange={(event) => handleR5SubjectChange(event.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-medium text-slate-900"
+            >
+              <option value="">All Subjects</option>
+              {allSubjects.map((subject) => (
+                <option key={subject.id} value={subject.id}>{subject.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Batch (Optional)</label>
+            <select
+              value={r5SelectedBatch}
+              onChange={(event) => setR5SelectedBatch(event.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-medium text-slate-900"
+            >
+              <option value="ALL">All Batches</option>
+              {r5SubjectBatches.map((batch) => (
+                <option key={batch} value={batch}>{batch}</option>
+              ))}
+            </select>
           </div>
         </div>
-        {r5ReportData && !r5Loading && (
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button onClick={() => handleR5Download('CSV')} disabled={!!r5Downloading}
-              className="inline-flex items-center gap-2 rounded-2xl bg-emerald-50 px-4 py-3 text-xs font-bold uppercase tracking-widest text-emerald-600 border border-emerald-100 disabled:opacity-50 hover:bg-emerald-100 transition">
-              {r5Downloading === 'CSV' ? <Loader2 size={12} className="animate-spin" /> : <Download size={14} />}
-              Download CSV
-            </button>
-            <button onClick={() => handleR5Download('PDF')} disabled={!!r5Downloading}
-              className="inline-flex items-center gap-2 rounded-2xl bg-indigo-50 px-4 py-3 text-xs font-bold uppercase tracking-widest text-indigo-600 border border-indigo-100 disabled:opacity-50 hover:bg-indigo-100 transition">
-              {r5Downloading === 'PDF' ? <Loader2 size={12} className="animate-spin" /> : <FileText size={14} />}
-              Download PDF
-            </button>
+
+        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <button onClick={generateR5Report} disabled={r5Loading}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-red-600 px-8 py-3 text-sm font-bold text-white transition hover:bg-red-700 disabled:opacity-50 shadow-sm">
+            {r5Loading ? <Loader2 size={16} className="animate-spin" /> : <Calendar size={16} />}
+            Generate Report
+          </button>
+          {r5ReportData && !r5Loading && (
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => handleR5Download('CSV')} disabled={!!r5Downloading}
+                className="inline-flex items-center gap-2 rounded-2xl bg-emerald-50 px-4 py-3 text-xs font-bold uppercase tracking-widest text-emerald-600 border border-emerald-100 disabled:opacity-50 hover:bg-emerald-100 transition">
+                {r5Downloading === 'CSV' ? <Loader2 size={12} className="animate-spin" /> : <Download size={14} />}
+                Download CSV
+              </button>
+              <button onClick={() => handleR5Download('PDF')} disabled={!!r5Downloading}
+                className="inline-flex items-center gap-2 rounded-2xl bg-red-50 px-4 py-3 text-xs font-bold uppercase tracking-widest text-red-600 border border-red-100 disabled:opacity-50 hover:bg-red-100 transition">
+                {r5Downloading === 'PDF' ? <Loader2 size={12} className="animate-spin" /> : <FileText size={14} />}
+                Download PDF
+              </button>
+            </div>
+          )}
+        </div>
+
+        {r5Loading ? (
+          <div className="flex h-40 items-center justify-center rounded-2xl border border-slate-100 bg-white mt-4">
+            <Loader2 size={32} className="animate-spin text-red-500" />
+          </div>
+        ) : r5ReportData ? (
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mt-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-slate-100 border-b border-slate-100 bg-slate-50/50">
+              <div className="p-4 text-center">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Total Records</p>
+                <p className="text-xl font-bold text-slate-900">{r5ReportData.summary?.total_records ?? 0}</p>
+              </div>
+              <div className="p-4 text-center">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Grand Total Fees</p>
+                <p className="text-xl font-bold text-slate-900">{formatCurrency(r5ReportData.summary?.grand_total ?? 0)}</p>
+              </div>
+              <div className="p-4 text-center">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-green-600 mb-1">Total Paid</p>
+                <p className="text-xl font-bold text-green-700">{formatCurrency(r5ReportData.summary?.grand_paid ?? 0)}</p>
+              </div>
+              <div className="p-4 text-center bg-red-50/30">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-red-600 mb-1">Total Pending</p>
+                <p className="text-xl font-bold text-red-700">{formatCurrency(r5ReportData.summary?.grand_pending ?? 0)}</p>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[1000px]">
+                <thead className="bg-slate-50 border-b border-slate-100">
+                  <tr>
+                    <th className="px-4 py-3 text-center text-[9px] font-bold uppercase tracking-widest w-12">Sr.</th>
+                    <th className="px-4 py-3 text-left text-[9px] font-bold uppercase tracking-widest">Student Name</th>
+                    <th className="px-4 py-3 text-center text-[9px] font-bold uppercase tracking-widest">ID</th>
+                    <th className="px-4 py-3 text-left text-[9px] font-bold uppercase tracking-widest">Subject</th>
+                    <th className="px-4 py-3 text-center text-[9px] font-bold uppercase tracking-widest">Batch</th>
+                    <th className="px-4 py-3 text-right text-[9px] font-bold uppercase tracking-widest">Total</th>
+                    <th className="px-4 py-3 text-right text-[9px] font-bold uppercase tracking-widest">Paid</th>
+                    <th className="px-4 py-3 text-right text-[9px] font-bold uppercase tracking-widest text-red-500">Pending</th>
+                    <th className="px-4 py-3 text-center text-[9px] font-bold uppercase tracking-widest">Status</th>
+                    <th className="px-4 py-3 text-center text-[9px] font-bold uppercase tracking-widest">Mode</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {r5ReportData.rows.length > 0 ? (
+                    <>
+                      {r5ReportData.rows.map((row: PendingOutstandingFeesRow, index: number) => {
+                        const isPending = row.pending_amount > 0
+                        return (
+                          <tr key={`${row.student_id}-${index}`}
+                            className={isPending ? 'bg-red-50/20 hover:bg-red-50/50 transition' : 'hover:bg-slate-50 transition'}>
+                            <td className="px-4 py-3 text-center font-semibold text-slate-400">{row.sr_no}</td>
+                            <td className="px-4 py-3 font-medium text-slate-900">{row.student_name}</td>
+                            <td className="px-4 py-3 text-center text-slate-700 font-mono text-xs">{row.student_id}</td>
+                            <td className="px-4 py-3 text-slate-700">{row.subject}</td>
+                            <td className="px-4 py-3 text-center text-slate-600 text-xs">{row.batch_time}</td>
+                            <td className="px-4 py-3 text-right font-semibold text-slate-900">{formatCurrency(row.total_fees)}</td>
+                            <td className="px-4 py-3 text-right text-green-600">{formatCurrency(row.paid_amount)}</td>
+                            <td className={`px-4 py-3 text-right font-bold ${isPending ? 'text-red-600' : 'text-slate-400'}`}>
+                              {formatCurrency(row.pending_amount)}
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${isPending ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                                {row.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${row.pay_mode === 'Online' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>
+                                {row.pay_mode}
+                              </span>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                      <tr className="bg-slate-900 text-white font-bold">
+                        <td colSpan={5} className="px-4 py-3 text-center text-[10px] uppercase tracking-widest">
+                          GRAND TOTAL
+                        </td>
+                        <td className="px-4 py-3 text-right">{formatCurrency(r5ReportData.summary.grand_total)}</td>
+                        <td className="px-4 py-3 text-right text-green-300">{formatCurrency(r5ReportData.summary.grand_paid)}</td>
+                        <td className="px-4 py-3 text-right text-red-300">{formatCurrency(r5ReportData.summary.grand_pending)}</td>
+                        <td colSpan={2}></td>
+                      </tr>
+                    </>
+                  ) : (
+                    <tr><td colSpan={10} className="px-4 py-8 text-center text-slate-500">No student records found for the selected criteria.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-10 text-center text-slate-400 mt-4">
+            <BarChart2 size={32} className="mx-auto mb-3 opacity-30" />
+            <p className="text-sm font-semibold uppercase tracking-widest">No report generated yet</p>
+            <p className="mt-2 text-xs">Choose a date range and filters above, then click Generate Report.</p>
           </div>
         )}
       </div>
-
-      {r5Loading ? (
-        <div className="flex h-40 items-center justify-center rounded-2xl border border-slate-100 bg-white">
-          <Loader2 size={32} className="animate-spin text-emerald-500" />
-        </div>
-      ) : r5ReportData ? (
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-          <div className="grid grid-cols-2 md:grid-cols-3 divide-x divide-slate-100 border-b border-slate-100 bg-slate-50/50">
-            <div className="p-4 text-center">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Date Range</p>
-              <p className="text-sm font-bold text-slate-900">{r5ReportData.filters?.start_date} → {r5ReportData.filters?.end_date}</p>
-            </div>
-            <div className="p-4 text-center">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-blue-600 mb-1">Total Students</p>
-              <p className="text-xl font-bold text-blue-900">{r5ReportData.summary?.grand_students ?? 0}</p>
-            </div>
-            <div className="p-4 text-center">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 mb-1">Total Fees Collected</p>
-              <p className="text-xl font-bold text-emerald-700">{formatCurrency(r5ReportData.summary?.grand_fees ?? 0)}</p>
-            </div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 border-b border-slate-100">
-                <tr>
-                  <th className="px-4 py-3 text-center text-[9px] font-bold uppercase tracking-widest w-16">Sr. No.</th>
-                  <th className="px-4 py-3 text-left text-[9px] font-bold uppercase tracking-widest">Subject Name</th>
-                  <th className="px-4 py-3 text-right text-[9px] font-bold uppercase tracking-widest">Total Students</th>
-                  <th className="px-4 py-3 text-right text-[9px] font-bold uppercase tracking-widest">Fees Collected</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {r5ReportData.rows.length > 0 ? (
-                  <>
-                    {r5ReportData.rows.map((row: SubjectTotalSummaryRow, index: number) => (
-                      <tr key={row.subject_name}
-                        className={index % 2 === 0 ? 'bg-white hover:bg-slate-50 transition' : 'bg-slate-50 hover:bg-slate-100 transition'}>
-                        <td className="px-4 py-3 text-center font-semibold text-slate-500">{row.sr_no}</td>
-                        <td className="px-4 py-3 font-medium text-slate-900">{row.subject_name}</td>
-                        <td className="px-4 py-3 text-right font-semibold text-blue-700">{row.total_students}</td>
-                        <td className="px-4 py-3 text-right font-bold text-emerald-700">{formatCurrency(row.total_fees)}</td>
-                      </tr>
-                    ))}
-                    <tr className="bg-slate-900 text-white">
-                      <td colSpan={2} className="px-4 py-3 text-center text-[10px] font-bold uppercase tracking-widest">
-                        Grand Total ({r5ReportData.rows.length} subjects)
-                      </td>
-                      <td className="px-4 py-3 text-right font-bold text-blue-300">{r5ReportData.summary?.grand_students ?? 0}</td>
-                      <td className="px-4 py-3 text-right font-bold text-emerald-300">{formatCurrency(r5ReportData.summary?.grand_fees ?? 0)}</td>
-                    </tr>
-                  </>
-                ) : (
-                  <tr><td colSpan={4} className="px-4 py-8 text-center text-slate-500">No enrollment records found for the selected date range.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : (
-        <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-10 text-center text-slate-400">
-          <TrendingUp size={32} className="mx-auto mb-3 opacity-30" />
-          <p className="text-sm font-semibold uppercase tracking-widest">No report generated yet</p>
-          <p className="mt-2 text-xs">Choose a date range above, then click Generate Report.</p>
-        </div>
-      )}
 
       {/* ════════════════════════════════════════════════════════════════
           REPORT 6: SUBJECT-WISE REVENUE TOTAL REPORT

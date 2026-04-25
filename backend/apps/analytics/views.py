@@ -2262,70 +2262,81 @@ class AnalyticsViewSet(viewsets.ViewSet):
             return Response({'success': False, 'error': {'message': str(exc)}}, status=500)
 
     # ─────────────────────────────────────────────────────────────────────────
-    # REPORT 5: Subject-wise Total Summary Report (Date-filtered)
+    # REPORT 5: Pending / Outstanding Fees Report
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _build_subject_total_summary_rows(self, start_date, end_date, subject_ids=None):
-        from django.db.models.functions import Coalesce
-        from decimal import Decimal
-
-        # Base query for subjects
-        subjects_qs = self._report_subject_queryset()
-        if subject_ids:
-            subjects_qs = subjects_qs.filter(id__in=subject_ids)
-        
-        subjects = subjects_qs.order_by('name')
-
-        # Enrollment data for calculations
-        enrollments_qs = self._report_enrollment_queryset().filter(
-            enrollment_date__gte=start_date,
-            enrollment_date__lte=end_date
+    def _build_pending_outstanding_fees_rows(self, start_date, end_date, subject_id=None, batch_time=None):
+        qs = (
+            self._report_enrollment_queryset()
+            .filter(enrollment_date__gte=start_date, enrollment_date__lte=end_date)
+            .select_related('student', 'subject')
+            .prefetch_related('payments')
+            .order_by('student__name')
         )
-
-        # Pre-calculate counts to avoid N+1 in the loop
-        stats_agg = (
-            enrollments_qs.values('subject_id')
-            .annotate(
-                total_students=Count('id'),
-                total_fees=Coalesce(Sum('paid_amount'), Decimal('0.00'))
-            )
-        )
-        stats_map = {item['subject_id']: item for item in stats_agg}
+        if subject_id:
+            qs = qs.filter(subject_id=subject_id)
+        if batch_time:
+            qs = qs.filter(batch_time__iexact=batch_time)
 
         rows = []
-        for idx, sub in enumerate(subjects, start=1):
-            stats = stats_map.get(sub.id, {'total_students': 0, 'total_fees': Decimal('0.00')})
+        sr = 1
+        for enr in qs:
+            student = enr.student
+            
+            # Get latest payment for mode
+            latest_payment = enr.payments.filter(is_deleted=False).order_by('-created_at').first()
+            
+            total_fee   = float(enr.total_fee or 0)
+            paid_amount = float(enr.paid_amount or 0)
+            pending     = max(0.0, total_fee - paid_amount)
+            
+            status = 'Paid' if pending <= 0 else 'Pending'
+            pay_mode = latest_payment.payment_mode if latest_payment else 'N/A'
+            # Normalize pay mode display
+            if pay_mode == 'CASH': pay_mode = 'Cash'
+            elif pay_mode == 'ONLINE': pay_mode = 'Online'
+            elif pay_mode == 'OFFLINE': pay_mode = 'Offline'
+
             rows.append({
-                'sr_no': idx,
-                'subject_name': sub.name,
-                'total_students': int(stats['total_students']),
-                'total_fees': float(stats['total_fees']),
+                'sr_no'         : sr,
+                'student_name'  : student.name if student else '',
+                'student_id'    : student.student_id if student else '',
+                'subject'       : enr.subject.name if enr.subject else '',
+                'batch_time'    : enr.batch_time or '',
+                'total_fees'    : total_fee,
+                'paid_amount'   : paid_amount,
+                'pending_amount': pending,
+                'status'        : status,
+                'pay_mode'      : pay_mode,
             })
-        
+            sr += 1
         return rows
 
     @action(detail=False, methods=['get'])
-    def subject_total_summary_report(self, request):
+    def pending_outstanding_fees_report(self, request):
         try:
             start_date, end_date = self._parse_date_range_params(request)
         except ValueError as ve:
             return Response({'success': False, 'error': {'message': str(ve)}}, status=400)
-        subject_ids = self._parse_subject_ids(request)
+        
+        subject_id = request.query_params.get('subject_id') or None
+        batch_time = request.query_params.get('batch_time') or None
+        
         try:
-            rows = self._build_subject_total_summary_rows(start_date, end_date, subject_ids)
-            grand_students = sum(r['total_students'] for r in rows)
-            grand_fees = sum(r['total_fees'] for r in rows)
+            rows = self._build_pending_outstanding_fees_rows(start_date, end_date, subject_id, batch_time)
+            grand_total   = sum(r['total_fees'] for r in rows)
+            grand_paid    = sum(r['paid_amount'] for r in rows)
+            grand_pending = sum(r['pending_amount'] for r in rows)
+            
             return Response({
                 'success': True,
                 'data': {
                     'rows': rows,
                     'summary': {
-                        'grand_students': grand_students,
-                        'grand_fees': grand_fees,
-                    },
-                    'filters': {
-                        'start_date': str(start_date),
-                        'end_date': str(end_date),
+                        'total_records': len(rows),
+                        'grand_total': grand_total,
+                        'grand_paid': grand_paid,
+                        'grand_pending': grand_pending,
                     }
                 }
             })
@@ -2333,49 +2344,49 @@ class AnalyticsViewSet(viewsets.ViewSet):
             return Response({'success': False, 'error': {'message': str(exc)}}, status=500)
 
     @action(detail=False, methods=['get'])
-    def export_subject_total_summary_csv(self, request):
+    def export_pending_outstanding_fees_csv(self, request):
         try:
             start_date, end_date = self._parse_date_range_params(request)
-        except ValueError as ve:
-            return Response({'success': False, 'error': {'message': str(ve)}}, status=400)
-        subject_ids = self._parse_subject_ids(request)
-        try:
-            rows = self._build_subject_total_summary_rows(start_date, end_date, subject_ids)
+            rows = self._build_pending_outstanding_fees_rows(start_date, end_date)
+            
             response = HttpResponse(content_type='text/csv')
-            fname = f"Subject_Total_Summary_Report_{start_date}_to_{end_date}.csv"
+            fname = f"Pending_Fees_Report_{start_date}_to_{end_date}.csv"
             response['Content-Disposition'] = f'attachment; filename="{fname}"'
+            
             writer = csv.writer(response)
-            writer.writerow(['Sr.No', 'Subject Name', 'Total Students', 'Total Fees Collected (Rs)'])
+            writer.writerow(['Sr.No', 'Student Name', 'Student ID', 'Subject', 'Batch', 'Total Fees', 'Paid Amount', 'Pending Amount', 'Status', 'Payment Mode'])
+            
             for r in rows:
-                writer.writerow([r['sr_no'], r['subject_name'], r['total_students'], f"{r['total_fees']:.2f}"])
-            writer.writerow([])
-            grand_students = sum(r['total_students'] for r in rows)
-            grand_fees = sum(r['total_fees'] for r in rows)
-            writer.writerow(['', 'GRAND TOTAL', grand_students, f"{grand_fees:.2f}"])
+                writer.writerow([
+                    r['sr_no'], r['student_name'], r['student_id'], r['subject'],
+                    r['batch_time'], f"{r['total_fees']:.2f}", f"{r['paid_amount']:.2f}",
+                    f"{r['pending_amount']:.2f}", r['status'], r['pay_mode']
+                ])
+            
             return response
         except Exception as exc:
             return Response({'success': False, 'error': {'message': str(exc)}}, status=500)
 
     @action(detail=False, methods=['get'])
-    def export_subject_total_summary_pdf(self, request):
+    def export_pending_outstanding_fees_pdf(self, request):
         try:
             start_date, end_date = self._parse_date_range_params(request)
-        except ValueError as ve:
-            return Response({'success': False, 'error': {'message': str(ve)}}, status=400)
-        subject_ids = self._parse_subject_ids(request)
-        try:
-            rows = self._build_subject_total_summary_rows(start_date, end_date, subject_ids)
-            headers = ['Sr. No.', 'Subject Name', 'Total Students', 'Total Fees Collected']
+            rows = self._build_pending_outstanding_fees_rows(start_date, end_date)
+            
+            headers = ['Sr.', 'Name', 'ID', 'Subject', 'Batch', 'Total', 'Paid', 'Pending', 'Status', 'Mode']
             data = []
             for r in rows:
-                data.append([r['sr_no'], r['subject_name'], str(r['total_students']), f"Rs {r['total_fees']:.2f}"])
-            grand_students = sum(r['total_students'] for r in rows)
-            grand_fees = sum(r['total_fees'] for r in rows)
-            data.append(['', 'GRAND TOTAL', str(grand_students), f"Rs {grand_fees:.2f}"])
-            title = f"Subject-wise Total Summary Report ({start_date} to {end_date})"
-            pdf_content = generate_pdf_report(title, headers, data)
+                data.append([
+                    r['sr_no'], r['student_name'], r['student_id'], r['subject'],
+                    r['batch_time'], f"{r['total_fees']:.0f}", f"{r['paid_amount']:.0f}",
+                    f"{r['pending_amount']:.0f}", r['status'], r['pay_mode']
+                ])
+            
+            title = f"Pending / Outstanding Fees Report ({start_date} to {end_date})"
+            from utils.pdf_reports import generate_landscape_pdf_report
+            pdf_content = generate_landscape_pdf_report(title, headers, data)
             response = HttpResponse(pdf_content, content_type='application/pdf')
-            fname = f"Subject_Total_Summary_Report_{start_date}_to_{end_date}.pdf"
+            fname = f"Pending_Fees_Report_{start_date}_to_{end_date}.pdf"
             response['Content-Disposition'] = f'attachment; filename="{fname}"'
             return response
         except Exception as exc:
