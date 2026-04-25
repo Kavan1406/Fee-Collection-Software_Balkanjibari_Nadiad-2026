@@ -964,7 +964,7 @@ export default function RegisterPage() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => window.open('/Summer-Camp-Details.pdf', '_blank')}
+                    onClick={() => window.open('/Activity-Guide.pdf', '_blank')}
                     className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-black flex items-center gap-1 shadow-sm transition-all"
                   >
                     <Download size={12} /> DOWNLOAD PDF
