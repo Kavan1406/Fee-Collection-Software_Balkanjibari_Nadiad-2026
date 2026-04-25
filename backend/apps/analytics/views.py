@@ -32,7 +32,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
         return [IsAuthenticated(), IsStaffAccountantOrAdmin()]
 
     def _report_subject_queryset(self):
-        return Subject.objects.filter(is_deleted=False, is_active=True)
+        return Subject.objects.filter(is_deleted=False, is_active=True, activity_type='SUMMER_CAMP')
 
     def _report_enrollment_queryset(self):
         return Enrollment.objects.filter(
@@ -41,6 +41,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
             student__status='ACTIVE',
             subject__is_deleted=False,
             subject__is_active=True,
+            subject__activity_type='SUMMER_CAMP',
         )
 
     def _report_payment_queryset(self):
@@ -51,7 +52,11 @@ class AnalyticsViewSet(viewsets.ViewSet):
             enrollment__student__status='ACTIVE',
             enrollment__subject__is_deleted=False,
             enrollment__subject__is_active=True,
+            enrollment__subject__activity_type='SUMMER_CAMP',
         )
+    def _report_student_queryset(self):
+        return Student.objects.filter(is_deleted=False, status='ACTIVE')
+
 
     def _build_subject_batch_enrollment_report(self, subject_id, batch, start_date_str, end_date_str):
         filters = {
@@ -192,7 +197,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
                     'error': {'message': 'Student profile not linked (Repair Failed)'}
                 }, status=status.HTTP_200_OK, headers=headers)
                 
-            enrollments = Enrollment.objects.filter(student=student, is_deleted=False).select_related('subject')
+            enrollments = self._report_enrollment_queryset().filter(student=student).select_related('subject')
             
             stats = enrollments.aggregate(
                 total_fee=Sum('total_fee'),
@@ -290,7 +295,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
             for item in daily_aggregates
         }
 
-        previous_total = Payment.objects.filter(
+        previous_total = self._report_payment_queryset().filter(
             is_deleted=False,
             status='SUCCESS',
             payment_date__lt=start_date
@@ -753,7 +758,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
                 prev_start_date = start_date.replace(year=start_date.year - 1)
                 prev_end_date = end_date.replace(year=end_date.year - 1)
 
-            revenue_stats = Payment.objects.filter(is_deleted=False, status='SUCCESS').aggregate(
+            revenue_stats = self._report_payment_queryset().filter( status='SUCCESS').aggregate(
                 total_revenue=Sum('amount', filter=Q(payment_date__range=(start_date.date(), end_date.date())) if start_date_str and end_date_str else Q(payment_date__gte=start_date.date()) if period != 'all' else Q()),
                 today_revenue=Sum('amount', filter=Q(payment_date=today_start)),
                 prev_revenue=Sum('amount', filter=Q(payment_date__range=(prev_start_date.date(), prev_end_date.date())) if prev_start_date and prev_end_date else Q(pk=None))
@@ -764,7 +769,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
             prev_period_revenue = revenue_stats['prev_revenue'] or 0
 
             # Combined Student Stats
-            student_stats = Student.objects.filter(is_deleted=False).aggregate(
+            student_stats = self._report_student_queryset().aggregate(
                 total_active=Count('id', filter=Q(status='ACTIVE')),
                 new_this_period=Count('id', filter=Q(created_at__range=(start_date, end_date)) if start_date_str and end_date_str else Q(created_at__gte=start_date))
             )
@@ -773,7 +778,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
             new_students_this_period = student_stats['new_this_period']
 
             # Total Pending Fees (current snapshot)
-            total_pending = Enrollment.objects.filter(
+            total_pending = self._report_enrollment_queryset().filter(
                 is_deleted=False, 
                 status='ACTIVE'
             ).aggregate(total=Sum('pending_amount'))['total'] or 0
@@ -809,7 +814,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
             # Get last 6 months
             six_months_ago = timezone.now() - timedelta(days=180)
             
-            trends = Payment.objects.filter(
+            trends = self._report_payment_queryset().filter(
                 is_deleted=False,
                 payment_date__gte=six_months_ago
             ).annotate(
@@ -841,10 +846,10 @@ class AnalyticsViewSet(viewsets.ViewSet):
         """
         try:
             # Get all subjects
-            all_subjects = Subject.objects.filter(is_deleted=False)
+            all_subjects = self._report_subject_queryset()
             
             # Get enrollment counts per subject
-            enrollment_counts = Enrollment.objects.filter(
+            enrollment_counts = self._report_enrollment_queryset().filter(
                 is_deleted=False,
                 status='ACTIVE'
             ).values(
@@ -895,7 +900,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
             end_date_str = request.query_params.get('end_date')
             
             # Revenue query for distribution
-            revenue_query = Payment.objects.filter(is_deleted=False)
+            revenue_query = self._report_payment_queryset()
             if start_date_str and end_date_str:
                 from django.utils.dateparse import parse_date
                 start_date = parse_date(start_date_str)
@@ -908,7 +913,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
             total_revenue = revenue_query.aggregate(total=Sum('amount'))['total'] or 0
             
             # Pending query (Snapshot of students created/active in range)
-            pending_query = Enrollment.objects.filter(is_deleted=False, status='ACTIVE')
+            pending_query = self._report_enrollment_queryset().filter( status='ACTIVE')
             if start_date_str and end_date_str:
                 pending_query = pending_query.filter(created_at__date__range=(start_date, end_date))
             elif period != 'all':
@@ -952,7 +957,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
         """
         try:
             # Aggregate by month
-            monthly_stats = Payment.objects.filter(is_deleted=False).annotate(
+            monthly_stats = self._report_payment_queryset().annotate(
                 month=TruncMonth('payment_date')
             ).values('month').annotate(
                 total_amount=Sum('amount'),
@@ -1009,7 +1014,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
             date_str = request.query_params.get('date', timezone.now().strftime('%Y-%m-%d'))
             target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
             
-            payments = Payment.objects.filter(payment_date=target_date, is_deleted=False).values('payment_mode').annotate(
+            payments = self._report_payment_queryset().filter(payment_date=target_date).values('payment_mode').annotate(
                 total=Sum('amount'), count=Count('id'))
             
             response = HttpResponse(content_type='text/csv')
@@ -1029,7 +1034,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
             date_str = request.query_params.get('date', timezone.now().strftime('%Y-%m-%d'))
             target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
             
-            payments = Payment.objects.filter(
+            payments = self._report_payment_queryset().filter(
                 payment_date=target_date,
                 is_deleted=False
             ).values('payment_mode').annotate(
@@ -1704,20 +1709,20 @@ class AnalyticsViewSet(viewsets.ViewSet):
         """
         try:
             # 1. STUDENT STATISTICS
-            total_students = Student.objects.filter(is_deleted=False).count()
-            online_students = Student.objects.filter(is_deleted=False, registration_type='ONLINE').count()
-            offline_students = Student.objects.filter(is_deleted=False, registration_type='OFFLINE').count()
-            active_students = Student.objects.filter(is_deleted=False, status='ACTIVE').count()
+            total_students = self._report_student_queryset().count()
+            online_students = self._report_student_queryset().filter( registration_type='ONLINE').count()
+            offline_students = self._report_student_queryset().filter( registration_type='OFFLINE').count()
+            active_students = self._report_student_queryset().filter( status='ACTIVE').count()
             
             # Students created in last 30 days
             month_ago = timezone.now() - timedelta(days=30)
-            new_students_month = Student.objects.filter(
+            new_students_month = self._report_student_queryset().filter(
                 is_deleted=False,
                 created_at__gte=month_ago
             ).count()
             
             # 2. FEE STATISTICS
-            payment_stats = Payment.objects.filter(is_deleted=False).aggregate(
+            payment_stats = self._report_payment_queryset().aggregate(
                 total_collected=Sum('amount'),
                 total_count=Count('id'),
                 online_total=Sum('amount', filter=Q(payment_mode='ONLINE')),
@@ -1730,25 +1735,25 @@ class AnalyticsViewSet(viewsets.ViewSet):
             offline_revenue = float(payment_stats['offline_total'] or 0)
             
             # Pending fees (sum of pending_amount from active enrollments)
-            total_pending = Enrollment.objects.filter(
+            total_pending = self._report_enrollment_queryset().filter(
                 is_deleted=False,
                 status='ACTIVE'
             ).aggregate(pending=Sum('pending_amount'))['pending'] or 0
             total_pending = float(total_pending)
             
             # 3. ENROLLMENT STATISTICS
-            total_enrollments = Enrollment.objects.filter(is_deleted=False).count()
-            active_enrollments = Enrollment.objects.filter(is_deleted=False, status='ACTIVE').count()
-            completed_enrollments = Enrollment.objects.filter(is_deleted=False, status='COMPLETED').count()
+            total_enrollments = self._report_enrollment_queryset().count()
+            active_enrollments = self._report_enrollment_queryset().filter( status='ACTIVE').count()
+            completed_enrollments = self._report_enrollment_queryset().filter( status='COMPLETED').count()
             
             # Monthly enrollments growth
-            enrollments_month = Enrollment.objects.filter(
+            enrollments_month = self._report_enrollment_queryset().filter(
                 is_deleted=False,
                 created_at__gte=month_ago
             ).count()
             
             # 4. SUBJECT-WISE DISTRIBUTION
-            subject_distribution = Subject.objects.filter(is_deleted=False).values(
+            subject_distribution = self._report_subject_queryset().values(
                 'id', 'name'
             ).annotate(
                 enrolled_count=Count('enrollments', filter=Q(enrollments__is_deleted=False)),
@@ -1769,7 +1774,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
             # 5. PAYMENT TRENDS (Last 6 months)
             six_months_ago = timezone.now() - timedelta(days=180)
             
-            payment_trends = Payment.objects.filter(
+            payment_trends = self._report_payment_queryset().filter(
                 is_deleted=False,
                 payment_date__gte=six_months_ago
             ).annotate(
@@ -1789,7 +1794,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
                     })
             
             # 6. RECENT ENROLLMENTS
-            recent_enrollments = Enrollment.objects.filter(
+            recent_enrollments = self._report_enrollment_queryset().filter(
                 is_deleted=False
             ).select_related('student', 'subject').order_by('-created_at')[:10]
             
@@ -1812,7 +1817,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
             today_start = timezone.make_aware(timezone.datetime.combine(today, timezone.datetime.min.time()))
             today_end = timezone.make_aware(timezone.datetime.combine(today, timezone.datetime.max.time()))
             
-            today_payments = Payment.objects.filter(
+            today_payments = self._report_payment_queryset().filter(
                 is_deleted=False,
                 payment_date__range=(today_start, today_end)
             ).aggregate(
@@ -1877,10 +1882,10 @@ class AnalyticsViewSet(viewsets.ViewSet):
         """
         try:
             # Quick aggregates with optimized queries
-            total_students = Student.objects.filter(is_deleted=False).count()
-            total_revenue = Payment.objects.filter(is_deleted=False).aggregate(total=Sum('amount'))['total'] or 0
-            pending_fees = Enrollment.objects.filter(is_deleted=False, status='ACTIVE').aggregate(total=Sum('pending_amount'))['total'] or 0
-            total_enrollments = Enrollment.objects.filter(is_deleted=False).count()
+            total_students = self._report_student_queryset().count()
+            total_revenue = self._report_payment_queryset().aggregate(total=Sum('amount'))['total'] or 0
+            pending_fees = self._report_enrollment_queryset().filter( status='ACTIVE').aggregate(total=Sum('pending_amount'))['total'] or 0
+            total_enrollments = self._report_enrollment_queryset().count()
 
             return Response({
                 'success': True,
@@ -1926,7 +1931,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
     # ─────────────────────────────────────────────────────────────────────────
 
     def _build_subject_date_wise_fee_report(self, start_date, end_date, subject_ids=None):
-        qs = Payment.objects.filter(
+        qs = self._report_payment_queryset().filter(
             is_deleted=False,
             status='SUCCESS',
             payment_date__range=(start_date, end_date),
@@ -2265,7 +2270,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
         from django.db.models.functions import Coalesce
         from decimal import Decimal
 
-        qs = Enrollment.objects.filter(
+        qs = self._report_enrollment_queryset().filter(
             is_deleted=False,
             enrollment_date__gte=start_date,
             enrollment_date__lte=end_date

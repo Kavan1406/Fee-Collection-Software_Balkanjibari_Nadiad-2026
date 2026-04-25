@@ -148,7 +148,7 @@ export default function RegisterPage() {
   // Fetch batches for a subject
   const fetchBatchesForSubject = async (subjectId: number) => {
     if (!subjectId || batchData[subjectId]) return
-    
+
     try {
       const response = await fetch(`${API_BASE}/api/v1/subjects/${subjectId}/batches/`)
       if (response.ok) {
@@ -176,7 +176,7 @@ export default function RegisterPage() {
 
   useEffect(() => {
     setIsMounted(true)
-    
+
     // Attempt to load from cache
     if (typeof window !== 'undefined') {
       const cached = sessionStorage.getItem('balkanji_subjects_cache')
@@ -192,7 +192,7 @@ export default function RegisterPage() {
 
     const t = new Date()
     setTodayDisplay(`${String(t.getDate()).padStart(2, '0')}-${String(t.getMonth() + 1).padStart(2, '0')}-${t.getFullYear()}`)
-    
+
     // Set periodic update for time
     const updateTime = () => {
       setCurrentIST(new Date().toLocaleString('en-IN', {
@@ -252,7 +252,7 @@ export default function RegisterPage() {
     try {
       setIsSubjectsLoading(true)
       const fetchUrl = `${API_BASE_URL}/api/v1/subjects/`
-      
+
       if (typeof window !== 'undefined') {
         console.log(`[DEBUG] Fetching subjects from: ${fetchUrl}`)
       }
@@ -263,13 +263,13 @@ export default function RegisterPage() {
       }
       const result = await response.json()
       console.log(`[DEBUG] Subjects result:`, result)
-      
+
       // Handle various response structures (prioritize result.data for this backend)
       const list = result.data || result.results || (Array.isArray(result) ? result : [])
       const sortedList = [...list].sort((a, b) => a.name.localeCompare(b.name))
-      
+
       setSubjects(sortedList)
-      
+
       // Update cache permanently for this session
       if (sortedList.length > 0) {
         sessionStorage.setItem('balkanji_subjects_cache', JSON.stringify(sortedList))
@@ -314,7 +314,7 @@ export default function RegisterPage() {
       if (d && m && y && y > 1900) {
         const dob = new Date(y, m - 1, d)
         // reference date: May 1, 2026 (Summer Camp start)
-        const refDate = new Date(2026, 4, 1) 
+        const refDate = new Date(2026, 4, 1)
         let age = refDate.getFullYear() - dob.getFullYear()
         const m_diff = refDate.getMonth() - dob.getMonth()
         if (m_diff < 0 || (m_diff === 0 && refDate.getDate() < dob.getDate())) {
@@ -396,9 +396,9 @@ export default function RegisterPage() {
           if (i === idx || !row.subject_id) return false
           return (row.batch_time || '').trim().toLowerCase() === valClean
         })
-        if (conflict) { 
-          toast.error(`Time slot "${value}" is already occupied by another selected subject.`) 
-          return prev 
+        if (conflict) {
+          toast.error(`Time slot "${value}" is already occupied by another selected subject.`)
+          return prev
         }
         // Check if selected batch is full
         const currentSubjectId = updated[idx].subject_id
@@ -418,9 +418,9 @@ export default function RegisterPage() {
         }
         // Auto-select first available batch time for this subject
         const timings = getUniqueBatchTimings(sub)
-        updated[idx] = { 
-          ...updated[idx], 
-          subject_id: Number(value), 
+        updated[idx] = {
+          ...updated[idx],
+          subject_id: Number(value),
           subject_name: sub?.name || '',
           batch_time: timings.length > 0 ? timings[0] : ''
         }
@@ -724,13 +724,13 @@ export default function RegisterPage() {
                   <p className="text-sm font-bold text-blue-900">🪪 Student ID Card Collection</p>
                   <p className="text-xs text-blue-800 mt-1">Collect your ID card from the office between <span className="font-black">1 May to 3 May 2026</span>.</p>
                 </div>
-                
+
                 <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Important</p>
                 <p className="text-sm font-semibold text-slate-700 underline decoration-amber-400 decoration-2 underline-offset-4">Remember your credentials and take a screenshot of this page.</p>
-                
+
                 <div className="mt-6 pt-4 border-t border-slate-100 italic">
                   <p className="text-slate-600 font-medium max-w-sm mx-auto">
-                    Your enrollment for Summer Camp 2026 has been successfully processed. 
+                    Your enrollment for Summer Camp 2026 has been successfully processed.
                     {normalizedEmail ? (
                       <>A confirmation mail is being sent to <strong>{normalizedEmail}</strong></>
                     ) : (
@@ -846,7 +846,7 @@ export default function RegisterPage() {
                     />
                     <p className="text-[11px] text-slate-400 mt-1 font-medium italic">Format: DD-MM-YYYY</p>
                   </div>
-                  
+
                   {/* Age (Auto-calculated) */}
                   <div>
                     <label className={labelCls}>Age <span className="text-slate-400 font-normal">(Auto)</span></label>
@@ -956,226 +956,225 @@ export default function RegisterPage() {
                   </div>
                 )}
 
-              {/* Template Download Button */}
-              <div className="mb-4 bg-blue-50 p-3 rounded-xl border border-blue-100 flex items-center justify-between">
-                <div>
-                  <p className="text-[12px] font-bold text-blue-900 uppercase tracking-[1.5px]">Activity Guide</p>
-                  <p className="text-[10px] text-blue-700">Download the full Summer Camp subject schedule & rules.</p>
+                {/* Template Download Button */}
+                <div className="mb-4 bg-blue-50 p-3 rounded-xl border border-blue-100 flex items-center justify-between">
+                  <div>
+                    <p className="text-[12px] font-bold text-blue-900 uppercase tracking-[1.5px]">Activity Guide</p>
+                    <p className="text-[10px] text-blue-700">Download the full Summer Camp subject schedule & rules.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => window.open('/Summer-Camp-Details.pdf', '_blank')}
+                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-black flex items-center gap-1 shadow-sm transition-all"
+                  >
+                    <Download size={12} /> DOWNLOAD PDF
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => window.open('/Summer-Camp-Details.pdf', '_blank')}
-                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-black flex items-center gap-1 shadow-sm transition-all"
-                >
-                  <Download size={12} /> DOWNLOAD PDF
-                </button>
-              </div>
 
-              <div className="flex items-center justify-between mb-3 pt-2">
-                <p className="font-inter text-sm text-slate-500 font-medium italic">Select subjects <span className="text-slate-400">(max 4)</span></p>
-                <button
-                  type="button"
-                  onClick={addSubject}
-                  disabled={!dobEntered}
-                  className="font-inter flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold text-primary hover:bg-indigo-50 transition border border-indigo-200 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  <Plus size={14} /> Add Subject
-                </button>
-              </div>
+                <div className="flex items-center justify-between mb-3 pt-2">
+                  <p className="font-inter text-sm text-slate-500 font-medium italic">Select subjects <span className="text-slate-400">(max 4)</span></p>
+                  <button
+                    type="button"
+                    onClick={addSubject}
+                    disabled={!dobEntered}
+                    className="font-inter flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold text-primary hover:bg-indigo-50 transition border border-indigo-200 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Plus size={14} /> Add Subject
+                  </button>
+                </div>
 
-              <div className="space-y-3">
-                {selectedSubjects.map((sub, idx) => {
-                  const takenIds = new Set(
-                    selectedSubjects.filter((_, i) => i !== idx).map(s => s.subject_id).filter(id => id > 0)
-                  )
-                  const summerCamp = subjects.filter(s => s.activity_type === 'SUMMER_CAMP' && !takenIds.has(s.id))
-                  const yearRound = subjects.filter(s => s.activity_type !== 'SUMMER_CAMP' && !takenIds.has(s.id))
-                  const subFee = getSubjectFee(sub.subject_id)
-                  const libFee = idx === 0 ? LIBRARY_FEE : 0
+                <div className="space-y-3">
+                  {selectedSubjects.map((sub, idx) => {
+                    const takenIds = new Set(
+                      selectedSubjects.filter((_, i) => i !== idx).map(s => s.subject_id).filter(id => id > 0)
+                    )
+                    const summerCamp = subjects.filter(s => s.activity_type === 'SUMMER_CAMP' && !takenIds.has(s.id))
+                    const yearRound = subjects.filter(s => s.activity_type !== 'SUMMER_CAMP' && !takenIds.has(s.id))
+                    const subFee = getSubjectFee(sub.subject_id)
+                    const libFee = idx === 0 ? LIBRARY_FEE : 0
 
-                  const subData = subjects.find(x => x.id === sub.subject_id)
-                  const batchInfo = getBatchInfo(sub.subject_id, sub.batch_time)
-                  const minAge = batchInfo?.min_age ?? subData?.min_age ?? 0
-                  const maxAge = batchInfo?.max_age ?? subData?.max_age ?? 100
-                  const eligibility = dobEntered && sub.subject_id
-                    ? checkAgeEligibility(form.age, minAge, maxAge)
-                    : { eligible: true, min: minAge, max: maxAge }
-                  const isEligible = eligibility.eligible
+                    const subData = subjects.find(x => x.id === sub.subject_id)
+                    const batchInfo = getBatchInfo(sub.subject_id, sub.batch_time)
+                    const minAge = batchInfo?.min_age ?? subData?.min_age ?? 0
+                    const maxAge = batchInfo?.max_age ?? subData?.max_age ?? 100
+                    const eligibility = dobEntered && sub.subject_id
+                      ? checkAgeEligibility(form.age, minAge, maxAge)
+                      : { eligible: true, min: minAge, max: maxAge }
+                    const isEligible = eligibility.eligible
 
-                  return (
-                    <div key={idx} className={`p-4 rounded-xl border transition-all duration-300 shadow-sm ${
-                      !isEligible 
-                        ? 'bg-rose-50 border-rose-200' 
+                    return (
+                      <div key={idx} className={`p-4 rounded-xl border transition-all duration-300 shadow-sm ${!isEligible
+                        ? 'bg-rose-50 border-rose-200'
                         : 'bg-slate-50 border-slate-200'
-                    }`}>
-                      {!isEligible && (
-                        <div className="flex items-center gap-2 mb-3 py-1.5 px-3 bg-white rounded-lg border border-rose-100 animate-in fade-in slide-in-from-top-2">
-                          <AlertCircle size={14} className="text-rose-500 shrink-0" />
-                          <p className="text-[11px] font-black text-rose-600 uppercase tracking-wider">
-                            Age not eligible — requires {eligibility.min}–{eligibility.max} yrs (student is {form.age})
-                          </p>
-                        </div>
-                      )}
-                      
-                      <div className="flex items-start gap-3">
-                        <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div>
-                            <label className="text-xs font-bold text-slate-500 mb-1 block uppercase tracking-wider">Subject</label>
-                            <select
-                              disabled={!dobEntered}
-                              className="w-full px-3 py-2.5 rounded-lg text-slate-800 text-sm bg-white border border-slate-200 focus:border-indigo-400 focus:outline-none shadow-sm transition-all font-inter disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
-                              value={sub.subject_id}
-                              onChange={e => updateSubject(idx, 'subject_id', e.target.value)}
-                            >
-                              <option value={0}>
-                                {!dobEntered ? '🔒 Enter DOB first' : isSubjectsLoading ? 'Loading subjects...' : 'Select subject'}
-                              </option>
-                              {dobEntered && summerCamp.length > 0 && (
-                                <optgroup label="☀️ Summer Camp 2026">
-                                  {summerCamp.map(s => {
-                                    const fee = s.current_fee
-                                      ? `₹${s.current_fee.amount}`
-                                      : s.monthly_fee ? `₹${s.monthly_fee}` : ''
-                                    const ageRange = (s.min_age > 0 || s.max_age < 100)
-                                      ? ` · ${s.min_age}–${s.max_age} yrs`
-                                      : ''
-                                    const eligible = checkAgeEligibility(form.age, s.min_age, s.max_age).eligible
-                                    return (
-                                      <option key={s.id} value={s.id} disabled={!eligible}>
-                                        {!eligible ? '✕ ' : ''}{s.name} — {fee}{ageRange}
-                                      </option>
-                                    )
-                                  })}
-                                </optgroup>
+                        }`}>
+                        {!isEligible && (
+                          <div className="flex items-center gap-2 mb-3 py-1.5 px-3 bg-white rounded-lg border border-rose-100 animate-in fade-in slide-in-from-top-2">
+                            <AlertCircle size={14} className="text-rose-500 shrink-0" />
+                            <p className="text-[11px] font-black text-rose-600 uppercase tracking-wider">
+                              Age not eligible — requires {eligibility.min}–{eligibility.max} yrs (student is {form.age})
+                            </p>
+                          </div>
+                        )}
+
+                        <div className="flex items-start gap-3">
+                          <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <label className="text-xs font-bold text-slate-500 mb-1 block uppercase tracking-wider">Subject</label>
+                              <select
+                                disabled={!dobEntered}
+                                className="w-full px-3 py-2.5 rounded-lg text-slate-800 text-sm bg-white border border-slate-200 focus:border-indigo-400 focus:outline-none shadow-sm transition-all font-inter disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                                value={sub.subject_id}
+                                onChange={e => updateSubject(idx, 'subject_id', e.target.value)}
+                              >
+                                <option value={0}>
+                                  {!dobEntered ? '🔒 Enter DOB first' : isSubjectsLoading ? 'Loading subjects...' : 'Select subject'}
+                                </option>
+                                {dobEntered && summerCamp.length > 0 && (
+                                  <optgroup label="☀️ Summer Camp 2026">
+                                    {summerCamp.map(s => {
+                                      const fee = s.current_fee
+                                        ? `₹${s.current_fee.amount}`
+                                        : s.monthly_fee ? `₹${s.monthly_fee}` : ''
+                                      const ageRange = (s.min_age > 0 || s.max_age < 100)
+                                        ? ` · ${s.min_age}–${s.max_age} yrs`
+                                        : ''
+                                      const eligible = checkAgeEligibility(form.age, s.min_age, s.max_age).eligible
+                                      return (
+                                        <option key={s.id} value={s.id} disabled={!eligible}>
+                                          {!eligible ? '✕ ' : ''}{s.name} — {fee}{ageRange}
+                                        </option>
+                                      )
+                                    })}
+                                  </optgroup>
+                                )}
+                              </select>
+                              {sub.subject_id > 0 && (
+                                <p className="text-[12px] text-blue-600 mt-1 font-bold uppercase tracking-tighter">
+                                  Selected: Rs.{subFee.toFixed(0)} + Rs.{libFee} Library
+                                </p>
                               )}
-                            </select>
-                            {sub.subject_id > 0 && (
-                              <p className="text-[12px] text-blue-600 mt-1 font-bold uppercase tracking-tighter">
-                                Selected: Rs.{subFee.toFixed(0)} + Rs.{libFee} Library
-                              </p>
+                            </div>
+
+                            {/* Batch Time - Only show when subject is selected */}
+                            {sub.subject_id > 0 ? (
+                              <div className="animate-in fade-in slide-in-from-top-1 duration-300">
+                                <label className="text-[11px] font-bold text-slate-500 mb-1 block uppercase tracking-wider">Batch Time</label>
+                                <select
+                                  className="w-full px-3 py-2.5 rounded-lg text-slate-800 text-sm bg-indigo-50 border border-indigo-200 focus:border-indigo-400 focus:outline-none shadow-sm transition-all font-inter font-bold"
+                                  value={sub.batch_time}
+                                  onChange={e => updateSubject(idx, 'batch_time', e.target.value)}
+                                >
+                                  {(() => {
+                                    const options = getUniqueBatchTimings(subData)
+                                    return options.length > 0 ? options.map(t => {
+                                      const batchInfo = getBatchInfo(sub.subject_id, t)
+                                      const isFull = batchInfo?.is_full
+                                      const enrolled = batchInfo?.enrolled_count || 0
+                                      const capacity = batchInfo?.capacity_limit || 0
+                                      const isDisabled = !batchInfo?.is_active || isFull
+
+                                      return (
+                                        <option key={t} value={t} disabled={isDisabled}>
+                                          {t} {batchInfo ? `(${enrolled}/${capacity})` : ''} {isFull ? '🔴 FULL' : !batchInfo?.is_active ? '🔒 CLOSED' : ''}
+                                        </option>
+                                      )
+                                    }) : (
+                                      <option value="">No timings available</option>
+                                    )
+                                  })()}
+                                </select>
+                                {(() => {
+                                  const batchInfo = getBatchInfo(sub.subject_id, sub.batch_time)
+                                  if (batchInfo && batchInfo.is_full) {
+                                    return (
+                                      <p className="text-[10px] text-rose-500 font-bold mt-1.5 flex items-center gap-1">
+                                        <AlertCircle size={14} /> This batch is full. Please select another batch.
+                                      </p>
+                                    )
+                                  }
+                                  if (batchInfo && !batchInfo.is_active) {
+                                    return (
+                                      <p className="text-[10px] text-yellow-600 font-bold mt-1.5 flex items-center gap-1">
+                                        <Lock size={14} /> This batch is currently closed for enrollments.
+                                      </p>
+                                    )
+                                  }
+                                  return null
+                                })()}
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-center h-full pt-4">
+                                <p className="text-[10px] text-slate-400 italic">Choose a subject to see timings</p>
+                              </div>
                             )}
                           </div>
-                          
-                           {/* Batch Time - Only show when subject is selected */}
-                          {sub.subject_id > 0 ? (
-                            <div className="animate-in fade-in slide-in-from-top-1 duration-300">
-                              <label className="text-[11px] font-bold text-slate-500 mb-1 block uppercase tracking-wider">Batch Time</label>
-                              <select
-                                className="w-full px-3 py-2.5 rounded-lg text-slate-800 text-sm bg-indigo-50 border border-indigo-200 focus:border-indigo-400 focus:outline-none shadow-sm transition-all font-inter font-bold"
-                                value={sub.batch_time}
-                                onChange={e => updateSubject(idx, 'batch_time', e.target.value)}
-                              >
-                                {(() => {
-                                  const options = getUniqueBatchTimings(subData)
-                                  return options.length > 0 ? options.map(t => {
-                                    const batchInfo = getBatchInfo(sub.subject_id, t)
-                                    const isFull = batchInfo?.is_full
-                                    const enrolled = batchInfo?.enrolled_count || 0
-                                    const capacity = batchInfo?.capacity_limit || 0
-                                    const isDisabled = !batchInfo?.is_active || isFull
-                                    
-                                    return (
-                                      <option key={t} value={t} disabled={isDisabled}>
-                                        {t} {batchInfo ? `(${enrolled}/${capacity})` : ''} {isFull ? '🔴 FULL' : !batchInfo?.is_active ? '🔒 CLOSED' : ''}
-                                      </option>
-                                    )
-                                  }) : (
-                                    <option value="">No timings available</option>
-                                  )
-                                })()}
-                              </select>
-                              {(() => {
-                                const batchInfo = getBatchInfo(sub.subject_id, sub.batch_time)
-                                if (batchInfo && batchInfo.is_full) {
-                                  return (
-                                    <p className="text-[10px] text-rose-500 font-bold mt-1.5 flex items-center gap-1">
-                                      <AlertCircle size={14} /> This batch is full. Please select another batch.
-                                    </p>
-                                  )
-                                }
-                                if (batchInfo && !batchInfo.is_active) {
-                                  return (
-                                    <p className="text-[10px] text-yellow-600 font-bold mt-1.5 flex items-center gap-1">
-                                      <Lock size={14} /> This batch is currently closed for enrollments.
-                                    </p>
-                                  )
-                                }
-                                return null
-                              })()}
-                            </div>
-                          ) : (
-                            <div className="flex items-center justify-center h-full pt-4">
-                              <p className="text-[10px] text-slate-400 italic">Choose a subject to see timings</p>
-                            </div>
+                          {idx > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => removeSubject(idx)}
+                              className="p-2 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition"
+                            >
+                              <Trash2 size={18} />
+                            </button>
                           )}
                         </div>
-                        {idx > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => removeSubject(idx)}
-                            className="p-2 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition"
-                          >
-                            <Trash2 size={18} />
-                          </button>
-                        )}
                       </div>
-                    </div>
-                  )
-                })}
-              </div>
-
-               {/* ---- Fee Summary - Refined Classy Table Design ---- */}
-               {feeBreakdown.some(f => f.subFee > 0) && (
-                <div className="mt-8 font-inter">
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className="h-0.5 w-8 bg-blue-600/30 rounded-full"></div>
-                    <p className="text-slate-400 text-[11px] font-black uppercase tracking-[2px]">Enrollment Summary</p>
-                  </div>
-                  
-                  <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm bg-white">
-                    <table className="w-full text-left border-collapse">
-                      <thead className="bg-slate-50/80 border-b border-slate-200">
-                        <tr>
-                          <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-widest">Subject</th>
-                          <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-widest">Batch</th>
-                          <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-widest text-right">Fee</th>
-                          <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-widest text-right">Library</th>
-                          <th className="px-4 py-3 text-[10px] font-black text-blue-600 uppercase tracking-widest text-right">Total</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {feeBreakdown.filter(f => f.subject_id > 0).map((f, i) => (
-                          <tr key={i} className="hover:bg-slate-50/50 transition-colors">
-                            <td className="px-4 py-3.5 font-bold text-slate-800 text-sm">{f.subject_name}</td>
-                            <td className="px-4 py-3.5 text-[12px] text-slate-500 font-medium">{f.batch_time}</td>
-                            <td className="px-4 py-3.5 text-right font-medium text-slate-600 text-sm">₹{f.subFee.toFixed(0)}</td>
-                            <td className="px-4 py-3.5 text-right font-medium text-slate-600 text-sm">₹{f.libFee.toFixed(0)}</td>
-                            <td className="px-4 py-3.5 text-right font-black text-slate-900 text-sm">₹{f.total.toFixed(0)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot className="border-t-2 border-slate-100 bg-slate-50/30">
-                        <tr>
-                          <td colSpan={4} className="px-4 py-5 text-right font-black text-slate-500 uppercase tracking-widest text-[11px]">
-                            Total Amount Payable
-                          </td>
-                          <td className="px-4 py-5 text-right font-black text-blue-600 text-[22px]">
-                            ₹{grandTotal.toFixed(0)}
-                          </td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-
-                  <div className="flex items-start gap-2 px-1 mt-4">
-                    <AlertCircle size={14} className="text-blue-500 mt-0.5 shrink-0" />
-                    <p className="text-[11px] text-slate-400 italic leading-relaxed">
-                      Your fee includes a one-time ₹10 library charge. Total amount is final and inclusive of all taxes.
-                    </p>
-                  </div>
+                    )
+                  })}
                 </div>
-              )}
-            </div>
+
+                {/* ---- Fee Summary - Refined Classy Table Design ---- */}
+                {feeBreakdown.some(f => f.subFee > 0) && (
+                  <div className="mt-8 font-inter">
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className="h-0.5 w-8 bg-blue-600/30 rounded-full"></div>
+                      <p className="text-slate-400 text-[11px] font-black uppercase tracking-[2px]">Enrollment Summary</p>
+                    </div>
+
+                    <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm bg-white">
+                      <table className="w-full text-left border-collapse">
+                        <thead className="bg-slate-50/80 border-b border-slate-200">
+                          <tr>
+                            <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-widest">Subject</th>
+                            <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-widest">Batch</th>
+                            <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-widest text-right">Fee</th>
+                            <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-widest text-right">Library</th>
+                            <th className="px-4 py-3 text-[10px] font-black text-blue-600 uppercase tracking-widest text-right">Total</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {feeBreakdown.filter(f => f.subject_id > 0).map((f, i) => (
+                            <tr key={i} className="hover:bg-slate-50/50 transition-colors">
+                              <td className="px-4 py-3.5 font-bold text-slate-800 text-sm">{f.subject_name}</td>
+                              <td className="px-4 py-3.5 text-[12px] text-slate-500 font-medium">{f.batch_time}</td>
+                              <td className="px-4 py-3.5 text-right font-medium text-slate-600 text-sm">₹{f.subFee.toFixed(0)}</td>
+                              <td className="px-4 py-3.5 text-right font-medium text-slate-600 text-sm">₹{f.libFee.toFixed(0)}</td>
+                              <td className="px-4 py-3.5 text-right font-black text-slate-900 text-sm">₹{f.total.toFixed(0)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot className="border-t-2 border-slate-100 bg-slate-50/30">
+                          <tr>
+                            <td colSpan={4} className="px-4 py-5 text-right font-black text-slate-500 uppercase tracking-widest text-[11px]">
+                              Total Amount Payable
+                            </td>
+                            <td className="px-4 py-5 text-right font-black text-blue-600 text-[22px]">
+                              ₹{grandTotal.toFixed(0)}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+
+                    <div className="flex items-start gap-2 px-1 mt-4">
+                      <AlertCircle size={14} className="text-blue-500 mt-0.5 shrink-0" />
+                      <p className="text-[11px] text-slate-400 italic leading-relaxed">
+                        Your fee includes a one-time ₹10 library charge. Total amount is final and inclusive of all taxes.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
 
             {/* ---- Payment Method: Online Only ---- */}
@@ -1187,7 +1186,7 @@ export default function RegisterPage() {
                 className="w-full py-3.5 rounded-xl font-poppins font-black text-white text-[16px] tracking-widest transition-all disabled:opacity-50 flex items-center justify-center gap-3 shadow-lg hover:shadow-xl active:scale-[0.99] border-b-4 border-blue-950/20"
                 style={{ background: grandTotal > 0 && !anyIneligible ? 'linear-gradient(135deg, #1E40AF, #3B82F6)' : '#9CA3AF' }}
               >
-                {anyIneligible 
+                {anyIneligible
                   ? <><AlertCircle size={20} /> AGE INELIGIBLE</>
                   : isPaymentLoading
                     ? <><Loader2 size={20} className="animate-spin" /> VERIFYING...</>
