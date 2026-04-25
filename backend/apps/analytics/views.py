@@ -2375,3 +2375,116 @@ class AnalyticsViewSet(viewsets.ViewSet):
             return response
         except Exception as exc:
             return Response({'success': False, 'error': {'message': str(exc)}}, status=500)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # REPORT 6: Subject-wise Students Total Fee Collection (Potential Revenue)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _build_subject_revenue_total_rows(self, start_date, end_date, subject_ids=None):
+        from django.db.models.functions import Coalesce
+        from decimal import Decimal
+
+        qs = self._report_enrollment_queryset().filter(
+            enrollment_date__gte=start_date,
+            enrollment_date__lte=end_date
+        )
+        if subject_ids:
+            qs = qs.filter(subject_id__in=subject_ids)
+
+        agg = (
+            qs.values('subject__name')
+            .annotate(
+                total_students=Count('id'),
+                total_fees=Coalesce(Sum('total_fee'), Decimal('0.00'))
+            )
+            .order_by('subject__name')
+        )
+
+        rows = []
+        sr = 1
+        for item in agg:
+            rows.append({
+                'sr_no': sr,
+                'subject_name': item['subject__name'],
+                'total_students': item['total_students'],
+                'total_fees': float(item['total_fees']),
+            })
+            sr += 1
+        return rows
+
+    @action(detail=False, methods=['get'])
+    def subject_revenue_total_report(self, request):
+        try:
+            start_date, end_date = self._parse_date_range_params(request)
+        except ValueError as ve:
+            return Response({'success': False, 'error': {'message': str(ve)}}, status=400)
+        subject_ids = self._parse_subject_ids(request)
+        try:
+            rows = self._build_subject_revenue_total_rows(start_date, end_date, subject_ids)
+            grand_students = sum(r['total_students'] for r in rows)
+            grand_fees = sum(r['total_fees'] for r in rows)
+            return Response({
+                'success': True,
+                'data': {
+                    'rows': rows,
+                    'summary': {
+                        'grand_students': grand_students,
+                        'grand_fees': grand_fees,
+                    },
+                    'filters': {
+                        'start_date': str(start_date),
+                        'end_date': str(end_date),
+                    }
+                }
+            })
+        except Exception as exc:
+            return Response({'success': False, 'error': {'message': str(exc)}}, status=500)
+
+    @action(detail=False, methods=['get'])
+    def export_subject_revenue_total_csv(self, request):
+        try:
+            start_date, end_date = self._parse_date_range_params(request)
+        except ValueError as ve:
+            return Response({'success': False, 'error': {'message': str(ve)}}, status=400)
+        subject_ids = self._parse_subject_ids(request)
+        try:
+            rows = self._build_subject_revenue_total_rows(start_date, end_date, subject_ids)
+            response = HttpResponse(content_type='text/csv')
+            fname = f"Subject_Revenue_Total_Report_{start_date}_to_{end_date}.csv"
+            response['Content-Disposition'] = f'attachment; filename="{fname}"'
+            writer = csv.writer(response)
+            writer.writerow(['Sr.No', 'Subject Name', 'Total Students', 'Total Fees (Rs)'])
+            for r in rows:
+                writer.writerow([r['sr_no'], r['subject_name'], r['total_students'], f"{r['total_fees']:.2f}"])
+            writer.writerow([])
+            grand_students = sum(r['total_students'] for r in rows)
+            grand_fees = sum(r['total_fees'] for r in rows)
+            writer.writerow(['', 'GRAND TOTAL', grand_students, f"{grand_fees:.2f}"])
+            return response
+        except Exception as exc:
+            return Response({'success': False, 'error': {'message': str(exc)}}, status=500)
+
+    @action(detail=False, methods=['get'])
+    def export_subject_revenue_total_pdf(self, request):
+        try:
+            start_date, end_date = self._parse_date_range_params(request)
+        except ValueError as ve:
+            return Response({'success': False, 'error': {'message': str(ve)}}, status=400)
+        subject_ids = self._parse_subject_ids(request)
+        try:
+            rows = self._build_subject_revenue_total_rows(start_date, end_date, subject_ids)
+            headers = ['Sr. No.', 'Subject Name', 'Total Students', 'Total Fees']
+            data = []
+            for r in rows:
+                data.append([r['sr_no'], r['subject_name'], str(r['total_students']), f"Rs {r['total_fees']:.2f}"])
+            grand_students = sum(r['total_students'] for r in rows)
+            grand_fees = sum(r['total_fees'] for r in rows)
+            data.append(['', 'GRAND TOTAL', str(grand_students), f"Rs {grand_fees:.2f}"])
+            title = f"Subject-wise Revenue Collection Report ({start_date} to {end_date})"
+            pdf_content = generate_pdf_report(title, headers, data)
+            response = HttpResponse(pdf_content, content_type='application/pdf')
+            fname = f"Subject_Revenue_Total_Report_{start_date}_to_{end_date}.pdf"
+            response['Content-Disposition'] = f'attachment; filename="{fname}"'
+            return response
+        except Exception as exc:
+            return Response({'success': False, 'error': {'message': str(exc)}}, status=500)

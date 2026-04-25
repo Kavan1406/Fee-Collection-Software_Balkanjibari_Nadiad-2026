@@ -11,6 +11,8 @@ import type {
   EnrollmentPaymentReport,
   SubjectTotalSummaryReport,
   SubjectTotalSummaryRow,
+  SubjectRevenueTotalReport,
+  SubjectRevenueTotalRow,
 } from '@/lib/api/analytics'
 
 interface ReportsPageProps {
@@ -66,6 +68,13 @@ export default function ReportsPage({ userRole }: ReportsPageProps) {
   const [r5Loading, setR5Loading] = useState(false)
   const [r5ReportData, setR5ReportData] = useState<SubjectTotalSummaryReport | null>(null)
   const [r5Downloading, setR5Downloading] = useState<string | null>(null)
+ 
+  // ── Report 6: Subject-wise Revenue Total ─────────────────────────────────
+  const [r6StartDate, setR6StartDate] = useState('2026-04-15')
+  const [r6EndDate, setR6EndDate] = useState(new Date().toISOString().split('T')[0])
+  const [r6Loading, setR6Loading] = useState(false)
+  const [r6ReportData, setR6ReportData] = useState<SubjectRevenueTotalReport | null>(null)
+  const [r6Downloading, setR6Downloading] = useState<string | null>(null)
 
   useEffect(() => {
     const fetchSubjects = async () => {
@@ -309,6 +318,40 @@ export default function ReportsPage({ userRole }: ReportsPageProps) {
       notifyError(`Failed to download ${format} report`)
     } finally {
       setR5Downloading(null)
+    }
+  }
+ 
+  // ── Report 6 Handlers ─────────────────────────────────────────────────────
+  const generateR6Report = async () => {
+    if (r6StartDate > r6EndDate) { notifyError('Start date cannot be after end date'); return }
+    setR6Loading(true)
+    try {
+      const response = await analyticsApi.getSubjectRevenueTotalReport(r6StartDate, r6EndDate)
+      const data = (response as any)?.data || response
+      setR6ReportData(data || null)
+      notifySuccess('Report 6 generated successfully')
+    } catch (error) {
+      console.error('Report 6 failed:', error)
+      notifyError('Failed to generate Subject-wise Revenue Total report')
+    } finally {
+      setR6Loading(false)
+    }
+  }
+
+  const handleR6Download = async (format: 'CSV' | 'PDF') => {
+    try {
+      setR6Downloading(format)
+      if (format === 'CSV') {
+        await analyticsApi.exportSubjectRevenueTotalCsv(r6StartDate, r6EndDate)
+      } else {
+        await analyticsApi.exportSubjectRevenueTotalPdf(r6StartDate, r6EndDate)
+      }
+      notifySuccess(`${format} downloaded successfully`)
+    } catch (error) {
+      console.error('Report 6 download failed:', error)
+      notifyError(`Failed to download ${format} report`)
+    } finally {
+      setR6Downloading(null)
     }
   }
 
@@ -1115,6 +1158,124 @@ export default function ReportsPage({ userRole }: ReportsPageProps) {
           <p className="mt-2 text-xs">Choose a date range above, then click Generate Report.</p>
         </div>
       )}
+
+      {/* ════════════════════════════════════════════════════════════════
+          REPORT 6: SUBJECT-WISE REVENUE TOTAL REPORT
+      ════════════════════════════════════════════════════════════════ */}
+      <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-100 shadow-sm mt-6">
+        <div className="mb-5">
+          <div className="flex items-center gap-3 mb-1">
+            <span className="inline-flex items-center justify-center rounded-xl bg-orange-600 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1.5 shadow-sm shrink-0">
+              Report 6
+            </span>
+            <h2 className="text-xl sm:text-2xl font-bold text-slate-900 uppercase tracking-tight font-poppins">
+              Subject-wise Revenue Total Report
+            </h2>
+          </div>
+          <p className="text-slate-500 text-sm mt-0.5 font-medium font-inter">
+            Total students and potential revenue (Total Students × Subject Fee) per subject.
+          </p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Start Date</label>
+            <input type="date" value={r6StartDate} onChange={(e) => setR6StartDate(e.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900" />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">End Date</label>
+            <input type="date" value={r6EndDate} onChange={(e) => setR6EndDate(e.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900" />
+          </div>
+          <div className="lg:col-span-2 flex items-end">
+            <button onClick={generateR6Report} disabled={r6Loading}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-2xl bg-orange-600 px-8 py-3 text-sm font-bold text-white transition hover:bg-orange-700 disabled:opacity-50 shadow-sm">
+              {r6Loading ? <Loader2 size={16} className="animate-spin" /> : <BarChart2 size={16} />}
+              Generate Report
+            </button>
+          </div>
+        </div>
+        {r6ReportData && !r6Loading && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button onClick={() => handleR6Download('CSV')} disabled={!!r6Downloading}
+              className="inline-flex items-center gap-2 rounded-2xl bg-orange-50 px-4 py-3 text-xs font-bold uppercase tracking-widest text-orange-600 border border-orange-100 disabled:opacity-50 hover:bg-orange-100 transition">
+              {r6Downloading === 'CSV' ? <Loader2 size={12} className="animate-spin" /> : <Download size={14} />}
+              Download CSV
+            </button>
+            <button onClick={() => handleR6Download('PDF')} disabled={!!r6Downloading}
+              className="inline-flex items-center gap-2 rounded-2xl bg-indigo-50 px-4 py-3 text-xs font-bold uppercase tracking-widest text-indigo-600 border border-indigo-100 disabled:opacity-50 hover:bg-indigo-100 transition">
+              {r6Downloading === 'PDF' ? <Loader2 size={12} className="animate-spin" /> : <FileText size={14} />}
+              Download PDF
+            </button>
+          </div>
+        )}
+      </div>
+
+      {r6Loading ? (
+        <div className="flex h-40 items-center justify-center rounded-2xl border border-slate-100 bg-white mt-4">
+          <Loader2 size={32} className="animate-spin text-orange-500" />
+        </div>
+      ) : r6ReportData ? (
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mt-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 divide-x divide-slate-100 border-b border-slate-100 bg-slate-50/50">
+            <div className="p-4 text-center">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Date Range</p>
+              <p className="text-sm font-bold text-slate-900">{r6ReportData.filters?.start_date} → {r6ReportData.filters?.end_date}</p>
+            </div>
+            <div className="p-4 text-center">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-blue-600 mb-1">Total Students</p>
+              <p className="text-xl font-bold text-blue-900">{r6ReportData.summary?.grand_students ?? 0}</p>
+            </div>
+            <div className="p-4 text-center">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-orange-600 mb-1">Total Potential Revenue</p>
+              <p className="text-xl font-bold text-orange-700">{formatCurrency(r6ReportData.summary?.grand_fees ?? 0)}</p>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-100">
+                <tr>
+                  <th className="px-4 py-3 text-center text-[9px] font-bold uppercase tracking-widest w-16">Sr. No.</th>
+                  <th className="px-4 py-3 text-left text-[9px] font-bold uppercase tracking-widest">Subject Name</th>
+                  <th className="px-4 py-3 text-right text-[9px] font-bold uppercase tracking-widest">Total Students</th>
+                  <th className="px-4 py-3 text-right text-[9px] font-bold uppercase tracking-widest">Potential Revenue</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {r6ReportData.rows.length > 0 ? (
+                  <>
+                    {r6ReportData.rows.map((row: SubjectRevenueTotalRow, index: number) => (
+                      <tr key={row.subject_name}
+                        className={index % 2 === 0 ? 'bg-white hover:bg-slate-50 transition' : 'bg-slate-50 hover:bg-slate-100 transition'}>
+                        <td className="px-4 py-3 text-center font-semibold text-slate-500">{row.sr_no}</td>
+                        <td className="px-4 py-3 font-medium text-slate-900">{row.subject_name}</td>
+                        <td className="px-4 py-3 text-right font-semibold text-blue-700">{row.total_students}</td>
+                        <td className="px-4 py-3 text-right font-bold text-orange-700">{formatCurrency(row.total_fees)}</td>
+                      </tr>
+                    ))}
+                    <tr className="bg-slate-900 text-white">
+                      <td colSpan={2} className="px-4 py-3 text-center text-[10px] font-bold uppercase tracking-widest">
+                        Grand Total ({r6ReportData.rows.length} subjects)
+                      </td>
+                      <td className="px-4 py-3 text-right font-bold text-blue-300">{r6ReportData.summary?.grand_students ?? 0}</td>
+                      <td className="px-4 py-3 text-right font-bold text-orange-300">{formatCurrency(r6ReportData.summary?.grand_fees ?? 0)}</td>
+                    </tr>
+                  </>
+                ) : (
+                  <tr><td colSpan={4} className="px-4 py-8 text-center text-slate-500">No enrollment records found for the selected date range.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-10 text-center text-slate-400 mt-4">
+          <BarChart2 size={32} className="mx-auto mb-3 opacity-30" />
+          <p className="text-sm font-semibold uppercase tracking-widest">No report generated yet</p>
+          <p className="mt-2 text-xs">Choose a date range above, then click Generate Report.</p>
+        </div>
+      )}
+
 
     </div>
   )

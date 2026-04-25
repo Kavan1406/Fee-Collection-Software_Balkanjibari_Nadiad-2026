@@ -139,6 +139,26 @@ export interface SubjectTotalSummaryReport {
     };
 }
 
+// ── Report 6: Subject-wise Revenue Total (Potential Revenue) ────────────────
+export interface SubjectRevenueTotalRow {
+    sr_no: number;
+    subject_name: string;
+    total_students: number;
+    total_fees: number;
+}
+
+export interface SubjectRevenueTotalReport {
+    rows: SubjectRevenueTotalRow[];
+    summary: {
+        grand_students: number;
+        grand_fees: number;
+    };
+    filters: {
+        start_date: string;
+        end_date: string;
+    };
+}
+
 export interface SubjectBatchEnrollmentReportRow {
     subject_name: string;
     batch_time: string;
@@ -529,6 +549,38 @@ export const analyticsApi = {
             `Subject_Total_Summary_Report_${start_date}_to_${end_date}.pdf`,
             { start_date, end_date }
         ),
+
+    // ── Report 6: Subject-wise Revenue Total ─────────────────────────────────
+    getSubjectRevenueTotalReport: async (
+        start_date: string,
+        end_date: string,
+        subject_ids?: number[]
+    ): Promise<ApiResponse<SubjectRevenueTotalReport>> => {
+        const params: any = { start_date, end_date };
+        if (subject_ids && subject_ids.length > 0) {
+            params.subject_ids = subject_ids.join(',');
+        }
+        const response = await apiClient.get<ApiResponse<SubjectRevenueTotalReport>>(
+            '/api/v1/analytics/subject_revenue_total_report/',
+            { params }
+        );
+        return response.data;
+    },
+
+    exportSubjectRevenueTotalCsv: async (start_date: string, end_date: string) =>
+        analyticsApi.downloadFile(
+            '/api/v1/analytics/export_subject_revenue_total_csv/',
+            `Subject_Revenue_Total_Report_${start_date}_to_${end_date}.csv`,
+            { start_date, end_date }
+        ),
+
+    exportSubjectRevenueTotalPdf: async (start_date: string, end_date: string) =>
+        analyticsApi.downloadFile(
+            '/api/v1/analytics/export_subject_revenue_total_pdf/',
+            `Subject_Revenue_Total_Report_${start_date}_to_${end_date}.pdf`,
+            { start_date, end_date }
+        ),
+
 
     // ===== Session 14: Comprehensive Admin Analytics =====
 
