@@ -1932,7 +1932,6 @@ class AnalyticsViewSet(viewsets.ViewSet):
 
     def _build_subject_date_wise_fee_report(self, start_date, end_date, subject_ids=None):
         qs = self._report_payment_queryset().filter(
-            is_deleted=False,
             status='SUCCESS',
             payment_date__range=(start_date, end_date),
             enrollment__isnull=False,
@@ -2270,33 +2269,39 @@ class AnalyticsViewSet(viewsets.ViewSet):
         from django.db.models.functions import Coalesce
         from decimal import Decimal
 
-        qs = self._report_enrollment_queryset().filter(
-            is_deleted=False,
+        # Base query for subjects
+        subjects_qs = self._report_subject_queryset()
+        if subject_ids:
+            subjects_qs = subjects_qs.filter(id__in=subject_ids)
+        
+        subjects = subjects_qs.order_by('name')
+
+        # Enrollment data for calculations
+        enrollments_qs = self._report_enrollment_queryset().filter(
             enrollment_date__gte=start_date,
             enrollment_date__lte=end_date
         )
-        if subject_ids:
-            qs = qs.filter(subject_id__in=subject_ids)
 
-        agg = (
-            qs.values('subject__name')
+        # Pre-calculate counts to avoid N+1 in the loop
+        stats_agg = (
+            enrollments_qs.values('subject_id')
             .annotate(
                 total_students=Count('id'),
                 total_fees=Coalesce(Sum('paid_amount'), Decimal('0.00'))
             )
-            .order_by('subject__name')
         )
+        stats_map = {item['subject_id']: item for item in stats_agg}
 
         rows = []
-        sr = 1
-        for item in agg:
+        for idx, sub in enumerate(subjects, start=1):
+            stats = stats_map.get(sub.id, {'total_students': 0, 'total_fees': Decimal('0.00')})
             rows.append({
-                'sr_no': sr,
-                'subject_name': item['subject__name'],
-                'total_students': item['total_students'],
-                'total_fees': float(item['total_fees']),
+                'sr_no': idx,
+                'subject_name': sub.name,
+                'total_students': int(stats['total_students']),
+                'total_fees': float(stats['total_fees']),
             })
-            sr += 1
+        
         return rows
 
     @action(detail=False, methods=['get'])
@@ -2384,32 +2389,44 @@ class AnalyticsViewSet(viewsets.ViewSet):
         from django.db.models.functions import Coalesce
         from decimal import Decimal
 
-        qs = self._report_enrollment_queryset().filter(
+        # Base query for subjects
+        subjects_qs = self._report_subject_queryset()
+        if subject_ids:
+            subjects_qs = subjects_qs.filter(id__in=subject_ids)
+        
+        subjects = subjects_qs.order_by('name')
+
+        # Enrollment data for counts
+        enrollments_qs = self._report_enrollment_queryset().filter(
             enrollment_date__gte=start_date,
             enrollment_date__lte=end_date
         )
-        if subject_ids:
-            qs = qs.filter(subject_id__in=subject_ids)
 
-        agg = (
-            qs.values('subject__name')
-            .annotate(
-                total_students=Count('id'),
-                total_fees=Coalesce(Sum('total_fee'), Decimal('0.00'))
-            )
-            .order_by('subject__name')
+        # Pre-calculate counts
+        stats_agg = (
+            enrollments_qs.values('subject_id')
+            .annotate(total_students=Count('id'))
         )
+        stats_map = {item['subject_id']: item['total_students'] for item in stats_agg}
 
         rows = []
-        sr = 1
-        for item in agg:
+        for idx, sub in enumerate(subjects, start=1):
+            student_count = stats_map.get(sub.id, 0)
+            
+            # Use current active fee if available, else 0
+            fee_struct = sub.fee_structures.filter(is_active=True).first()
+            subject_fee = float(fee_struct.fee_amount) if fee_struct else 0.0
+            
+            total_potential_revenue = student_count * subject_fee
+            
             rows.append({
-                'sr_no': sr,
-                'subject_name': item['subject__name'],
-                'total_students': item['total_students'],
-                'total_fees': float(item['total_fees']),
+                'sr_no': idx,
+                'subject_name': sub.name,
+                'total_students': student_count,
+                'total_fees': total_potential_revenue,
+                'subject_fee': subject_fee
             })
-            sr += 1
+        
         return rows
 
     @action(detail=False, methods=['get'])
