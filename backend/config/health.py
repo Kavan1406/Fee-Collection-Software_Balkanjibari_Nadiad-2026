@@ -10,11 +10,14 @@ def health_check(request):
     Lightweight health check endpoint to keep the service active.
     Returns status and uptime information.
     """
-    return JsonResponse({
+    response = JsonResponse({
         "status": "ok",
         "service": "balkanji-fee-system",
         "uptime_seconds": int(time.time() - START_TIME)
     })
+    # Ensure no caching for health checks to keep Render active
+    response['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    return response
 
 def db_health_check(request):
     """Checks database connectivity and schema sync status."""

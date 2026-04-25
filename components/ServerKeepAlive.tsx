@@ -18,12 +18,13 @@ export default function ServerKeepAlive() {
     // Pinging every 5 minutes (300000ms) keeps it active.
     const PING_INTERVAL = 300000 
     
-    const healthUrl = `/health`
+    const healthUrl = `/health/`
 
     const pingServer = async () => {
       try {
         console.log(`[KeepAlive] Pinging backend: ${healthUrl} at ${new Date().toLocaleTimeString()}...`)
-        const response = await axios.get(healthUrl, { timeout: 15000 })
+        // Increased timeout to 60s to handle potential Render cold starts
+        const response = await axios.get(healthUrl, { timeout: 60000 })
         if (response.data && response.data.status === 'ok') {
           console.log('[KeepAlive] Backend is active and healthy.')
         } else {

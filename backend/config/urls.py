@@ -65,6 +65,7 @@ urlpatterns = [
     # Health check
     path('health/', health_check, name='health-check'),
     path('health/db/', db_health_check, name='db-health-check'),
+    path('ping/', lambda r: HttpResponse("PONG", content_type="text/plain")),
     path('test-400/', lambda r: HttpResponse("OK", content_type="text/plain")),
 ]
 
