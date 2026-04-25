@@ -271,20 +271,27 @@ class StudentViewSet(viewsets.ModelViewSet):
                     is_deleted=False,
                 )
                 archive_summary = archive_student(instance)
+                
+            return Response({
+                'success': True,
+                'message': f"Student deleted successfully. Registration cancelled and cash refund of ₹{float(archive_summary['refund_amount']):.2f} should be issued.",
+                'data': {
+                    'refund_amount': float(archive_summary['refund_amount']),
+                    'archived_payment_count': archive_summary['archived_payment_count'],
+                }
+            }, status=status.HTTP_200_OK)
+
         except Student.DoesNotExist:
             return Response({
                 'success': False,
                 'error': {'message': 'Student not found or already deleted.'}
             }, status=status.HTTP_404_NOT_FOUND)
-
-        return Response({
-            'success': True,
-            'message': f"Student deleted successfully. Registration cancelled and cash refund of ₹{float(archive_summary['refund_amount']):.2f} should be issued.",
-            'data': {
-                'refund_amount': float(archive_summary['refund_amount']),
-                'archived_payment_count': archive_summary['archived_payment_count'],
-            }
-        }, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.exception("Error during student deletion: %s", str(e))
+            return Response({
+                'success': False,
+                'error': {'message': f"Deletion failed: {str(e)}"}
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     def list(self, request, *args, **kwargs):
         """List students with pagination."""
