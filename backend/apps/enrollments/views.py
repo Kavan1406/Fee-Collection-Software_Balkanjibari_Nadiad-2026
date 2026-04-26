@@ -485,7 +485,7 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
         enrollments = enrollments.select_related('student', 'subject', 'student__user').order_by('student__name')
         
         if not enrollments.exists():
-            return Response({'success': False, 'error': {'message': 'No matching enrollments found'}}, status=404)
+            return Response({'success': False, 'error': {'message': 'No matching enrollments found for the selected filters'}}, status=400)
         
         try:
             from utils.id_cards import generate_bulk_id_cards_pdf

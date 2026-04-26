@@ -448,6 +448,17 @@ export const enrollmentsApi = {
             link.click();
             link.parentNode?.removeChild(link);
         } catch (error: any) {
+            if (error.response?.data instanceof Blob) {
+                const text = await error.response.data.text();
+                try {
+                    const json = JSON.parse(text);
+                    if (json.error?.message) {
+                        error.message = json.error.message;
+                    }
+                } catch (e) {
+                    console.error('Failed to parse error blob as JSON', e);
+                }
+            }
             console.error('bulkDownloadIdCards failed:', error?.message || error);
             throw error;
         }
