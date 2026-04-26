@@ -2,7 +2,7 @@
 
 import { Download, FileText, Loader2, Calendar, BarChart2, BookOpen, ChevronDown, ChevronUp, Users, TrendingUp } from 'lucide-react'
 import { useState, useRef, useEffect, Fragment } from 'react'
-import { analyticsApi, subjectsApi } from '@/lib/api'
+import { analyticsApi, subjectsApi, enrollmentsApi } from '@/lib/api'
 import { useNotifications } from '@/hooks/useNotifications'
 import type {
   DateWiseFeeReportRow,
@@ -78,6 +78,48 @@ export default function ReportsPage({ userRole }: ReportsPageProps) {
   const [r6Loading, setR6Loading] = useState(false)
   const [r6ReportData, setR6ReportData] = useState<SubjectRevenueTotalReport | null>(null)
   const [r6Downloading, setR6Downloading] = useState<string | null>(null)
+
+  // ── Bulk ID Card Generation ───────────────────────────────────────────
+  const [bulkIdLoading, setBulkIdLoading] = useState(false)
+  const [bulkIdSubject, setBulkIdSubject] = useState<string>('')
+  const [bulkIdBatch, setBulkIdBatch] = useState<string>('ALL')
+  const [bulkIdPaymentMode, setBulkIdPaymentMode] = useState<'ONLINE' | 'OFFLINE' | ''>('')
+  const [bulkIdBatches, setBulkIdBatches] = useState<string[]>([])
+
+  const handleBulkIdSubjectChange = async (subjectId: string) => {
+    setBulkIdSubject(subjectId)
+    setBulkIdBatch('ALL')
+    if (!subjectId) { setBulkIdBatches([]); return }
+    try {
+      const response = await subjectsApi.getBatches(Number(subjectId))
+      const data = (response as any)?.data || response
+      const batches = Array.isArray(data) ? data : Array.isArray(data?.results) ? data.results : []
+      setBulkIdBatches(
+        batches.map((batch: any) => batch?.batch_time || batch?.name || String(batch || '')).filter(Boolean)
+      )
+    } catch (error) {
+      console.error('Failed to load batches for Bulk ID:', error)
+      setBulkIdBatches([])
+    }
+  }
+
+  const handleBulkIdDownload = async () => {
+    if (!bulkIdSubject) { notifyError('Please select a subject'); return }
+    setBulkIdLoading(true)
+    try {
+      await enrollmentsApi.bulkDownloadIdCards({
+        subject_id: Number(bulkIdSubject),
+        batch_time: bulkIdBatch === 'ALL' ? undefined : bulkIdBatch,
+        payment_mode: bulkIdPaymentMode || undefined
+      })
+      notifySuccess('Bulk ID cards downloaded successfully')
+    } catch (error: any) {
+      console.error('Bulk ID download failed:', error)
+      notifyError(error?.response?.data?.error?.message || 'Failed to download Bulk ID cards')
+    } finally {
+      setBulkIdLoading(false)
+    }
+  }
 
   useEffect(() => {
     const fetchSubjects = async () => {
@@ -1361,6 +1403,83 @@ export default function ReportsPage({ userRole }: ReportsPageProps) {
         </div>
       )}
 
+
+      {/* ════════════════════════════════════════════════════════════════
+          BULK ID CARDS DOWNLOAD (NEW)
+      ════════════════════════════════════════════════════════════════ */}
+      <div className="bg-white p-4 sm:p-6 rounded-2xl border-2 border-slate-900 shadow-xl mt-8">
+        <div className="mb-6">
+          <div className="flex items-center gap-3 mb-2">
+            <span className="inline-flex items-center justify-center rounded-xl bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1.5 shadow-sm shrink-0">
+              Tools
+            </span>
+            <h2 className="text-xl sm:text-2xl font-bold text-slate-900 uppercase tracking-tight font-poppins">
+              Bulk Student ID Cards Download
+            </h2>
+          </div>
+          <p className="text-slate-600 text-sm font-medium font-inter">
+            Download a single PDF containing ID cards for all students matching the filters below. 
+            Perfect for bulk printing by subject or payment mode.
+          </p>
+        </div>
+
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1.5">1. Select Subject</label>
+            <select
+              value={bulkIdSubject}
+              onChange={(e) => handleBulkIdSubjectChange(e.target.value)}
+              className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 px-4 py-3.5 text-sm font-bold text-slate-900 focus:border-slate-900 focus:bg-white transition-all outline-none"
+            >
+              <option value="">Choose Subject...</option>
+              {[...allSubjects].sort((a,b) => a.name.localeCompare(b.name)).map((subject) => (
+                <option key={subject.id} value={subject.id}>{subject.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1.5">2. Select Batch (Optional)</label>
+            <select
+              value={bulkIdBatch}
+              onChange={(e) => setBulkIdBatch(e.target.value)}
+              className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 px-4 py-3.5 text-sm font-bold text-slate-900 focus:border-slate-900 focus:bg-white transition-all outline-none"
+            >
+              <option value="ALL">All Batches</option>
+              {bulkIdBatches.map((batch) => (
+                <option key={batch} value={batch}>{batch}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1.5">3. Payment Mode (Optional)</label>
+            <select
+              value={bulkIdPaymentMode}
+              onChange={(e) => setBulkIdPaymentMode(e.target.value as any)}
+              className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 px-4 py-3.5 text-sm font-bold text-slate-900 focus:border-slate-900 focus:bg-white transition-all outline-none"
+            >
+              <option value="">All Payment Modes</option>
+              <option value="ONLINE">Online (Paid via Razorpay)</option>
+              <option value="OFFLINE">Offline (Cash/Cheque)</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="mt-8 flex flex-col sm:flex-row items-center gap-4">
+          <button
+            onClick={handleBulkIdDownload}
+            disabled={bulkIdLoading || !bulkIdSubject}
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-3 rounded-2xl bg-slate-900 px-10 py-4 text-sm font-black uppercase tracking-widest text-white transition hover:bg-slate-800 disabled:opacity-50 shadow-lg active:scale-95"
+          >
+            {bulkIdLoading ? <Loader2 size={18} className="animate-spin" /> : <FileText size={18} />}
+            Download Bulk ID Cards (PDF)
+          </button>
+          {!bulkIdSubject && (
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest animate-pulse">
+              Please select a subject to enable download
+            </p>
+          )}
+        </div>
+      </div>
 
     </div>
   )

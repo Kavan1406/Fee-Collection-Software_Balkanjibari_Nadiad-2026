@@ -449,6 +449,55 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
             'report': report_data
         })
 
+    @action(detail=False, methods=['get'], url_path='bulk-download-id-cards')
+    def bulk_download_id_cards(self, request):
+        """Administrative action to download multiple ID cards in a single PDF."""
+        if request.user.role not in ['ADMIN', 'STAFF', 'ACCOUNTANT']:
+            return Response({'error': 'Access denied'}, status=403)
+        
+        subject_id = request.query_params.get('subject_id')
+        batch_time = request.query_params.get('batch_time')
+        payment_mode = request.query_params.get('payment_mode') # ONLINE or OFFLINE
+        
+        enrollments = Enrollment.objects.filter(is_deleted=False, status='ACTIVE')
+        
+        if subject_id:
+            enrollments = enrollments.filter(subject_id=subject_id)
+        if batch_time and batch_time != 'ALL':
+            enrollments = enrollments.filter(batch_time=batch_time)
+            
+        # Filter by payment mode if specified
+        if payment_mode:
+            from apps.payments.models import Payment
+            if payment_mode.upper() == 'ONLINE':
+                valid_enrollment_ids = Payment.objects.filter(
+                    status='SUCCESS',
+                    payment_mode='ONLINE'
+                ).values_list('enrollment_id', flat=True)
+            else:
+                valid_enrollment_ids = Payment.objects.filter(
+                    status='SUCCESS',
+                    payment_mode='CASH'
+                ).values_list('enrollment_id', flat=True)
+            
+            enrollments = enrollments.filter(id__in=valid_enrollment_ids)
+
+        enrollments = enrollments.select_related('student', 'subject', 'student__user').order_by('student__name')
+        
+        if not enrollments.exists():
+            return Response({'success': False, 'error': {'message': 'No matching enrollments found'}}, status=404)
+        
+        try:
+            from utils.id_cards import generate_bulk_id_cards_pdf
+            pdf_content = generate_bulk_id_cards_pdf(list(enrollments))
+            
+            filename = f"Bulk_ID_Cards_{timezone.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            response = HttpResponse(pdf_content, content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            return response
+        except Exception as e:
+            return Response({'success': False, 'error': {'message': str(e)}}, status=500)
+
     @action(detail=False, methods=['get'], url_path='fee-receipts-report')
     def fee_receipts_report(self, request):
         """Get all student-wise fee receipts with detailed payment information."""

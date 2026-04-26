@@ -424,5 +424,33 @@ export const enrollmentsApi = {
         );
         return response.data;
     },
+
+    bulkDownloadIdCards: async (params: {
+        subject_id?: number;
+        batch_time?: string;
+        payment_mode?: 'ONLINE' | 'OFFLINE';
+    }): Promise<void> => {
+        try {
+            const response = await apiClient.get(
+                '/api/v1/enrollments/bulk-download-id-cards/',
+                { 
+                    params,
+                    ...enrollmentsApi.getDocumentRequestConfig()
+                }
+            );
+
+            const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+            const link = document.createElement('a');
+            link.href = url;
+            const filename = `Bulk_ID_Cards_${new Date().toISOString().slice(0, 10)}.pdf`;
+            link.setAttribute('download', filename);
+            document.body.appendChild(link);
+            link.click();
+            link.parentNode?.removeChild(link);
+        } catch (error: any) {
+            console.error('bulkDownloadIdCards failed:', error?.message || error);
+            throw error;
+        }
+    },
 };
 
