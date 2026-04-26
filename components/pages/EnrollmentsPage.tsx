@@ -39,7 +39,7 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
   const [subjects, setSubjects] = useState<any[]>([])
   const [selectedSubject, setSelectedSubject] = useState<number>(0)
   const [activityType] = useState<'SUMMER_CAMP' | 'YEAR_ROUND' | 'ALL'>('SUMMER_CAMP')
-  const [classMode, setClassMode] = useState<'ONLINE' | 'OFFLINE' | 'ALL'>('ALL')
+  const [paymentModeFilter, setPaymentModeFilter] = useState<'ONLINE' | 'OFFLINE' | 'ALL'>('ALL')
   const [searchTerm, setSearchTerm] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -150,16 +150,11 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
     // ALWAYS use allEnrollments for search when available, for complete search across all 648 records
     let filtered = allEnrollments && allEnrollments.length > 0 ? allEnrollments : enrollments;
     
-    // Filter by class mode
-    if (classMode !== 'ALL') {
+    // Filter by payment mode
+    if (paymentModeFilter !== 'ALL') {
       filtered = filtered.filter(enrollment => {
-        const subjectClassMode = enrollment.subject?.class_mode || 'BOTH'
-        if (classMode === 'ONLINE') {
-          return subjectClassMode === 'ONLINE' || subjectClassMode === 'BOTH'
-        } else if (classMode === 'OFFLINE') {
-          return subjectClassMode === 'OFFLINE' || subjectClassMode === 'BOTH'
-        }
-        return true
+        const pMode = enrollment.payment_mode || 'NOT RECORDED'
+        return pMode === paymentModeFilter
       })
     }
     
@@ -168,7 +163,7 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
       filtered = filtered.filter(enrollment => enrollment.subject.id === selectedSubject)
     }
     
-    // Filter by search term (student name, student ID, enrollment ID)
+    // Filter by search term (student name, student ID, enrollment ID, subject name)
     if (searchTerm.trim()) {
       const search = searchTerm.toLowerCase().trim()
       filtered = filtered.filter(enrollment => 
@@ -180,7 +175,7 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
     }
     
     setFilteredEnrollments(filtered)
-  }, [selectedSubject, allEnrollments, enrollments, searchTerm, classMode])
+  }, [selectedSubject, allEnrollments, enrollments, searchTerm, paymentModeFilter])
 
   // Sync with Payments page: Auto-refresh when a payment is marked as paid
   useEffect(() => {
@@ -264,13 +259,13 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
           {/* Search Bar */}
           <div className="flex-1 min-w-0">
             <label className="text-[10px] sm:text-xs font-medium text-slate-400 uppercase tracking-widest font-inter block mb-1">
-              Search Enrollments
+              Global Search
             </label>
             <div className="relative">
               <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 pointer-events-none" />
               <input
                 type="text"
-                placeholder="Search by name, ID, subject..."
+                placeholder="Search name, ID, subject..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full h-11 pl-10 pr-8 input-standard text-xs sm:text-sm font-medium uppercase tracking-wider font-inter"
@@ -285,22 +280,22 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
                 </button>
               )}
             </div>
-            <p className="text-[9px] text-slate-400 mt-1 font-inter">
-              {searchTerm ? `${filteredEnrollments.length} of ${allEnrollments.length || enrollments.length} results` : `Showing all ${allEnrollments.length || enrollments.length} enrollments`}
+            <p className="text-[9px] text-slate-400 mt-1 font-inter uppercase tracking-tighter">
+              {searchTerm ? `${filteredEnrollments.length} matching of ${allEnrollments.length || enrollments.length} total` : `Searching across all ${allEnrollments.length || enrollments.length} records`}
             </p>
           </div>
 
           {/* Subject Filter */}
           <div className="w-full xl:w-[260px] min-w-0">
             <label className="text-[10px] sm:text-xs font-medium text-slate-400 uppercase tracking-widest font-inter block mb-1">
-              Subject
+              Select Subject
             </label>
             <select
               value={selectedSubject}
               onChange={(e) => setSelectedSubject(parseInt(e.target.value))}
               className="w-full h-11 input-standard text-xs sm:text-sm font-medium uppercase tracking-wider font-inter"
             >
-              <option value={0}>Show All Subjects</option>
+              <option value={0}>All Subjects</option>
               {subjects.map((subject) => (
                 <option key={subject.id} value={subject.id}>
                   {subject.name}
@@ -309,19 +304,19 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
             </select>
           </div>
 
-          {/* Mode Filter */}
+          {/* Payment Mode Filter */}
           <div className="w-full xl:w-[260px] min-w-0">
             <label className="text-[10px] sm:text-xs font-medium text-slate-400 uppercase tracking-widest font-inter block mb-1">
-              Mode
+              Payment Mode
             </label>
             <select
-              value={classMode}
-              onChange={(e) => setClassMode(e.target.value as 'ONLINE' | 'OFFLINE' | 'ALL')}
-              className="w-full h-11 input-standard text-xs sm:text-sm font-medium uppercase tracking-wider font-inter"
+              value={paymentModeFilter}
+              onChange={(e) => setPaymentModeFilter(e.target.value as 'ONLINE' | 'OFFLINE' | 'ALL')}
+              className="w-full h-11 input-standard text-xs sm:text-sm font-medium uppercase tracking-wider font-inter font-bold"
             >
-              <option value="ALL">Online + Offline</option>
-              <option value="ONLINE">Online Only</option>
-              <option value="OFFLINE">Offline Only</option>
+              <option value="ALL">ONLINE + OFFLINE</option>
+              <option value="ONLINE">ONLINE ONLY</option>
+              <option value="OFFLINE">OFFLINE ONLY</option>
             </select>
           </div>
         </div>
