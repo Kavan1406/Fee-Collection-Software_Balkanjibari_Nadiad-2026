@@ -378,55 +378,58 @@ export default function RegisterPage() {
   const updateSubject = (idx: number, field: keyof SelectedSubject, value: any) => {
     setSelectedSubjects(prev => {
       const updated = [...prev]
+      
       if (field === 'subject_id') {
         const val = parseInt(value as string)
-        const subInfo = subjects.find(s => s.id === val)
-        if (subInfo && subInfo.enrolled_count >= subInfo.max_seats) {
-          toast.error(`Sorry, ${subInfo.name} batch is full! Please select another subject.`, {
-            icon: <AlertCircle className="text-rose-500" />
-          })
-          return prev
+        if (val === 0) {
+          updated[idx] = { ...updated[idx], subject_id: 0, subject_name: '', batch_time: '' }
+          return updated
         }
-        // Fetch batches for this subject
+
+        const subInfo = subjects.find(s => s.id === val)
+        if (!subInfo) return prev
+
+        // Fetch batches for this subject to get fresh availability
         fetchBatchesForSubject(val)
-        updated[idx] = { ...updated[idx], subject_id: val, subject_name: subInfo?.name || '', batch_time: subInfo?.default_batch_timing || '' }
+        
+        // Auto-select first available batch time for this subject
+        const timings = getUniqueBatchTimings(subInfo)
+        
+        updated[idx] = { 
+          ...updated[idx], 
+          subject_id: val, 
+          subject_name: subInfo.name, 
+          batch_time: timings.length > 0 ? timings[0] : '' 
+        }
       } else if (field === 'batch_time') {
         const valClean = (value || '').trim().toLowerCase()
+        
+        // Check for duplicate time slots in the same form
         const conflict = updated.some((row, i) => {
           if (i === idx || !row.subject_id) return false
           return (row.batch_time || '').trim().toLowerCase() === valClean
         })
+        
         if (conflict) {
           toast.error(`Time slot "${value}" is already occupied by another selected subject.`)
           return prev
         }
+
         // Check if selected batch is full
         const currentSubjectId = updated[idx].subject_id
         if (isBatchFull(currentSubjectId, value)) {
-          toast.error(`Sorry, batch "${value}" is full. Please select another batch.`, {
+          toast.error(`Sorry, this batch is full. Please select another time or subject.`, {
             icon: <AlertCircle className="text-rose-500" />
           })
-          return prev
+          // We allow the selection so they can see the "FULL" indicator below the dropdown, 
+          // but they won't be able to pay due to validation.
         }
-      }
-      // No need for setError('') here anymore
-      if (field === 'subject_id') {
-        const sub = subjects.find(s => s.id === Number(value))
-        if (sub && sub.enrolled_count >= sub.max_seats) {
-          toast.error(`Sorry, "${sub.name}" has no available seats.`);
-          return prev;
-        }
-        // Auto-select first available batch time for this subject
-        const timings = getUniqueBatchTimings(sub)
-        updated[idx] = {
-          ...updated[idx],
-          subject_id: Number(value),
-          subject_name: sub?.name || '',
-          batch_time: timings.length > 0 ? timings[0] : ''
-        }
+        
+        updated[idx] = { ...updated[idx], [field]: value }
       } else {
         updated[idx] = { ...updated[idx], [field]: value }
       }
+      
       return updated
     })
   }
@@ -752,8 +755,13 @@ export default function RegisterPage() {
     if (!dobEntered || !s.subject_id) return false
     const subData = subjects.find(x => x.id === s.subject_id)
     if (!subData) return false
-    // Use batch-level limits if available, fall back to subject-level
+    
+    // Check batch capacity
     const batchInfo = getBatchInfo(s.subject_id, s.batch_time)
+    if (batchInfo && batchInfo.enrolled_count >= batchInfo.capacity_limit) return true
+    if (batchInfo && !batchInfo.is_active) return true
+
+    // Check age eligibility
     const minAge = batchInfo?.min_age ?? subData.min_age
     const maxAge = batchInfo?.max_age ?? subData.max_age
     return !checkAgeEligibility(form.age, minAge, maxAge).eligible
@@ -1035,13 +1043,14 @@ export default function RegisterPage() {
                                       const fee = s.current_fee
                                         ? `₹${s.current_fee.amount}`
                                         : s.monthly_fee ? `₹${s.monthly_fee}` : ''
+                                      const isFull = s.enrolled_count >= s.max_seats
                                       const ageRange = (s.min_age > 0 || s.max_age < 100)
                                         ? ` · ${s.min_age}–${s.max_age} yrs`
                                         : ''
                                       const eligible = checkAgeEligibility(form.age, s.min_age, s.max_age).eligible
                                       return (
-                                        <option key={s.id} value={s.id} disabled={!eligible}>
-                                          {!eligible ? '✕ ' : ''}{s.name} — {fee}{ageRange}
+                                        <option key={s.id} value={s.id} disabled={!eligible || isFull}>
+                                          {!eligible ? '✕ ' : isFull ? '🔴 FULL: ' : ''}{s.name} — {fee}{ageRange}
                                         </option>
                                       )
                                     })}
@@ -1058,7 +1067,7 @@ export default function RegisterPage() {
                             {/* Batch Time - Only show when subject is selected */}
                             {sub.subject_id > 0 ? (
                               <div className="animate-in fade-in slide-in-from-top-1 duration-300">
-                                <label className="text-[11px] font-bold text-slate-500 mb-1 block uppercase tracking-wider">Batch Time</label>
+                                <label className="text-[11px] font-bold text-slate-500 mb-1 block uppercase tracking-wider">Select Timing & Batch</label>
                                 <select
                                   className="w-full px-3 py-2.5 rounded-lg text-slate-800 text-sm bg-indigo-50 border border-indigo-200 focus:border-indigo-400 focus:outline-none shadow-sm transition-all font-inter font-bold"
                                   value={sub.batch_time}
@@ -1068,14 +1077,14 @@ export default function RegisterPage() {
                                     const options = getUniqueBatchTimings(subData)
                                     return options.length > 0 ? options.map(t => {
                                       const batchInfo = getBatchInfo(sub.subject_id, t)
-                                      const isFull = batchInfo?.is_full
                                       const enrolled = batchInfo?.enrolled_count || 0
                                       const capacity = batchInfo?.capacity_limit || 0
-                                      const isDisabled = !batchInfo?.is_active || isFull
+                                      const isFull = batchInfo ? enrolled >= capacity : false
+                                      const isDisabled = (batchInfo && !batchInfo.is_active) || isFull
 
                                       return (
                                         <option key={t} value={t} disabled={isDisabled}>
-                                          {t} {batchInfo ? `(${enrolled}/${capacity})` : ''} {isFull ? '🔴 FULL' : !batchInfo?.is_active ? '🔒 CLOSED' : ''}
+                                          {t} {batchInfo ? `(${enrolled}/${capacity})` : ''} {isFull ? '🔴 FULL' : (batchInfo && !batchInfo.is_active) ? '🔒 CLOSED' : ''}
                                         </option>
                                       )
                                     }) : (
@@ -1085,17 +1094,25 @@ export default function RegisterPage() {
                                 </select>
                                 {(() => {
                                   const batchInfo = getBatchInfo(sub.subject_id, sub.batch_time)
-                                  if (batchInfo && batchInfo.is_full) {
+                                  if (batchInfo) {
+                                    const left = batchInfo.capacity_limit - batchInfo.enrolled_count
+                                    if (left <= 0) {
+                                      return (
+                                        <p className="text-[10px] text-rose-500 font-bold mt-1.5 flex items-center gap-1 bg-rose-50 p-1.5 rounded-lg border border-rose-100">
+                                          <AlertCircle size={14} /> SORRY, THIS BATCH IS FULL. PLEASE SELECT ANOTHER TIME OR SUBJECT.
+                                        </p>
+                                      )
+                                    }
+                                    if (!batchInfo.is_active) {
+                                      return (
+                                        <p className="text-[10px] text-yellow-600 font-bold mt-1.5 flex items-center gap-1 bg-yellow-50 p-1.5 rounded-lg border border-yellow-100">
+                                          <Lock size={14} /> THIS BATCH IS CURRENTLY CLOSED FOR ENROLLMENTS.
+                                        </p>
+                                      )
+                                    }
                                     return (
-                                      <p className="text-[10px] text-rose-500 font-bold mt-1.5 flex items-center gap-1">
-                                        <AlertCircle size={14} /> This batch is full. Please select another batch.
-                                      </p>
-                                    )
-                                  }
-                                  if (batchInfo && !batchInfo.is_active) {
-                                    return (
-                                      <p className="text-[10px] text-yellow-600 font-bold mt-1.5 flex items-center gap-1">
-                                        <Lock size={14} /> This batch is currently closed for enrollments.
+                                      <p className="text-[11px] text-emerald-600 font-bold mt-1.5 flex items-center gap-1">
+                                        <CheckCircle size={14} /> {left} seats available in this batch
                                       </p>
                                     )
                                   }
