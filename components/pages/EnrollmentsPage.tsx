@@ -169,8 +169,10 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
       filtered = filtered.filter(enrollment => 
         enrollment.student?.name?.toLowerCase().includes(search) ||
         enrollment.student?.student_id?.toLowerCase().includes(search) ||
+        enrollment.student?.phone?.toLowerCase().includes(search) ||
         enrollment.enrollment_id?.toLowerCase().includes(search) ||
-        enrollment.subject?.name?.toLowerCase().includes(search)
+        enrollment.subject?.name?.toLowerCase().includes(search) ||
+        enrollment.batch_time?.toLowerCase().includes(search)
       )
     }
     

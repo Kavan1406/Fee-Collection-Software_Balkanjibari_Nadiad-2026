@@ -48,12 +48,15 @@ logger = logging.getLogger(__name__)
 RAZORPAY_KEY_ID = getattr(settings, 'RAZORPAY_KEY_ID', '')
 RAZORPAY_KEY_SECRET = getattr(settings, 'RAZORPAY_KEY_SECRET', '')
 
-razorpay_client = None
 if razorpay and RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET and RAZORPAY_KEY_ID.startswith('rzp_'):
     try:
         razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
-    except Exception:
+        logger.info("Razorpay client initialized with key: %s", RAZORPAY_KEY_ID)
+    except Exception as e:
+        logger.error("Failed to initialize Razorpay client: %s", str(e))
         razorpay_client = None
+else:
+    logger.warning("Razorpay client NOT initialized. Keys missing or invalid. RAZORPAY_KEY_ID: %s", RAZORPAY_KEY_ID)
 
 
 def _generate_password(student_id: str, phone: str) -> str:
@@ -408,8 +411,23 @@ def _handle_registration_logic(request):
             rzp_order = razorpay_client.order.create(data=order_data)
             order_id = rzp_order['id']
         except Exception as e:
+            logger.error("Razorpay order creation failed for student_id=%s: %s", student.student_id, str(e))
+            if RAZORPAY_KEY_ID.startswith('rzp_live'):
+                 transaction.set_rollback(True)
+                 return Response({
+                     'success': False, 
+                     'error': f'Razorpay Error: {str(e)}',
+                     'detail': 'Could not create live payment order. Please check credentials or network.'
+                 }, status=500)
             order_id = f'order_test_{student.student_id}'
     else:
+        if RAZORPAY_KEY_ID.startswith('rzp_live'):
+            transaction.set_rollback(True)
+            return Response({
+                'success': False,
+                'error': 'Razorpay client not initialized.',
+                'detail': 'Live payment requested but Razorpay client is missing or keys are invalid.'
+            }, status=500)
         order_id = f'order_test_{student.student_id}'
 
     # Create payment records (CREATED status, one per enrollment)
@@ -461,9 +479,12 @@ def confirm_registration_payment(request):
                 hashlib.sha256
             ).hexdigest()
             if generated_sig != razorpay_signature:
+                logger.error("Signature mismatch for order_id=%s. Expected: %s, Received: %s", razorpay_order_id, generated_sig, razorpay_signature)
                 return Response({'success': False, 'error': 'Payment verification failed. Invalid signature.'}, status=400)
-        except Exception:
-            pass  # Fallback: allow if signature check fails in test mode
+        except Exception as e:
+            logger.error("Error during signature verification for order_id=%s: %s", razorpay_order_id, str(e))
+            if not is_test_order:
+                return Response({'success': False, 'error': f'Signature verification error: {str(e)}'}, status=400)
 
     # --- Mark all payments as SUCCESS and update enrollments ---
     payments_updated = Payment.objects.filter(
@@ -720,9 +741,22 @@ def create_registration_order(request):
                 'notes': {'name': student_name, 'phone': phone},
             })
             order_id = rzp_order['id']
-        except Exception:
+        except Exception as e:
+            logger.error("Razorpay registration order creation failed: %s", str(e))
+            if RAZORPAY_KEY_ID.startswith('rzp_live'):
+                return Response({
+                    'success': False, 
+                    'error': f'Razorpay Error: {str(e)}',
+                    'detail': 'Could not create live payment order.'
+                }, status=500)
             order_id = f'order_test_{int(timezone.now().timestamp())}'
     else:
+        if RAZORPAY_KEY_ID.startswith('rzp_live'):
+            return Response({
+                'success': False,
+                'error': 'Razorpay client not initialized.',
+                'detail': 'Live payment requested but Razorpay client is missing.'
+            }, status=500)
         order_id = f'order_test_{int(timezone.now().timestamp())}'
 
     return Response({

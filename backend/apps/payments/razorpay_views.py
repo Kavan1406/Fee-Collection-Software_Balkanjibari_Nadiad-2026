@@ -34,7 +34,7 @@ print(f"DEBUG: RAZORPAY_KEY_SECRET present: {bool(RAZORPAY_KEY_SECRET)}")
 if razorpay and RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET and RAZORPAY_KEY_ID.startswith('rzp_'):
     try:
         razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
-        print("DEBUG: Razorpay client successfully initialized.")
+        print(f"DEBUG: Razorpay client successfully initialized with key: {RAZORPAY_KEY_ID}")
     except Exception as e:
         print(f"DEBUG: Failed to initialize Razorpay client: {e}")
         razorpay_client = None
@@ -126,9 +126,19 @@ def create_razorpay_order(request):
                 print(f"DEBUG: Created Real Razorpay Order ID: {order_id}")
             except Exception as e:
                 print(f"DEBUG: Razorpay Order Creation Error: {e}")
+                if RAZORPAY_KEY_ID.startswith('rzp_live'):
+                    return Response({
+                        'success': False,
+                        'error': {'message': f'Razorpay Error: {str(e)}'}
+                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
                 order_id = f'order_test_{enrollment.id}'
                 print(f"DEBUG: Falling back to Mock Order ID: {order_id}")
         else:
+            if RAZORPAY_KEY_ID.startswith('rzp_live'):
+                return Response({
+                    'success': False,
+                    'error': {'message': 'Razorpay client not initialized for live mode.'}
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             # Fallback for testing without Razorpay credentials
             order_id = f'order_test_{enrollment.id}'
             print(f"DEBUG: No Razorpay client, using Mock Order ID: {order_id}")
@@ -215,6 +225,7 @@ def verify_razorpay_payment(request):
             
             if generated_signature != razorpay_signature:
                 # Mark payment as FAILED
+                print(f"DEBUG: Signature mismatch for order {razorpay_order_id}. Expected: {generated_signature}, Received: {razorpay_signature}")
                 if payment_id:
                     try:
                         payment = Payment.objects.get(id=payment_id)
