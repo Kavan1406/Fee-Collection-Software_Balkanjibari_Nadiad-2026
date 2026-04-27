@@ -596,12 +596,12 @@ def reconciliation_report(request):
             }
         }
     """
-    # RBAC: Only admin/staff can view reports
+    # RBAC: Allow admin, staff, and accountants
     user_role = request.user.role if hasattr(request.user, 'role') else None
-    if user_role not in ['ADMIN', 'STAFF']:
+    if user_role not in ['ADMIN', 'STAFF', 'ACCOUNTANT']:
         return Response({
             'success': False,
-            'error': 'Permission denied. Admin/Staff access required.'
+            'error': 'Permission denied. Admin/Staff/Accountant access required.'
         }, status=status.HTTP_403_FORBIDDEN)
 
     try:
@@ -615,22 +615,32 @@ def reconciliation_report(request):
         end_date = datetime.now().date()
         start_date = end_date - timedelta(days=30)
 
-        if start_date_str:
+        if start_date_str and start_date_str.strip():
             try:
-                start_date = datetime.fromisoformat(start_date_str).date()
-            except ValueError:
+                # Handle YYYY-MM-DD or DD-MM-YYYY if needed, but ISO is preferred
+                if '-' in start_date_str and start_date_str.split('-')[0].isdigit() and len(start_date_str.split('-')[0]) == 4:
+                    start_date = datetime.fromisoformat(start_date_str).date()
+                else:
+                    # Fallback for common formats if not ISO
+                    from dateutil import parser
+                    start_date = parser.parse(start_date_str).date()
+            except Exception:
                 return Response({
                     'success': False,
-                    'error': 'Invalid start_date format. Use ISO format (YYYY-MM-DD).'
+                    'error': f'Invalid start_date format: {start_date_str}. Use YYYY-MM-DD.'
                 }, status=status.HTTP_400_BAD_REQUEST)
 
-        if end_date_str:
+        if end_date_str and end_date_str.strip():
             try:
-                end_date = datetime.fromisoformat(end_date_str).date()
-            except ValueError:
+                if '-' in end_date_str and end_date_str.split('-')[0].isdigit() and len(end_date_str.split('-')[0]) == 4:
+                    end_date = datetime.fromisoformat(end_date_str).date()
+                else:
+                    from dateutil import parser
+                    end_date = parser.parse(end_date_str).date()
+            except Exception:
                 return Response({
                     'success': False,
-                    'error': 'Invalid end_date format. Use ISO format (YYYY-MM-DD).'
+                    'error': f'Invalid end_date format: {end_date_str}. Use YYYY-MM-DD.'
                 }, status=status.HTTP_400_BAD_REQUEST)
 
         if start_date > end_date:
@@ -646,8 +656,22 @@ def reconciliation_report(request):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         # Fetch recent payments from Razorpay
-        razorpay_payments = razorpay_client.payment.all({'skip': 0, 'count': 500})
-        razorpay_items = razorpay_payments.get('items', [])
+        try:
+            razorpay_payments = razorpay_client.payment.all({'skip': 0, 'count': 500})
+            if isinstance(razorpay_payments, dict):
+                razorpay_items = razorpay_payments.get('items', [])
+            elif isinstance(razorpay_payments, list):
+                razorpay_items = razorpay_payments
+            else:
+                # Fallback for unexpected types
+                razorpay_items = getattr(razorpay_payments, 'items', []) if hasattr(razorpay_payments, 'items') else []
+        except Exception as rzp_err:
+            import logging
+            logging.getLogger(__name__).error(f"Razorpay API Error: {rzp_err}")
+            return Response({
+                'success': False,
+                'error': f'Razorpay API Error: {str(rzp_err)}'
+            }, status=status.HTTP_502_BAD_GATEWAY)
 
         # Filter to date range and successful payments
         razorpay_by_order_id = {}
@@ -685,6 +709,11 @@ def reconciliation_report(request):
 
         for payment in local_payments:
             order_id = payment.razorpay_order_id
+            
+            # Skip payments without order IDs (offline/cash) in reconciliation
+            if not order_id:
+                continue
+                
             amount = float(payment.amount)
             total_local_amount += amount
 

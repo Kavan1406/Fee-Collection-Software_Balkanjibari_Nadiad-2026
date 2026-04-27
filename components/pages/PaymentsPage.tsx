@@ -298,10 +298,11 @@ export default function PaymentsPage({ userRole, canEdit }: PaymentsPageProps) {
 
       setReconResult(response.data)
     } catch (err: any) {
-      setError(err.message || 'Failed to generate reconciliation report')
+      const serverError = err.response?.data?.error?.message || err.response?.data?.error || err.message
+      setError(serverError || 'Failed to generate reconciliation report')
       setReconResult({
         success: false,
-        error: err.message
+        error: serverError
       })
     } finally {
       setReconLoading(false)
