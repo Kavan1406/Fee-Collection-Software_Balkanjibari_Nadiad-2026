@@ -177,19 +177,6 @@ export default function RegisterPage() {
   useEffect(() => {
     setIsMounted(true)
 
-    // Attempt to load from cache
-    if (typeof window !== 'undefined') {
-      const cached = sessionStorage.getItem('balkanji_subjects_cache')
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached)
-          if (Array.isArray(parsed)) setSubjects(parsed)
-        } catch (e) {
-          console.error('[Cache] Load failed:', e)
-        }
-      }
-    }
-
     const t = new Date()
     setTodayDisplay(`${String(t.getDate()).padStart(2, '0')}-${String(t.getMonth() + 1).padStart(2, '0')}-${t.getFullYear()}`)
 
@@ -270,10 +257,7 @@ export default function RegisterPage() {
 
       setSubjects(sortedList)
 
-      // Update cache permanently for this session
-      if (sortedList.length > 0) {
-        sessionStorage.setItem('balkanji_subjects_cache', JSON.stringify(sortedList))
-      }
+      setSubjects(sortedList)
     } catch (error) {
       console.error('Error fetching subjects:', error)
       // Auto-retry once after 3 seconds (Cold start protection)
