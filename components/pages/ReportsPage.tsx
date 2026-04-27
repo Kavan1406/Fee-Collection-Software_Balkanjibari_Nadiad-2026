@@ -85,21 +85,27 @@ export default function ReportsPage({ userRole }: ReportsPageProps) {
   const [bulkIdBatch, setBulkIdBatch] = useState<string>('ALL')
   const [bulkIdPaymentMode, setBulkIdPaymentMode] = useState<'ONLINE' | 'OFFLINE' | ''>('')
   const [bulkIdBatches, setBulkIdBatches] = useState<string[]>([])
+  const [isBulkIdBatchesLoading, setIsBulkIdBatchesLoading] = useState(false)
 
   const handleBulkIdSubjectChange = async (subjectId: string) => {
     setBulkIdSubject(subjectId)
     setBulkIdBatch('ALL')
     if (!subjectId) { setBulkIdBatches([]); return }
     try {
+      setIsBulkIdBatchesLoading(true)
       const response = await subjectsApi.getBatches(Number(subjectId))
-      const data = (response as any)?.data || response
-      const batches = Array.isArray(data) ? data : Array.isArray(data?.results) ? data.results : []
+      // @ts-ignore
+      const resData = response.data || response
+      const finalData = Array.isArray(resData) ? resData : (resData?.data || resData?.results || [])
+      
       setBulkIdBatches(
-        batches.map((batch: any) => batch?.batch_time || batch?.name || String(batch || '')).filter(Boolean)
+        finalData.map((batch: any) => batch?.batch_time || batch?.name || String(batch || '')).filter(Boolean)
       )
     } catch (error) {
       console.error('Failed to load batches for Bulk ID:', error)
       setBulkIdBatches([])
+    } finally {
+      setIsBulkIdBatchesLoading(false)
     }
   }
 
@@ -149,10 +155,12 @@ export default function ReportsPage({ userRole }: ReportsPageProps) {
     if (!subjectId) { setSubjectBatches([]); return }
     try {
       const response = await subjectsApi.getBatches(Number(subjectId))
-      const data = (response as any)?.data || response
-      const batches = Array.isArray(data) ? data : Array.isArray(data?.results) ? data.results : []
+      // @ts-ignore
+      const resData = response.data || response
+      const finalData = Array.isArray(resData) ? resData : (resData?.data || resData?.results || [])
+      
       setSubjectBatches(
-        batches.map((batch: any) => batch?.batch_time || batch?.name || String(batch || '')).filter(Boolean)
+        finalData.map((batch: any) => batch?.batch_time || batch?.name || String(batch || '')).filter(Boolean)
       )
     } catch (error) {
       console.error('Failed to load batches:', error)
@@ -174,10 +182,12 @@ export default function ReportsPage({ userRole }: ReportsPageProps) {
     if (!subjectId) { setR5SubjectBatches([]); return }
     try {
       const response = await subjectsApi.getBatches(Number(subjectId))
-      const data = (response as any)?.data || response
-      const batches = Array.isArray(data) ? data : Array.isArray(data?.results) ? data.results : []
+      // @ts-ignore
+      const resData = response.data || response
+      const finalData = Array.isArray(resData) ? resData : (resData?.data || resData?.results || [])
+      
       setR5SubjectBatches(
-        batches.map((batch: any) => batch?.batch_time || batch?.name || String(batch || '')).filter(Boolean)
+        finalData.map((batch: any) => batch?.batch_time || batch?.name || String(batch || '')).filter(Boolean)
       )
     } catch (error) {
       console.error('Failed to load batches for R5:', error)
@@ -1439,12 +1449,12 @@ export default function ReportsPage({ userRole }: ReportsPageProps) {
           </div>
           <div>
             <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1.5">2. Select Batch (Optional)</label>
-            <select
+             <select
               value={bulkIdBatch}
               onChange={(e) => setBulkIdBatch(e.target.value)}
               className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 px-4 py-3.5 text-sm font-bold text-slate-900 focus:border-slate-900 focus:bg-white transition-all outline-none"
             >
-              <option value="ALL">All Batches</option>
+              <option value="ALL">{isBulkIdBatchesLoading ? '⌛ Loading Batches...' : 'All Batches'}</option>
               {bulkIdBatches.map((batch) => (
                 <option key={batch} value={batch}>{batch}</option>
               ))}
