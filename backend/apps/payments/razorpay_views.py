@@ -696,10 +696,13 @@ def reconciliation_report(request):
                         }
                         total_razorpay_amount += amount
 
-        # Get local payments in date range
+        # Get local payments in date range (excluding deleted/inactive students)
         local_payments = Payment.objects.filter(
             created_at__date__gte=start_date,
-            created_at__date__lte=end_date
+            created_at__date__lte=end_date,
+            is_deleted=False,
+            enrollment__student__is_deleted=False,
+            enrollment__student__status='ACTIVE'
         ).select_related('enrollment__student')
 
         local_by_order_id = {}

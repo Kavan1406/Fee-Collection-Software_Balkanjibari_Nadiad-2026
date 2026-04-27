@@ -422,14 +422,20 @@ class PaymentViewSet(viewsets.ModelViewSet):
             # (Note: Frontend usually calls analytics/student-stats instead)
             pass
 
-        # Admin collection stats
-        total_paid = Payment.objects.filter(status='SUCCESS', is_deleted=False).aggregate(Sum('amount'))['amount__sum'] or 0
+        # Admin collection stats (excluding deleted/inactive students)
+        total_paid = Payment.objects.filter(
+            status='SUCCESS', 
+            is_deleted=False,
+            enrollment__student__is_deleted=False,
+            enrollment__student__status='ACTIVE'
+        ).aggregate(Sum('amount'))['amount__sum'] or 0
         
-        # Total pending from all active enrollments (excluding deleted students)
+        # Total pending from all active enrollments (excluding deleted/inactive students)
         total_pending = Enrollment.objects.filter(
             is_deleted=False, 
             status='ACTIVE',
-            student__is_deleted=False
+            student__is_deleted=False,
+            student__status='ACTIVE'
         ).aggregate(Sum('pending_amount'))['pending_amount__sum'] or 0
         
         return Response({
@@ -463,7 +469,8 @@ class PaymentViewSet(viewsets.ModelViewSet):
             is_deleted=False,
             status='ACTIVE',
             pending_amount__gt=0,
-            student__is_deleted=False
+            student__is_deleted=False,
+            student__status='ACTIVE'
         ).select_related('student', 'subject').order_by('student__name')
 
         data = [
@@ -495,7 +502,8 @@ class PaymentViewSet(viewsets.ModelViewSet):
             is_deleted=False, 
             status='ACTIVE',
             pending_amount__gt=0,
-            student__is_deleted=False
+            student__is_deleted=False,
+            student__status='ACTIVE'
         ).select_related('student', 'subject').order_by('student__name')
         
         response = HttpResponse(content_type='text/csv')
@@ -530,7 +538,11 @@ class PaymentViewSet(viewsets.ModelViewSet):
         """
         Export a full transaction audit log as CSV.
         """
-        payments = Payment.objects.filter(is_deleted=False).select_related(
+        payments = Payment.objects.filter(
+            is_deleted=False,
+            enrollment__student__is_deleted=False,
+            enrollment__student__status='ACTIVE'
+        ).select_related(
             'enrollment__student', 
             'recorded_by'
         ).order_by('-payment_date', '-created_at')
@@ -573,7 +585,8 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 is_deleted=False, 
                 status='ACTIVE',
                 pending_amount__gt=0,
-                student__is_deleted=False
+                student__is_deleted=False,
+                student__status='ACTIVE'
             ).select_related('student', 'subject').order_by('student__name')
             
             headers = ['Student Name', 'ID', 'Subject', 'Total', 'Paid', 'Pending']
@@ -600,7 +613,11 @@ class PaymentViewSet(viewsets.ModelViewSet):
     def export_transaction_audit_pdf(self, request):
         """Export a PDF transaction audit log."""
         try:
-            payments = Payment.objects.filter(is_deleted=False).select_related(
+            payments = Payment.objects.filter(
+                is_deleted=False,
+                enrollment__student__is_deleted=False,
+                enrollment__student__status='ACTIVE'
+            ).select_related(
                 'enrollment__student'
             ).order_by('-payment_date', '-created_at')[:100] # Limit to last 100 for PDF
             
@@ -631,7 +648,12 @@ def offline_requests(request):
     """Alias API: list offline cash requests for request-acceptance workflow."""
     status_filter = (request.query_params.get('status') or 'PENDING').upper()
 
-    queryset = Payment.objects.filter(is_deleted=False, payment_mode='CASH').select_related(
+    queryset = Payment.objects.filter(
+        is_deleted=False, 
+        payment_mode='CASH',
+        enrollment__student__is_deleted=False,
+        enrollment__student__status='ACTIVE'
+    ).select_related(
         'enrollment__student',
         'enrollment__subject',
     ).order_by('-created_at')

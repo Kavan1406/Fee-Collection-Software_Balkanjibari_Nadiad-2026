@@ -38,6 +38,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
         return Enrollment.objects.filter(
             is_deleted=False,
             student__is_deleted=False,
+            student__status='ACTIVE',
             subject__is_deleted=False,
             subject__is_active=True,
             subject__activity_type='SUMMER_CAMP',
@@ -48,6 +49,7 @@ class AnalyticsViewSet(viewsets.ViewSet):
             is_deleted=False,
             enrollment__is_deleted=False,
             enrollment__student__is_deleted=False,
+            enrollment__student__status='ACTIVE',
             enrollment__subject__is_deleted=False,
             enrollment__subject__is_active=True,
             enrollment__subject__activity_type='SUMMER_CAMP',

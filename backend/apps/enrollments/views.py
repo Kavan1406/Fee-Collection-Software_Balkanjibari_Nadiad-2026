@@ -49,6 +49,12 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
             else:
                 queryset = queryset.none()
         
+        # Only show enrollments of active, non-deleted students for reports/lists
+        queryset = queryset.filter(
+            student__is_deleted=False,
+            student__status='ACTIVE'
+        )
+
         student_id = self.request.query_params.get('student_id', None)
         if student_id:
             queryset = queryset.filter(student__id=student_id)
@@ -371,7 +377,9 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
             enrollments = Enrollment.objects.filter(
                 subject=subject,
                 is_deleted=False,
-                status='ACTIVE'
+                status='ACTIVE',
+                student__is_deleted=False,
+                student__status='ACTIVE'
             ).select_related('student', 'student__user').order_by('student__name')
             
             subject_total_students = enrollments.count()
@@ -420,7 +428,9 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
         
         enrollments = Enrollment.objects.filter(
             is_deleted=False,
-            status='ACTIVE'
+            status='ACTIVE',
+            student__is_deleted=False,
+            student__status='ACTIVE'
         ).select_related('student', 'subject', 'student__user').order_by('-created_at')
         
         report_data = []
@@ -459,7 +469,12 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
         batch_time = request.query_params.get('batch_time')
         payment_mode = request.query_params.get('payment_mode') # ONLINE or OFFLINE
         
-        enrollments = Enrollment.objects.filter(is_deleted=False, status='ACTIVE')
+        enrollments = Enrollment.objects.filter(
+            is_deleted=False, 
+            status='ACTIVE',
+            student__is_deleted=False,
+            student__status='ACTIVE'
+        )
         
         if subject_id:
             enrollments = enrollments.filter(subject_id=subject_id)
@@ -507,7 +522,8 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
         from apps.students.models import Student
         
         students = Student.objects.filter(
-            is_deleted=False
+            is_deleted=False,
+            status='ACTIVE'
         ).prefetch_related(
             'enrollments__subject',
             'enrollments__payments'
