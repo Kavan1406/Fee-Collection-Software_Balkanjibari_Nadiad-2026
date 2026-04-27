@@ -156,8 +156,7 @@ class SubjectViewSet(viewsets.ModelViewSet):
             
             # Get all batch configurations for this subject
             batch_configs = SubjectBatch.objects.filter(
-                subject=subject,
-                is_active=True
+                subject=subject
             ).order_by('batch_time')
             
             serializer = SubjectBatchSerializer(batch_configs, many=True)
