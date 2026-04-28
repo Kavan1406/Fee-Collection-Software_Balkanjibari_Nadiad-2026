@@ -153,17 +153,25 @@ class Student(models.Model):
     def save(self, *args, **kwargs):
         # Auto-generate student_id if not set
         if not self.student_id:
-            last_student = Student.objects.filter(
-                student_id__startswith='STU'
-            ).order_by('student_id').last()
-            
-            if last_student:
-                last_id = int(last_student.student_id[3:])
-                new_id = last_id + 1
-            else:
-                new_id = 1
-            
-            self.student_id = f'STU{new_id:03d}'
+            while True:
+                last_student = Student.objects.filter(
+                    student_id__startswith='STU'
+                ).order_by('student_id').last()
+                
+                if last_student:
+                    try:
+                        last_id = int(last_student.student_id[3:])
+                        new_id = last_id + 1
+                    except (ValueError, TypeError, IndexError):
+                        new_id = Student.objects.filter(student_id__startswith='STU').count() + 1
+                else:
+                    new_id = 1
+                
+                candidate_id = f'STU{new_id:03d}'
+                if not Student.objects.filter(student_id=candidate_id).exists():
+                    self.student_id = candidate_id
+                    break
+                # If exists, loop will continue and find the next one
         
         super().save(*args, **kwargs)
 

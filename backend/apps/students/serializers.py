@@ -360,40 +360,42 @@ class StudentCreateSerializer(serializers.ModelSerializer):
         default_password = f"STU{enrollment_number}{validated_data['phone'][-4:]}"
         
         User = get_user_model()
-        user = None
-        try:
-            # Isolate potential uniqueness races so the outer transaction
-            # remains usable for fallback lookup/linking.
-            with transaction.atomic():
-                user = User.objects.create_user(
-                    username=username,
-                    password=default_password,
-                    role='STUDENT',
-                    is_active=True
-                )
-            print(f"DEBUG: New user created and linked for {student.student_id}")
-        except IntegrityError as e:
-            print(f"DEBUG: User creation had integrity conflict, checking existing user: {str(e)}")
-            # If user already exists, try to get and link it.
+        user = User.objects.filter(username=username).first()
+        
+        if not user:
             try:
-                user = User.objects.get(username=username)
+                # Isolate creation in a savepoint to prevent poisoning the outer transaction
+                with transaction.atomic():
+                    user = User.objects.create_user(
+                        username=username,
+                        password=default_password,
+                        role='STUDENT',
+                        is_active=True
+                    )
+                print(f"DEBUG: New user created and linked for {student.student_id}")
+            except IntegrityError:
+                # Race condition: user was created by another request between filter and create
+                user = User.objects.filter(username=username).first()
+                if user:
+                    print(f"DEBUG: User {username} found via fallback after race condition")
+            except Exception as e:
+                print(f"DEBUG: Unexpected error during user creation: {str(e)}")
+                # We continue without a user link if it fails; student record still exists
+                user = None
+
+        if user:
+            try:
+                # Only update if necessary to avoid extra queries
+                needs_save = False
                 if user.role != 'STUDENT':
                     user.role = 'STUDENT'
+                    needs_save = True
+                
+                # We can safely update these on the user object before linking
+                if needs_save:
                     user.save(update_fields=['role'])
-                print(f"DEBUG: Existing user {username} found and prepared for linking")
-            except User.DoesNotExist:
-                print(f"DEBUG: Could not find user after integrity conflict for {student.student_id}")
-        except Exception as e:
-            print(f"DEBUG: User creation failed, checking for existing user: {str(e)}")
-            # If user already exists, try to get and link it
-            try:
-                user = User.objects.get(username=username)
-                if user.role != 'STUDENT':
-                    user.role = 'STUDENT'
-                    user.save()
-                print(f"DEBUG: Existing user {username} found and prepared for linking")
-            except User.DoesNotExist:
-                print(f"DEBUG: Could not find or create user for {student.student_id}")
+            except Exception as e:
+                print(f"DEBUG: Failed to update existing user role: {str(e)}")
 
         if user:
             student.user = user
@@ -406,84 +408,79 @@ class StudentCreateSerializer(serializers.ModelSerializer):
         print(f"DEBUG: Processing {len(enrollments_data)} enrollments")
         from decimal import Decimal
         for enr_data in enrollments_data:
-            try:
-                subject_id = enr_data.get('subject_id')
-                batch_time = enr_data.get('batch_time', '7-8 AM')
-                include_library_fee = enr_data.get('include_library_fee', False)
+            subject_id = enr_data.get('subject_id')
+            batch_time = enr_data.get('batch_time', '7-8 AM')
+            include_library_fee = enr_data.get('include_library_fee', False)
+            
+            print(f"DEBUG: Processing subject_id: {subject_id}, library_fee: {include_library_fee}")
+            if not subject_id:
+                print("DEBUG: Empty subject_id, skipping")
+                continue
                 
-                print(f"DEBUG: Processing subject_id: {subject_id}, library_fee: {include_library_fee}")
-                if not subject_id:
-                    print("DEBUG: Empty subject_id, skipping")
-                    continue
-                    
-                subject = Subject.objects.get(id=subject_id, is_deleted=False)
-                
-                # Get actual subject fee from current_fee or fee_structures
-                # Consistently use Decimal to avoid float-Decimal TypeError in models
-                subject_fee = Decimal('0.00')
-                if subject.current_fee and subject.current_fee.fee_amount:
-                    subject_fee = Decimal(str(subject.current_fee.fee_amount))
-                elif subject.monthly_fee:
-                    subject_fee = Decimal(str(subject.monthly_fee))
-                
-                library_fee = Decimal('10.00') if include_library_fee else Decimal('0.00')
-                total_fee = subject_fee + library_fee
-                
-                # NEW: Logic for "Office Cash Payment" workflow
-                # If staff is registering, and it's CASH, we set as PENDING_CONFIRMATION
-                # to allow the cashier to accept it later.
-                is_staff = request.user.role in ['ADMIN', 'STAFF', 'ACCOUNTANT'] if request and request.user.is_authenticated else False
-                
-                if payment_method == 'ONLINE':
-                    paid_amount = Decimal('0.00')
-                    payment_status = 'CREATED'
-                elif payment_method == 'CASH' and is_staff:
-                    # Staff registration via CASH: set to PENDING_CONFIRMATION
-                    # The cashier will confirm the money and mark it SUCCESS
-                    paid_amount = total_fee
-                    payment_status = 'PENDING_CONFIRMATION'
-                else:
-                    # Default: unpaid
-                    paid_amount = Decimal('0.00')
-                    payment_status = 'PENDING_CONFIRMATION'
+            subject = Subject.objects.get(id=subject_id, is_deleted=False)
+            
+            # Get actual subject fee from current_fee or fee_structures
+            # Consistently use Decimal to avoid float-Decimal TypeError in models
+            subject_fee = Decimal('0.00')
+            if subject.current_fee and subject.current_fee.fee_amount:
+                subject_fee = Decimal(str(subject.current_fee.fee_amount))
+            elif subject.monthly_fee:
+                subject_fee = Decimal(str(subject.monthly_fee))
+            
+            library_fee = Decimal('10.00') if include_library_fee else Decimal('0.00')
+            total_fee = subject_fee + library_fee
+            
+            # NEW: Logic for "Office Cash Payment" workflow
+            # If staff is registering, and it's CASH, we set as PENDING_CONFIRMATION
+            # to allow the cashier to accept it later.
+            is_staff = request.user.role in ['ADMIN', 'STAFF', 'ACCOUNTANT'] if request and request.user.is_authenticated else False
+            
+            if payment_method == 'ONLINE':
+                paid_amount = Decimal('0.00')
+                payment_status = 'CREATED'
+            elif payment_method == 'CASH' and is_staff:
+                # Staff registration via CASH: set to PENDING_CONFIRMATION
+                # The cashier will confirm the money and mark it SUCCESS
+                paid_amount = total_fee
+                payment_status = 'PENDING_CONFIRMATION'
+            else:
+                # Default: unpaid
+                paid_amount = Decimal('0.00')
+                payment_status = 'PENDING_CONFIRMATION'
 
-                pending_amount = total_fee - paid_amount
-                
-                # Record the payment automatically for registration
-                enr = Enrollment.objects.create(
-                    student=student,
-                    subject=subject,
-                    batch_time=batch_time,
-                    include_library_fee=include_library_fee,
-                    total_fee=total_fee,
-                    paid_amount=paid_amount,
-                    pending_amount=pending_amount,
-                    status='ACTIVE'
+            pending_amount = total_fee - paid_amount
+            
+            # Record the payment automatically for registration
+            enr = Enrollment.objects.create(
+                student=student,
+                subject=subject,
+                batch_time=batch_time,
+                include_library_fee=include_library_fee,
+                total_fee=total_fee,
+                paid_amount=paid_amount,
+                pending_amount=pending_amount,
+                status='ACTIVE'
+            )
+            print(f"DEBUG: Enrollment created: {enr.enrollment_id}")
+            
+            # Only create Payment record if not ONLINE
+            # (Online payments will be initiated by the student later)
+            if payment_method != 'ONLINE':
+                from apps.payments.models import Payment
+                Payment.objects.create(
+                    enrollment=enr,
+                    amount=total_fee,
+                    payment_date=student.enrollment_date,
+                    payment_mode=payment_method,
+                    status=payment_status,
+                    recorded_by=request.user if request and request.user.is_authenticated else None,
+                    notes=f'Automatic registration fee payment ({payment_method})'
                 )
-                print(f"DEBUG: Enrollment created: {enr.enrollment_id}")
-                
-                # Only create Payment record if not ONLINE
-                # (Online payments will be initiated by the student later)
-                if payment_method != 'ONLINE':
-                    from apps.payments.models import Payment
-                    Payment.objects.create(
-                        enrollment=enr,
-                        amount=total_fee,
-                        payment_date=student.enrollment_date,
-                        payment_mode=payment_method,
-                        status=payment_status,
-                        recorded_by=request.user if request and request.user.is_authenticated else None,
-                        notes=f'Automatic registration fee payment ({payment_method})'
-                    )
-                    print(f"DEBUG: Payment record created for {enr.enrollment_id} with mode {payment_method}")
-                else:
-                    print(f"DEBUG: Skipping Payment record for ONLINE enrollment {enr.enrollment_id}")
-            except Exception as e:
-                print(f"DEBUG: Failed to process enrollment for subject {subject_id}: {str(e)}")
-                # Continue with other subjects if one fails
+                print(f"DEBUG: Payment record created for {enr.enrollment_id} with mode {payment_method}")
+            else:
+                print(f"DEBUG: Skipping Payment record for ONLINE enrollment {enr.enrollment_id}")
         
-        # Refresh and return to ensure all relationships are updated for serialization
-        student.refresh_from_db()
+        # Return the created student object
 
         # Email credentials and pending-fees status for office offline registrations.
         if payment_method == 'CASH':

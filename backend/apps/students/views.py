@@ -309,7 +309,6 @@ class StudentViewSet(viewsets.ModelViewSet):
         }, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'], url_path='register-offline')
-    @transaction.atomic
     def register_offline(self, request):
         """Alias endpoint for admin/staff offline student registration."""
         if request.user.role not in ['ADMIN', 'STAFF', 'ACCOUNTANT']:
@@ -319,59 +318,83 @@ class StudentViewSet(viewsets.ModelViewSet):
             }, status=status.HTTP_403_FORBIDDEN)
 
         try:
-            payload = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
-            payload['payment_method'] = 'CASH'
+            with transaction.atomic():
+                payload = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+                payload['payment_method'] = 'CASH'
 
-            serializer = StudentCreateSerializer(data=payload, context={'request': request})
-            if not serializer.is_valid():
-                return Response({'success': False, 'error': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+                serializer = StudentCreateSerializer(data=payload, context={'request': request})
+                if not serializer.is_valid():
+                    return Response({'success': False, 'error': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
-            student = serializer.save()
+                student = serializer.save()
 
-            from apps.payments.models import Payment
-            pending_requests = Payment.objects.filter(
-                enrollment__student=student,
-                payment_mode='CASH',
-                status__in=['PENDING_CONFIRMATION', 'CREATED'],
-                is_deleted=False,
-            ).select_related('enrollment__subject')
+                from apps.payments.models import Payment
+                pending_requests = Payment.objects.filter(
+                    enrollment__student=student,
+                    payment_mode='CASH',
+                    status__in=['PENDING_CONFIRMATION', 'CREATED'],
+                    is_deleted=False,
+                ).select_related('enrollment__subject')
 
-            request_rows = [
-                {
-                    'request_id': pay.id,
-                    'student_id': student.student_id,
-                    'student_name': student.name,
-                    'subject': pay.enrollment.subject.name if pay.enrollment.subject else 'N/A',
-                    'total_fees': float(pay.amount),
-                    'status': 'PENDING',
-                    'created_at': pay.created_at,
-                }
-                for pay in pending_requests
-            ]
+                request_rows = [
+                    {
+                        'request_id': pay.id,
+                        'student_id': student.student_id,
+                        'student_name': student.name,
+                        'subject': pay.enrollment.subject.name if pay.enrollment.subject else 'N/A',
+                        'total_fees': float(pay.amount),
+                        'status': 'PENDING',
+                        'created_at': pay.created_at,
+                    }
+                    for pay in pending_requests
+                ]
 
+                return Response({
+                    'success': True,
+                    'message': 'Student Registered Successfully',
+                    'data': {
+                        **StudentSerializer(student).data,
+                        'username': student.login_username,
+                        'password': student.login_password_hint,
+                        'payment_status': 'PENDING',
+                        'payment_mode': 'CASH',
+                        'request_entries': request_rows,
+                    }
+                }, status=status.HTTP_201_CREATED)
+        except IntegrityError as e:
+            # Handle common database conflicts (like duplicate enrollment for same student-subject)
+            error_msg = str(e)
+            user_msg = "A database conflict occurred. This usually means the student is already enrolled in one of the selected subjects."
+            if "enrollments_student_id_subject_id" in error_msg:
+                 user_msg = "This student is already enrolled in one of the selected subjects."
+            
             return Response({
-                'success': True,
-                'message': 'Student Registered Successfully',
-                'data': {
-                    **StudentSerializer(student).data,
-                    'username': student.login_username,
-                    'password': student.login_password_hint,
-                    'payment_status': 'PENDING',
-                    'payment_mode': 'CASH',
-                    'request_entries': request_rows,
+                'success': False,
+                'error': {
+                    'message': user_msg,
+                    'details': error_msg
                 }
-            }, status=status.HTTP_201_CREATED)
+            }, status=status.HTTP_400_BAD_REQUEST)
+        except serializers.ValidationError as e:
+            return Response({
+                'success': False,
+                'error': {
+                    'message': 'Validation Failed',
+                    'details': e.detail
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             import traceback
             from django.conf import settings
             error_trace = traceback.format_exc()
             print(f"\n!!! OFFLINE REGISTRATION CRASH: {str(e)}")
             print(f"!!! TRACEBACK: {error_trace}")
+            
             return Response({
                 'success': False,
                 'error': {
-                    'message': f"Internal Server Error: {str(e)}",
-                    'details': error_trace if settings.DEBUG else "Check backend logs for details."
+                    'message': f"Registration Failed: {str(e)}",
+                    'details': error_trace if settings.DEBUG else "Please check if all required fields are filled correctly."
                 }
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
