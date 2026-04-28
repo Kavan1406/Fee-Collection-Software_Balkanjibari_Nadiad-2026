@@ -780,10 +780,10 @@ class AnalyticsViewSet(viewsets.ViewSet):
             total_students = student_stats['total_active']
             new_students_this_period = student_stats['new_this_period']
 
-            # Total Pending Fees (current snapshot)
             total_pending = self._report_enrollment_queryset().filter(
                 is_deleted=False, 
-                status='ACTIVE'
+                status='ACTIVE',
+                pending_amount__gt=0
             ).aggregate(total=Sum('pending_amount'))['total'] or 0
 
             if prev_period_revenue > 0:

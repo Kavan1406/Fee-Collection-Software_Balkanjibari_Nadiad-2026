@@ -63,7 +63,19 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
         activity_type = self.request.query_params.get('activity_type', None)
         if activity_type in ['SUMMER_CAMP', 'YEAR_ROUND']:
             queryset = queryset.filter(subject__activity_type=activity_type)
-        
+
+        # Filter by search term
+        search = self.request.query_params.get('search', None)
+        if search:
+            from django.db.models import Q
+            queryset = queryset.filter(
+                Q(student__name__icontains=search) |
+                Q(student__student_id__icontains=search) |
+                Q(enrollment_id__icontains=search) |
+                Q(subject__name__icontains=search) |
+                Q(batch_time__icontains=search)
+            )
+
         return queryset
     
     @transaction.atomic
@@ -193,7 +205,7 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
         if enrollment.pending_amount <= 0:
             return Response({
                 'success': False,
-                'error': {'message': 'No pending amount to clear.'}
+                'error': {'message': f'Enrollment {enrollment.enrollment_id} is already fully paid. No pending dues to clear.'}
             }, status=status.HTTP_400_BAD_REQUEST)
 
         payment_mode = (request.data.get('payment_mode') or 'CASH').upper()

@@ -49,18 +49,21 @@ export interface Enrollment {
         id: number;
         student_id: string;
         name: string;
+        phone?: string;
     };
     subject: {
         id: number;
         name: string;
     };
     enrollment_date: string;
+    created_at?: string;
     status: 'ACTIVE' | 'COMPLETED' | 'DROPPED';
+    batch_time?: string;
     total_fee: string;
     paid_amount: string;
     pending_amount: string;
     payment_status: string;
-    created_at: string;
+    payment_mode?: string;
 }
 
 export interface CreateEnrollmentData {
@@ -256,6 +259,17 @@ export const enrollmentsApi = {
     delete: async (id: number): Promise<ApiResponse<any>> => {
         const response = await apiClient.delete<ApiResponse<any>>(
             `/api/v1/enrollments/${id}/`
+        );
+        return response.data;
+    },
+
+    /**
+     * Update enrollment (PATCH)
+     */
+    update: async (id: number, data: any): Promise<ApiResponse<Enrollment>> => {
+        const response = await apiClient.patch<ApiResponse<Enrollment>>(
+            `/api/v1/enrollments/${id}/`,
+            data
         );
         return response.data;
     },

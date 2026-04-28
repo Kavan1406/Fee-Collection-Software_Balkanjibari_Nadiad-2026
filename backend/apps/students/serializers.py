@@ -239,10 +239,10 @@ class StudentSerializer(serializers.ModelSerializer):
 class StudentCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating students with optional initial enrollments."""
     
-    enrollments = serializers.CharField(
+    enrollments = serializers.JSONField(
         write_only=True,
         required=False,
-        help_text='JSON string list of objects with subject_id and batch_time'
+        help_text='List of objects or JSON string with subject_id and batch_time'
     )
     
     payment_method = serializers.ChoiceField(
@@ -404,6 +404,7 @@ class StudentCreateSerializer(serializers.ModelSerializer):
             
         # Create Enrollments with fee logic based on include_library_fee flag
         print(f"DEBUG: Processing {len(enrollments_data)} enrollments")
+        from decimal import Decimal
         for enr_data in enrollments_data:
             try:
                 subject_id = enr_data.get('subject_id')
@@ -418,15 +419,14 @@ class StudentCreateSerializer(serializers.ModelSerializer):
                 subject = Subject.objects.get(id=subject_id, is_deleted=False)
                 
                 # Get actual subject fee from current_fee or fee_structures
-                subject_fee = 0.00
+                # Consistently use Decimal to avoid float-Decimal TypeError in models
+                subject_fee = Decimal('0.00')
                 if subject.current_fee and subject.current_fee.fee_amount:
-                    subject_fee = float(subject.current_fee.fee_amount)
+                    subject_fee = Decimal(str(subject.current_fee.fee_amount))
                 elif subject.monthly_fee:
-                    subject_fee = float(subject.monthly_fee)
-                else:
-                    subject_fee = 0.00
+                    subject_fee = Decimal(str(subject.monthly_fee))
                 
-                library_fee = 10.00 if include_library_fee else 0.00
+                library_fee = Decimal('10.00') if include_library_fee else Decimal('0.00')
                 total_fee = subject_fee + library_fee
                 
                 # NEW: Logic for "Office Cash Payment" workflow
@@ -435,20 +435,20 @@ class StudentCreateSerializer(serializers.ModelSerializer):
                 is_staff = request.user.role in ['ADMIN', 'STAFF', 'ACCOUNTANT'] if request and request.user.is_authenticated else False
                 
                 if payment_method == 'ONLINE':
-                    paid_amount = 0.00
-                    pending_amount = total_fee
+                    paid_amount = Decimal('0.00')
                     payment_status = 'CREATED'
-                elif is_staff and payment_method == 'CASH':
-                    # This is the new "Counter Cash" registration
-                    paid_amount = 0.00
-                    pending_amount = total_fee
+                elif payment_method == 'CASH' and is_staff:
+                    # Staff registration via CASH: set to PENDING_CONFIRMATION
+                    # The cashier will confirm the money and mark it SUCCESS
+                    paid_amount = total_fee
                     payment_status = 'PENDING_CONFIRMATION'
                 else:
-                    # Legacy behavior for other types/roles (Direct success)
-                    paid_amount = total_fee
-                    pending_amount = 0.00
-                    payment_status = 'SUCCESS'
-                    
+                    # Default: unpaid
+                    paid_amount = Decimal('0.00')
+                    payment_status = 'PENDING_CONFIRMATION'
+
+                pending_amount = total_fee - paid_amount
+                
                 # Record the payment automatically for registration
                 enr = Enrollment.objects.create(
                     student=student,

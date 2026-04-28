@@ -67,6 +67,11 @@ class PaymentCreateSerializer(serializers.Serializer):
         """Validate that payment doesn't exceed pending amount."""
         enrollment = Enrollment.objects.get(id=data['enrollment_id'])
         
+        if enrollment.pending_amount <= 0:
+            raise serializers.ValidationError({
+                'amount': 'This enrollment is already fully paid. No further payments can be recorded.'
+            })
+            
         if data['amount'] > enrollment.pending_amount:
             raise serializers.ValidationError({
                 'amount': f'Payment amount (₹{data["amount"]}) exceeds pending amount (₹{enrollment.pending_amount}).'

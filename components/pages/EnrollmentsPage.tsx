@@ -12,6 +12,7 @@ interface Enrollment {
     id: number
     student_id: string
     name: string
+    phone?: string
   }
   subject: {
     id: number
@@ -20,6 +21,7 @@ interface Enrollment {
   enrollment_date: string
   created_at?: string
   status: 'ACTIVE' | 'COMPLETED' | 'DROPPED'
+  batch_time?: string
   total_fee: string
   paid_amount: string
   pending_amount: string
@@ -97,7 +99,9 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
       const enrollmentParams = {
         ...(activityType !== 'ALL' && { activity_type: activityType }),
         page: currentPage,
-        page_size: 25  // Page size for pagination display
+        page_size: 25,  // Page size for pagination display
+        search: searchTerm.trim() || undefined,
+        subject_id: selectedSubject !== 0 ? selectedSubject : undefined
       }
       const subjectParams = activityType === 'ALL' ? {} : { activity_type: activityType }
 
@@ -141,16 +145,20 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
   }, [activityType])
 
   useEffect(() => {
-    // Fetch paginated data for normal browsing
-    fetchData()
-  }, [activityType, currentPage])
+    // Reset to page 1 when search or subject changes
+    setCurrentPage(1)
+  }, [searchTerm, selectedSubject])
 
-  // Filter enrollments by subject and search term (using ALL enrollments for search)
   useEffect(() => {
-    // ALWAYS use allEnrollments for search when available, for complete search across all 648 records
-    let filtered = allEnrollments && allEnrollments.length > 0 ? allEnrollments : enrollments;
+    // Fetch paginated data for normal browsing and search
+    fetchData()
+  }, [activityType, currentPage, searchTerm, selectedSubject])
+
+  // Filter enrollments by payment mode only (other filters handled by backend)
+  useEffect(() => {
+    let filtered = enrollments;
     
-    // Filter by payment mode
+    // Filter by payment mode (still client-side for now, or could move to backend)
     if (paymentModeFilter !== 'ALL') {
       filtered = filtered.filter(enrollment => {
         const pMode = enrollment.payment_mode || 'NOT RECORDED'
@@ -158,26 +166,8 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
       })
     }
     
-    // Filter by subject
-    if (selectedSubject !== 0) {
-      filtered = filtered.filter(enrollment => enrollment.subject.id === selectedSubject)
-    }
-    
-    // Filter by search term (student name, student ID, enrollment ID, subject name)
-    if (searchTerm.trim()) {
-      const search = searchTerm.toLowerCase().trim()
-      filtered = filtered.filter(enrollment => 
-        enrollment.student?.name?.toLowerCase().includes(search) ||
-        enrollment.student?.student_id?.toLowerCase().includes(search) ||
-        enrollment.student?.phone?.toLowerCase().includes(search) ||
-        enrollment.enrollment_id?.toLowerCase().includes(search) ||
-        enrollment.subject?.name?.toLowerCase().includes(search) ||
-        enrollment.batch_time?.toLowerCase().includes(search)
-      )
-    }
-    
     setFilteredEnrollments(filtered)
-  }, [selectedSubject, allEnrollments, enrollments, searchTerm, paymentModeFilter])
+  }, [enrollments, paymentModeFilter])
 
   // Sync with Payments page: Auto-refresh when a payment is marked as paid
   useEffect(() => {
@@ -283,7 +273,7 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
               )}
             </div>
             <p className="text-[9px] text-slate-400 mt-1 font-inter uppercase tracking-tighter">
-              {searchTerm ? `${filteredEnrollments.length} matching of ${allEnrollments.length || enrollments.length} total` : `Searching across all ${allEnrollments.length || enrollments.length} records`}
+              {searchTerm ? `${totalCount} matching results found` : `Searching across all ${totalCount} records`}
             </p>
           </div>
 
@@ -355,7 +345,7 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
         {searchTerm && !loading && (
           <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl">
             <p className="text-xs font-semibold text-purple-900 uppercase tracking-widest">
-              🔍 Search Results: {filteredEnrollments.length} of {allEnrollments.length} total enrollments match "{searchTerm}"
+              🔍 Search Results: {totalCount} total enrollments match "{searchTerm}"
             </p>
           </div>
         )}
@@ -435,11 +425,12 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
                               <button
                                 onClick={async () => {
                                   try {
-                                    await enrollmentsApi.update(enrollment.id, { payment_status: 'PAID' })
+                                    if (!confirm(`Are you sure you want to mark this enrollment as paid for ${enrollment.student?.name}?`)) return
+                                    await enrollmentsApi.clearPending(enrollment.id, 'CASH')
                                     toast.success(`Payment marked as paid for ${enrollment.student?.name}`)
                                     fetchData()
                                   } catch (err: any) {
-                                    toast.error(err?.response?.data?.error || 'Failed to mark as paid')
+                                    toast.error(err?.response?.data?.error?.message || err?.message || 'Failed to mark as paid')
                                   }
                                 }}
                                 className="px-3 py-1.5 text-xs font-bold bg-green-500 hover:bg-green-600 text-white rounded-lg transition-all active:scale-95"
@@ -539,11 +530,12 @@ export default function EnrollmentsPage({ userRole, canEdit }: EnrollmentsPagePr
                       <button
                         onClick={async () => {
                           try {
-                            await enrollmentsApi.update(enrollment.id, { payment_status: 'PAID' })
+                            if (!confirm(`Are you sure you want to mark this enrollment as paid for ${enrollment.student?.name}?`)) return
+                            await enrollmentsApi.clearPending(enrollment.id, 'CASH')
                             toast.success(`Payment marked as paid for ${enrollment.student?.name}`)
                             fetchData()
                           } catch (err: any) {
-                            toast.error(err?.response?.data?.error || 'Failed to mark as paid')
+                            toast.error(err?.response?.data?.error?.message || err?.message || 'Failed to mark as paid')
                           }
                         }}
                         className="w-full h-12 rounded-xl text-[11px] bg-green-500 hover:bg-green-600 text-white font-bold uppercase tracking-widest shadow-xl flex items-center justify-center gap-2 active:scale-95 transition-all"

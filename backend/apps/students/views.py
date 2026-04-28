@@ -318,48 +318,62 @@ class StudentViewSet(viewsets.ModelViewSet):
                 'error': {'message': 'Only staff/admin/accountant can register offline students.'}
             }, status=status.HTTP_403_FORBIDDEN)
 
-        payload = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
-        payload['payment_method'] = 'CASH'
+        try:
+            payload = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+            payload['payment_method'] = 'CASH'
 
-        serializer = StudentCreateSerializer(data=payload, context={'request': request})
-        if not serializer.is_valid():
-            return Response({'success': False, 'error': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+            serializer = StudentCreateSerializer(data=payload, context={'request': request})
+            if not serializer.is_valid():
+                return Response({'success': False, 'error': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
-        student = serializer.save()
+            student = serializer.save()
 
-        from apps.payments.models import Payment
-        pending_requests = Payment.objects.filter(
-            enrollment__student=student,
-            payment_mode='CASH',
-            status__in=['PENDING_CONFIRMATION', 'CREATED'],
-            is_deleted=False,
-        ).select_related('enrollment__subject')
+            from apps.payments.models import Payment
+            pending_requests = Payment.objects.filter(
+                enrollment__student=student,
+                payment_mode='CASH',
+                status__in=['PENDING_CONFIRMATION', 'CREATED'],
+                is_deleted=False,
+            ).select_related('enrollment__subject')
 
-        request_rows = [
-            {
-                'request_id': pay.id,
-                'student_id': student.student_id,
-                'student_name': student.name,
-                'subject': pay.enrollment.subject.name if pay.enrollment.subject else 'N/A',
-                'total_fees': float(pay.amount),
-                'status': 'PENDING',
-                'created_at': pay.created_at,
-            }
-            for pay in pending_requests
-        ]
+            request_rows = [
+                {
+                    'request_id': pay.id,
+                    'student_id': student.student_id,
+                    'student_name': student.name,
+                    'subject': pay.enrollment.subject.name if pay.enrollment.subject else 'N/A',
+                    'total_fees': float(pay.amount),
+                    'status': 'PENDING',
+                    'created_at': pay.created_at,
+                }
+                for pay in pending_requests
+            ]
 
-        return Response({
-            'success': True,
-            'message': 'Student Registered Successfully',
-            'data': {
-                **StudentSerializer(student).data,
-                'username': student.login_username,
-                'password': student.login_password_hint,
-                'payment_status': 'PENDING',
-                'payment_mode': 'CASH',
-                'request_entries': request_rows,
-            }
-        }, status=status.HTTP_201_CREATED)
+            return Response({
+                'success': True,
+                'message': 'Student Registered Successfully',
+                'data': {
+                    **StudentSerializer(student).data,
+                    'username': student.login_username,
+                    'password': student.login_password_hint,
+                    'payment_status': 'PENDING',
+                    'payment_mode': 'CASH',
+                    'request_entries': request_rows,
+                }
+            }, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            import traceback
+            from django.conf import settings
+            error_trace = traceback.format_exc()
+            print(f"\n!!! OFFLINE REGISTRATION CRASH: {str(e)}")
+            print(f"!!! TRACEBACK: {error_trace}")
+            return Response({
+                'success': False,
+                'error': {
+                    'message': f"Internal Server Error: {str(e)}",
+                    'details': error_trace if settings.DEBUG else "Check backend logs for details."
+                }
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=True, methods=['get'], url_path='download-consolidated-receipt')
     def download_consolidated_receipt(self, request, pk=None):
