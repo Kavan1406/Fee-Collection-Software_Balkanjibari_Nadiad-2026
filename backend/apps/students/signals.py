@@ -62,19 +62,19 @@ def generate_student_login_credentials(sender, instance, created, **kwargs):
     """
     if created and StudentCredentialManager and instance.email:
         try:
-            # Generate credentials
-            username, password, user_created = StudentCredentialManager.create_student_login(instance)
-            
+            from django.db import transaction as _tx
+            with _tx.atomic():
+                username, password, user_created = StudentCredentialManager.create_student_login(instance)
+
             if user_created:
                 logger.info(f"✓ Credentials generated for student {instance.student_id}")
-                
-                # Send registration email with credentials
+
                 email_sent = EmailNotificationService.send_registration_confirmation(
-                    instance, 
-                    username, 
+                    instance,
+                    username,
                     password
                 )
-                
+
                 if email_sent:
                     logger.info(f"✓ Registration email sent to {instance.email}")
                 else:
