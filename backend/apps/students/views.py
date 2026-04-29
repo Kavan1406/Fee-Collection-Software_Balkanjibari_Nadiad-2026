@@ -6,9 +6,10 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from django.db.models import Q, Sum, Count, Case, When, Value, IntegerField
 from django.contrib.auth import get_user_model
+from rest_framework import serializers, status, viewsets
 from decimal import Decimal
 import logging
 
@@ -385,18 +386,16 @@ class StudentViewSet(viewsets.ModelViewSet):
             }, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             import traceback
-            from django.conf import settings
             error_trace = traceback.format_exc()
-            print(f"\n!!! OFFLINE REGISTRATION CRASH: {str(e)}")
-            print(f"!!! TRACEBACK: {error_trace}")
-            
+            print(f"[CRITICAL ERROR] register_offline view failure: {str(e)}")
+            print(error_trace)
             return Response({
                 'success': False,
                 'error': {
-                    'message': f"Registration Failed: {str(e)}",
-                    'details': error_trace if settings.DEBUG else "Please check if all required fields are filled correctly."
+                    'message': 'An unexpected server error occurred during registration.',
+                    'details': error_trace
                 }
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            }, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=['get'], url_path='download-consolidated-receipt')
     def download_consolidated_receipt(self, request, pk=None):
@@ -537,6 +536,24 @@ class StudentRegistrationRequestViewSet(viewsets.ModelViewSet):
         reg_request.created_student = student
         reg_request.save()
 
+        # IMPORTANT: Mark all created payments as SUCCESS immediately if CASH
+        created_enrollments = student.enrollments.all()
+        enrollment_ids = [enr.id for enr in created_enrollments]
+        payment_ids = []
+
+        if reg_request.payment_method == 'CASH':
+            from apps.payments.models import Payment
+            from apps.payments.views import _confirm_offline_cash_payment
+            
+            for enr in created_enrollments:
+                payments = enr.payments.filter(status='PENDING_CONFIRMATION')
+                for pay in payments:
+                    try:
+                        _confirm_offline_cash_payment(pay, request.user)
+                        payment_ids.append(pay.id)
+                    except Exception as e:
+                        logger.error(f"Failed to auto-confirm payment {pay.id} during request acceptance: {str(e)}")
+
         # Notify the student about acceptance
         try:
             if student.user:
@@ -547,12 +564,7 @@ class StudentRegistrationRequestViewSet(viewsets.ModelViewSet):
                     message=f'Welcome {student.name}! Your registration has been accepted. You can now log in using your student ID: {student.student_id}.'
                 )
         except Exception as e:
-            # Non-fatal error
             logger.error(f"Failed to create student notification for acceptance: {str(e)}", exc_info=True)
-
-        # Gather info for the frontend to show print buttons
-        first_enr = student.enrollments.first()
-        first_pay = first_enr.payments.filter(status='SUCCESS').first() if first_enr else None
 
         payment_status_msg = "PAID" if reg_request.payment_method == 'CASH' else "PAYMENT PENDING"
 
@@ -563,8 +575,10 @@ class StudentRegistrationRequestViewSet(viewsets.ModelViewSet):
             'login_username': student.login_username,
             'login_password_hint': student.login_password_hint,
             'payment_status': payment_status_msg,
-            'enrollment_id': first_enr.id if first_enr else None,
-            'payment_id': first_pay.id if first_pay else None,
+            'enrollment_id': enrollment_ids[0] if enrollment_ids else None,
+            'payment_id': payment_ids[0] if payment_ids else None,
+            'enrollment_ids': enrollment_ids,
+            'payment_ids': payment_ids,
         })
 
     @action(detail=True, methods=['post'])

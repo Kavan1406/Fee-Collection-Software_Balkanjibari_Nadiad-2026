@@ -352,91 +352,92 @@ class StudentCreateSerializer(serializers.ModelSerializer):
             traceback.print_exc()
             raise serializers.ValidationError({"error": f"Model creation failed: {str(e)}"})
         
-        # Auto-generated login credentials (for admin reference)
-        # Username: lowercase (e.g., stu001)
+        # 2. User/Student Linking Logic
+        # Isolate User creation in a sub-transaction to prevent poisoning the outer block
         username = student.student_id.replace('-', '').lower()
-        # Password: STU (uppercase) + enrollment_number + last_4_digits_of_phone (e.g., STU0018229)
         enrollment_number = student.student_id.replace('STU', '')
-        default_password = f"STU{enrollment_number}{validated_data['phone'][-4:]}"
+        # STU + enrollment_number + last_4_digits_of_phone
+        phone_last_4 = str(validated_data.get('phone', '0000'))[-4:]
+        default_password = f"STU{enrollment_number}{phone_last_4}"
         
         User = get_user_model()
-        user = User.objects.filter(username=username).first()
+        user = None
         
-        if not user:
-            try:
-                # Isolate creation in a savepoint to prevent poisoning the outer transaction
-                with transaction.atomic():
+        try:
+            with transaction.atomic():
+                # Check for existing user by username
+                user = User.objects.filter(username=username).first()
+                if not user:
                     user = User.objects.create_user(
                         username=username,
                         password=default_password,
                         role='STUDENT',
                         is_active=True
                     )
-                print(f"DEBUG: New user created and linked for {student.student_id}")
-            except IntegrityError:
-                # Race condition: user was created by another request between filter and create
-                user = User.objects.filter(username=username).first()
-                if user:
-                    print(f"DEBUG: User {username} found via fallback after race condition")
-            except Exception as e:
-                print(f"DEBUG: Unexpected error during user creation: {str(e)}")
-                # We continue without a user link if it fails; student record still exists
-                user = None
-
-        if user:
-            try:
-                # Only update if necessary to avoid extra queries
-                needs_save = False
-                if user.role != 'STUDENT':
-                    user.role = 'STUDENT'
-                    needs_save = True
+                    print(f"[DIAGNOSTIC] Created new user: {username}")
                 
-                # We can safely update these on the user object before linking
-                if needs_save:
-                    user.save(update_fields=['role'])
-            except Exception as e:
-                print(f"DEBUG: Failed to update existing user role: {str(e)}")
+                # Link student to user
+                student.user = user
+                student.login_username = username
+                student.login_password_hint = default_password
+                student.save(update_fields=['user', 'login_username', 'login_password_hint'])
+                print(f"[DIAGNOSTIC] Linked student {student.student_id} to user {username}")
+        except IntegrityError as e:
+            print(f"[DIAGNOSTIC] User link IntegrityError (possible race): {e}")
+            # Fallback: Try to find the user again
+            user = User.objects.filter(username=username).first()
+            if user:
+                student.user = user
+                student.login_username = username
+                student.login_password_hint = default_password
+                student.save(update_fields=['user', 'login_username', 'login_password_hint'])
+        except Exception as e:
+            print(f"[ERROR] Failed to link student to user: {e}")
+            # Non-fatal: the student record exists even if login fails
+            pass
 
-        if user:
-            student.user = user
-            student.login_username = username
-            student.login_password_hint = default_password
-            student.save()
-            print(f"DEBUG: Student {student.student_id} successfully linked to user {username}")
-            
-        # Create Enrollments with fee logic based on include_library_fee flag
-        print(f"DEBUG: Processing {len(enrollments_data)} enrollments")
+        # 3. Process Enrollments
+        print(f"[DIAGNOSTIC] Processing {len(enrollments_data)} enrollments")
         from decimal import Decimal
-        for enr_data in enrollments_data:
+        # 3. Process Enrollments
+        print(f"[DIAGNOSTIC] Processing {len(enrollments_data)} enrollments")
+        from decimal import Decimal
+        for i, enr_data in enumerate(enrollments_data):
             subject_id = enr_data.get('subject_id')
+            batch_time = enr_data.get('batch_time', '7-8 AM')
+            include_library_fee = enr_data.get('include_library_fee', False)
+            
+            if not subject_id:
+                continue
+                
             try:
-                batch_time = enr_data.get('batch_time', '7-8 AM')
-                include_library_fee = enr_data.get('include_library_fee', False)
+                # Convert subject_id to int if possible
+                try:
+                    s_id = int(subject_id)
+                except (ValueError, TypeError):
+                    s_id = subject_id
 
-                print(f"DEBUG: Processing subject_id: {subject_id}, library_fee: {include_library_fee}")
-                if not subject_id:
-                    print("DEBUG: Empty subject_id, skipping")
-                    continue
-
-                subject = Subject.objects.get(id=subject_id, is_deleted=False)
-
+                subject = Subject.objects.get(id=s_id, is_deleted=False)
+                
                 # Consistently use Decimal to avoid float-Decimal TypeError in models
                 subject_fee = Decimal('0.00')
                 if subject.current_fee and subject.current_fee.fee_amount:
                     subject_fee = Decimal(str(subject.current_fee.fee_amount))
                 elif subject.monthly_fee:
                     subject_fee = Decimal(str(subject.monthly_fee))
-
+                
                 library_fee = Decimal('10.00') if include_library_fee else Decimal('0.00')
                 total_fee = subject_fee + library_fee
-
+                
+                # Determine initial amounts and status
                 is_staff = request.user.role in ['ADMIN', 'STAFF', 'ACCOUNTANT'] if request and request.user.is_authenticated else False
-
+                
                 if payment_method == 'ONLINE':
                     paid_amount = Decimal('0.00')
                     payment_status = 'CREATED'
-                elif payment_method == 'CASH' and is_staff:
-                    # Cash not collected yet — stays pending until Request Acceptance confirms it
+                elif payment_method == 'CASH':
+                    # All cash registrations (office or public) start as unpaid in the Enrollment record.
+                    # They will be marked as paid during the "Accept" step in RequestAcceptancePage.
                     paid_amount = Decimal('0.00')
                     payment_status = 'PENDING_CONFIRMATION'
                 else:
@@ -444,9 +445,9 @@ class StudentCreateSerializer(serializers.ModelSerializer):
                     payment_status = 'PENDING_CONFIRMATION'
 
                 pending_amount = total_fee - paid_amount
-
-                # Wrap DB writes in a savepoint so a failure here does not abort the outer transaction.
+                
                 with transaction.atomic():
+                    # Create Enrollment
                     enr = Enrollment.objects.create(
                         student=student,
                         subject=subject,
@@ -457,8 +458,7 @@ class StudentCreateSerializer(serializers.ModelSerializer):
                         pending_amount=pending_amount,
                         status='ACTIVE'
                     )
-                    print(f"DEBUG: Enrollment created: {enr.enrollment_id}")
-
+                    
                     if payment_method != 'ONLINE':
                         from apps.payments.models import Payment
                         Payment.objects.create(
@@ -468,14 +468,24 @@ class StudentCreateSerializer(serializers.ModelSerializer):
                             payment_mode=payment_method,
                             status=payment_status,
                             recorded_by=request.user if request and request.user.is_authenticated else None,
-                            notes=f'Automatic registration fee payment ({payment_method})'
+                            notes=f'Automatic registration fee ({payment_method})'
                         )
-                        print(f"DEBUG: Payment record created for {enr.enrollment_id} with mode {payment_method}")
-                    else:
-                        print(f"DEBUG: Skipping Payment record for ONLINE enrollment {enr.enrollment_id}")
+                    print(f"[DIAGNOSTIC] Successfully enrolled in {subject.name}")
+
+            except Subject.DoesNotExist:
+                print(f"[ERROR] Subject with ID {subject_id} not found")
+                # Non-fatal if using the request acceptance flow, but usually should exist
+                continue
+            except IntegrityError as e:
+                print(f"[ERROR] Enrollment IntegrityError: {e}")
+                # Skip duplicates
+                continue
             except Exception as e:
-                print(f"DEBUG: Failed to process enrollment for subject {subject_id}: {str(e)}")
-                # Continue with other subjects if one fails
+                print(f"[ERROR] Unexpected enrollment error: {e}")
+                import traceback
+                traceback.print_exc()
+                # Continue with other subjects
+                continue
         
         # Return the created student object
 

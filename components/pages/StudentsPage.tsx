@@ -395,41 +395,33 @@ export default function StudentsPage({ userRole, canEdit, onNavigateToRequestAcc
         setEditingStudent(null)
         resetForm()
       } else {
-        console.log('DEBUG: Submitting student data:', submissionData);
-        result = await studentsApi.registerOffline(submissionData)
-        console.log('DEBUG: Save result:', result);
-        notifySuccess('Registration Successful')
-        // Store for receipt/id card printing
-        if (result.data) {
-          const studentId = result.data.id;
-          const enrollmentIds = (result.data.enrollments || []).map((e: any) => e.id);
+        console.log('DEBUG: Submitting student registration request:', submissionData);
+        
+        // Convert submissionData to FormData for registrationRequestsApi
+        const formDataObj = new FormData();
+        Object.entries(submissionData).forEach(([key, value]) => {
+          if (key === 'enrollments') {
+             // For registration-requests, the backend expects 'subjects_data' as JSON
+             formDataObj.append('subjects_data', JSON.stringify(value));
+          } else if (value !== null && value !== undefined) {
+             formDataObj.append(key, value as any);
+          }
+        });
 
-          setLastCreatedId(studentId);
-          setLastEnrollmentIds(enrollmentIds);
-
-          const paymentMethod = submissionData.payment_method || 'CASH';
-          setLastPaymentMethod(paymentMethod as any);
-
-          if (paymentMethod === 'CASH') {
-            // After successful creation, set credentials for the display
-            const createdStudent: any = result.data
-            setSubmittedCredentials({
-              studentId: createdStudent.student_id,
-              username: createdStudent.login_username,
-              password: createdStudent.login_password_hint
-            });
-            notifySuccess('Registration successful. Login credentials are shown above.');
-            notifyInfo('Sending this student request to Request Acceptance...');
-            setShowForm(false);
-            resetForm();
-            if (onNavigateToRequestAcceptance) {
-              setTimeout(() => onNavigateToRequestAcceptance(createdStudent.student_id), 1500);
-            }
-          } else {
-            // For ONLINE payments, just notify user
-            notifyInfo('Student created. Receipt and ID card will be available after payment confirmation.');
-            setShowForm(false);
-            resetForm();
+        const regRequestApi = (await import('@/lib/api/students')).registrationRequestsApi;
+        result = await regRequestApi.adminCreate(formDataObj)
+        
+        console.log('DEBUG: Registration Request Result:', result);
+        notifySuccess('Registration Request Submitted Successfully')
+        
+        // Store for tracking if needed
+        if (result.success && result.id) {
+          notifyInfo('Redirecting to Request Acceptance page...');
+          setShowForm(false);
+          resetForm();
+          if (onNavigateToRequestAcceptance) {
+            // We don't have a Student ID yet, so we pass the Request ID or name to help filter
+            setTimeout(() => onNavigateToRequestAcceptance(formData.name), 1500);
           }
         }
       }

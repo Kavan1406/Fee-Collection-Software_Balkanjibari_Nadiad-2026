@@ -307,6 +307,12 @@ export const registrationRequestsApi = {
         return { success: false, message };
     },
 
+    /** Admin — create a new registration request directly */
+    adminCreate: async (data: FormData): Promise<{ success: boolean; message: string; id?: number }> => {
+        const response = await apiClient.post('/api/v1/students/registration-requests/', data);
+        return response.data;
+    },
+
 
     /** Admin — list all requests, optionally filtered by status */
     list: async (status?: string): Promise<{ success: boolean; results?: RegistrationRequest[]; data?: RegistrationRequest[] }> => {

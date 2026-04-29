@@ -609,4 +609,75 @@ export const analyticsApi = {
         );
         return response.data;
     },
+
+    // ── Report 7: Subject-wise Total Students ────────────────────────────────
+    getSubjectStudentReport: async (start_date: string, end_date: string): Promise<ApiResponse<SubjectStudentReport>> => {
+        const response = await apiClient.get<ApiResponse<SubjectStudentReport>>(
+            '/api/v1/reports/subject-students/',
+            { params: { start_date, end_date } }
+        );
+        return response.data;
+    },
+
+    exportSubjectStudentReportCsv: async (start_date: string, end_date: string) =>
+        analyticsApi.downloadFile(
+            '/api/v1/reports/subject-students/export/csv/',
+            `subject_students_report_${start_date}_to_${end_date}.csv`,
+            { start_date, end_date }
+        ),
+
+    exportSubjectStudentReportPdf: async (start_date: string, end_date: string) =>
+        analyticsApi.downloadFile(
+            '/api/v1/reports/subject-students/export/pdf/',
+            `subject_students_report_${start_date}_to_${end_date}.pdf`,
+            { start_date, end_date }
+        ),
+
+    // ── Report 8: Attendance Sheet (Legal) ───────────────────────────────────
+    getAttendanceSheetData: async (subject_id: number, batch?: string): Promise<ApiResponse<AttendanceSheetData>> => {
+        const response = await apiClient.get<ApiResponse<AttendanceSheetData>>(
+            '/api/v1/reports/attendance-sheet/',
+            { params: { subject_id, batch } }
+        );
+        return response.data;
+    },
+
+    exportAttendanceSheetCsv: async (subject_id: number, batch?: string) =>
+        analyticsApi.downloadFile(
+            '/api/v1/reports/attendance-sheet/export/csv/',
+            `attendance_sheet_${subject_id}_${batch || 'all'}.csv`,
+            { subject_id, batch }
+        ),
+
+    exportAttendanceSheetPdf: async (subject_id: number, batch?: string) =>
+        analyticsApi.downloadFile(
+            '/api/v1/reports/attendance-sheet/export/pdf/',
+            `attendance_sheet_${subject_id}_${batch || 'all'}.pdf`,
+            { subject_id, batch }
+        ),
 };
+
+export interface AttendanceSheetRow {
+    student_name: string;
+    student_id: string;
+}
+
+export interface AttendanceSheetData {
+    success: boolean;
+    subject_name: string;
+    batch_time: string;
+    rows: AttendanceSheetRow[];
+}
+
+export interface SubjectStudentReportRow {
+    subject_name: string;
+    student_count: number;
+}
+
+export interface SubjectStudentReport {
+    success: boolean;
+    start_date: string;
+    end_date: string;
+    data: SubjectStudentReportRow[];
+    total_unique_students: number;
+}

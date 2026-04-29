@@ -250,9 +250,30 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
     setLoading(true)
     try {
       const statusesToFetch: Array<'PENDING' | 'COMPLETED' | 'REJECTED'> = ['PENDING', 'COMPLETED', 'REJECTED']
-      const responses = await Promise.all(statusesToFetch.map((status) => paymentsApi.getOfflineRequests(status)))
-      const collected = responses.flatMap((response: any) => response?.data || [])
-      setRows(collected)
+      
+      // Fetch both payment requests and new student registration requests
+      const [paymentResponses, regRequestResponse] = await Promise.all([
+        Promise.all(statusesToFetch.map((status) => paymentsApi.getOfflineRequests(status))),
+        (await import('@/lib/api/students')).registrationRequestsApi.list(requestFilter === 'ALL' ? undefined : requestFilter)
+      ])
+
+      const paymentCollected = paymentResponses.flatMap((response: any) => response?.data || [])
+      
+      // Normalize registration requests to match the row format
+      const regRequests = (regRequestResponse.data || regRequestResponse.results || []).map((req: any) => ({
+        request_id: req.id,
+        student_id: req.student_id || `REQ-${req.id}`,
+        student_name: req.name,
+        subject: req.subjects_data?.map((s: any) => s.subject_name).join(', ') || 'General',
+        total_fees: req.total_fees || 0,
+        status: req.status,
+        payment_status: req.status === 'PENDING' ? 'PENDING' : (req.status === 'ACCEPTED' ? 'SUCCESS' : 'FAILED'),
+        payment_mode: req.payment_method || 'CASH',
+        created_at: req.created_at,
+        is_registration: true // Flag to distinguish
+      }))
+
+      setRows([...paymentCollected, ...regRequests])
     } catch (err: any) {
       notifyError(err?.response?.data?.error?.message || 'Failed to fetch cash pending requests')
     } finally {
@@ -323,120 +344,124 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
   }, [focusedStudentId, focusedRefreshCount, pendingCashRows])
 
   const handleAcceptPayment = async (groupedRequest: GroupedStudentRequest) => {
+    const isRegistration = groupedRequest.requests.some(r => (r as any).is_registration)
     const uniqueRequests = getUniqueRequestsBySubject(groupedRequest.requests)
     const duplicateRequests = groupedRequest.requests.filter(
       (req) => !uniqueRequests.some((u) => u.request_id === req.request_id)
     )
 
     const totalAmount = uniqueRequests.reduce((sum, req) => sum + getResolvedRequestFee(req), 0)
-    const ok = window.confirm(`Accept cash payment for ${groupedRequest.student_name} (${uniqueRequests.length} subject${uniqueRequests.length > 1 ? 's' : ''}) - ₹${totalAmount.toLocaleString('en-IN')}?`)
+    const actionLabel = isRegistration ? 'Accept Registration' : 'Accept Payment'
+    
+    const ok = window.confirm(`${actionLabel} for ${groupedRequest.student_name} - Total: ₹${totalAmount.toLocaleString('en-IN')}?`)
     if (!ok) return
 
     try {
       setProcessingId(uniqueRequests[0]?.request_id || 0)
-      notifyInfo(`Confirming ${uniqueRequests.length} payment${uniqueRequests.length > 1 ? 's' : ''} and generating documents...`)
+      notifyInfo(`Processing ${isRegistration ? 'registration' : 'payment'} and generating documents...`)
 
-      // Accept all payments for this student
-      const confirmResults = await Promise.all(
-        uniqueRequests.map(req => paymentsApi.acceptOfflineRequest(req.request_id))
-      )
+      let enrollmentIds: number[] = []
+      let paymentIds: number[] = []
 
-      // Auto-reject duplicate pending requests so old duplicate rows are cleaned up.
-      if (duplicateRequests.length > 0) {
-        await Promise.all(
-          duplicateRequests.map((req) =>
-            paymentsApi.rejectOfflineRequest(req.request_id, 'Auto-rejected duplicate subject request during deduplication')
-          )
+      if (isRegistration) {
+        // Use registrationRequestsApi.accept
+        const regApi = (await import('@/lib/api/students')).registrationRequestsApi;
+        const result = await regApi.accept(uniqueRequests[0].request_id)
+        if (result.success) {
+           enrollmentIds = result.enrollment_ids || [result.enrollment_id].filter(Boolean) as number[]
+           paymentIds = result.payment_ids || [result.payment_id].filter(Boolean) as number[]
+        }
+      } else {
+        // Use paymentsApi.acceptOfflineRequest
+        const confirmResults = await Promise.all(
+          uniqueRequests.map(req => paymentsApi.acceptOfflineRequest(req.request_id))
         )
+
+        // Auto-reject duplicate pending requests
+        if (duplicateRequests.length > 0) {
+          await Promise.all(
+            duplicateRequests.map((req) =>
+              paymentsApi.rejectOfflineRequest(req.request_id, 'Auto-rejected duplicate subject request during deduplication')
+            )
+          )
+        }
+
+        for (let i = 0; i < confirmResults.length; i++) {
+          const result = confirmResults[i]
+          const enrollmentId = Number(result?.data?.enrollment_id || uniqueRequests[i]?.enrollment_id)
+          const paymentId = Number(result?.data?.payment_id || uniqueRequests[i]?.payment_id)
+          if (enrollmentId) enrollmentIds.push(enrollmentId)
+          if (paymentId) paymentIds.push(paymentId)
+        }
       }
 
-      // Collect enrollment and payment IDs
-      const enrollmentIds: number[] = []
-      const paymentIds: number[] = []
-
-      for (let i = 0; i < confirmResults.length; i++) {
-        const result = confirmResults[i]
-        const enrollmentId = Number(result?.data?.enrollment_id || uniqueRequests[i]?.enrollment_id)
-        const paymentId = Number(result?.data?.payment_id || uniqueRequests[i]?.payment_id)
-        enrollmentIds.push(enrollmentId)
-        paymentIds.push(paymentId)
+      if (enrollmentIds.length === 0 && paymentIds.length === 0) {
+          notifySuccess('Action completed successfully.')
+          await fetchPendingCashRequests()
+          return
       }
 
-      // Use first payment/enrollment for consolidated document generation.
-      // Backend receipt and ID card generators include all active subjects for the student.
-      const primaryEnrollmentId = enrollmentIds[0]
-      const primaryPaymentId = paymentIds[0]
-
-      // Open receipt tab (single consolidated receipt)
+      // Open receipt tab
       const receiptTab = window.open('about:blank', '_blank')
       if (receiptTab) {
         receiptTab.document.title = 'Generating receipt...'
         receiptTab.document.body.innerHTML = '<p style="font-family: Arial, sans-serif; padding: 16px;">Generating receipt PDF...</p>'
       }
 
-      // Open one consolidated ID card tab (A5 landscape layout, up to 4 subjects)
+      // Open ID card tab
       const idCardTab = window.open('about:blank', '_blank')
       if (idCardTab) {
         idCardTab.document.title = 'Generating ID card...'
         idCardTab.document.body.innerHTML = '<p style="font-family: Arial, sans-serif; padding: 16px;">Generating ID card PDF...</p>'
       }
 
-      // Generate and open documents
+      // Generate and open documents for the primary (or consolidated) record
+      const primaryEnrollmentId = enrollmentIds[0]
+      const primaryPaymentId = paymentIds[0]
+
       const docResults = await Promise.allSettled([
-        // Consolidated receipt
-        receiptTab && primaryPaymentId ? paymentsApi.openReceiptInNewTab(primaryPaymentId, receiptTab) : Promise.reject(),
-        // Consolidated ID card
-        idCardTab && primaryEnrollmentId ? enrollmentsApi.openIdCardInNewTab(primaryEnrollmentId, idCardTab) : Promise.reject(),
-        // Downloads
-        primaryPaymentId ? paymentsApi.downloadReceipt(primaryPaymentId) : Promise.reject(),
-        primaryEnrollmentId ? enrollmentsApi.downloadIdCard(primaryEnrollmentId) : Promise.reject()
+        receiptTab && primaryPaymentId ? paymentsApi.openReceiptInNewTab(primaryPaymentId, receiptTab) : Promise.resolve(),
+        idCardTab && primaryEnrollmentId ? enrollmentsApi.openIdCardInNewTab(primaryEnrollmentId, idCardTab) : Promise.resolve(),
+        primaryPaymentId ? paymentsApi.downloadReceipt(primaryPaymentId) : Promise.resolve(),
+        primaryEnrollmentId ? enrollmentsApi.downloadIdCard(primaryEnrollmentId) : Promise.resolve()
       ])
 
-      const openedCount = docResults.slice(0, 2).filter(r => r.status === 'fulfilled').length
-      const downloadedCount = docResults.slice(2).filter(r => r.status === 'fulfilled').length
-
-      if (openedCount > 0 && downloadedCount > 0) {
-        notifySuccess(`Payment${uniqueRequests.length > 1 ? 's' : ''} accepted. Consolidated receipt and consolidated ID card opened and downloaded successfully.`)
-      } else if (openedCount > 0 || downloadedCount > 0) {
-        notifySuccess(`Payment${uniqueRequests.length > 1 ? 's' : ''} accepted. Documents were partially opened/downloaded; you can always re-download from student records.`)
-      } else {
-        notifySuccess(`Payment${uniqueRequests.length > 1 ? 's' : ''} accepted. Documents are available in student records for manual open/download.`)
-      }
+      notifySuccess(`${isRegistration ? 'Registration' : 'Payment'} accepted and documents generated.`)
 
       if (!idCardTab || idCardTab.closed) {
-        notifyInfo('Your browser blocked one or more tabs. Please allow pop-ups for this site to auto-open all documents.')
+        notifyInfo('Browser blocked pop-ups. Please allow them to auto-open documents.')
       }
 
-      // Fetch student credentials and add to slider
+      // Fetch student credentials logic...
       try {
-        const studentSearch = groupedRequest.student_id.trim()
+        const studentSearch = groupedRequest.student_id.startsWith('REQ-') ? groupedRequest.student_name : groupedRequest.student_id
         const studentList = await studentsApi.getAll({ search: studentSearch, page_size: 100 })
         const student = (studentList?.results || []).find(
-          (item) => (item.student_id || '').toLowerCase() === studentSearch.toLowerCase()
-        ) || (studentList?.results || [])[0] || ({} as Student)
+          (item) => item.name.toLowerCase() === groupedRequest.student_name.toLowerCase()
+        ) || (studentList?.results || [])[0]
         
-        setAcceptedCredentials(prev => {
-          const newCreds = groupedRequest.requests.map(req => ({
-            student_id: groupedRequest.student_id,
-            student_name: groupedRequest.student_name,
-            subject: req.subject || '',
-            username: student.login_username || groupedRequest.student_id,
-            password_hint: student.login_password_hint || '(Ask student)',
-            accepted_at: new Date(),
-            visible: false
-          }))
-          return [...newCreds, ...prev.slice(0, Math.max(0, 10 - newCreds.length))]
-        })
-        setShowSlider(true)
+        if (student) {
+          setAcceptedCredentials(prev => {
+            const newCreds = [{
+              student_id: student.student_id,
+              student_name: student.name,
+              subject: groupedRequest.subjects.join(', '),
+              username: student.login_username || student.student_id,
+              password_hint: student.login_password_hint || '(Ask admin)',
+              accepted_at: new Date(),
+              visible: false
+            }]
+            return [...newCreds, ...prev.slice(0, 9)]
+          })
+          setShowSlider(true)
+        }
       } catch (err) {
-        console.error('Failed to fetch student credentials:', err)
+        console.error('Failed to fetch credentials:', err)
       }
 
       await fetchPendingCashRequests()
     } catch (err: any) {
-      const backendMessage = err?.response?.data?.error?.message
-      const fallbackMessage = err?.message
-      notifyError(backendMessage || fallbackMessage || 'Failed to accept payment')
+      notifyError(err?.response?.data?.error?.message || err?.message || 'Action failed')
     } finally {
       setProcessingId(null)
     }
@@ -445,32 +470,38 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
   const handleRejectPayment = async (request: GroupedStudentRequest) => {
     setRejectConfirm({ show: true, request, reason: '' })
   }
-
   const confirmRejectPayment = async () => {
     if (!rejectConfirm.request) return
 
+    const isRegistration = rejectConfirm.request.requests.some(r => (r as any).is_registration)
+    const reason = rejectConfirm.reason || 'Admin rejection'
+
     try {
       setProcessingId(rejectConfirm.request.requests[0]?.request_id || 0)
-      notifyInfo(`Rejecting ${rejectConfirm.request.requests.length} payment${rejectConfirm.request.requests.length > 1 ? 's' : ''}...`)
+      notifyInfo(`Rejecting ${isRegistration ? 'registration' : 'payment'}...`)
 
-      // Reject all payments for this student
-      await Promise.all(
-        rejectConfirm.request.requests.map(req => 
-          paymentsApi.rejectOfflineRequest(req.request_id, rejectConfirm.reason || undefined)
+      if (isRegistration) {
+        const regApi = (await import('@/lib/api/students')).registrationRequestsApi;
+        await regApi.reject(rejectConfirm.request.requests[0].request_id, reason)
+      } else {
+        // Reject all payments for this student
+        await Promise.all(
+          rejectConfirm.request.requests.map(req => 
+            paymentsApi.rejectOfflineRequest(req.request_id, reason)
+          )
         )
-      )
+      }
 
-      notifySuccess(`Payment${rejectConfirm.request.requests.length > 1 ? 's' : ''} request${rejectConfirm.request.requests.length > 1 ? 's' : ''} rejected successfully. The student can resubmit.`)
+      notifySuccess(`${isRegistration ? 'Registration' : 'Payment'} request rejected successfully.`)
       setRejectConfirm({ show: false, request: null, reason: '' })
       await fetchPendingCashRequests()
     } catch (err: any) {
-      const backendMessage = err?.response?.data?.error?.message
-      const fallbackMessage = err?.message
-      notifyError(backendMessage || fallbackMessage || 'Failed to reject payment')
+      notifyError(err?.response?.data?.error?.message || err?.message || 'Failed to reject request')
     } finally {
       setProcessingId(null)
     }
   }
+
 
   const rejectRequestId = rejectConfirm.request?.requests?.[0]?.request_id
 

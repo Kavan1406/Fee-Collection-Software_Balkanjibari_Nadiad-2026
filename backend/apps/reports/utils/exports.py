@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 
 try:
-    from reportlab.lib.pagesizes import letter, A4
+    from reportlab.lib.pagesizes import letter, A4, LEGAL, landscape
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import inch
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
@@ -331,6 +331,304 @@ def generate_enrollment_report_pdf(enrollments_data):
     elements.append(table)
     
     # Build PDF
+    doc.build(elements)
+    output.seek(0)
+    return output
+
+
+def generate_subject_student_report_csv(data):
+    """Generate CSV for Subject-wise Total Students Report"""
+    output = io.StringIO()
+    
+    if not data:
+        return output
+    
+    fieldnames = ['Sr No', 'Subject Name', 'Total Students']
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+    
+    for i, item in enumerate(data, 1):
+        writer.writerow({
+            'Sr No': i,
+            'Subject Name': item.get('subject_name', ''),
+            'Total Students': item.get('student_count', 0),
+        })
+    
+    # Grand Total row
+    total = sum(item.get('student_count', 0) for item in data)
+    writer.writerow({
+        'Sr No': '',
+        'Subject Name': 'GRAND TOTAL',
+        'Total Students': total,
+    })
+    
+    return output.getvalue()
+
+
+def generate_subject_student_report_pdf(data):
+    """Generate PDF for Subject-wise Total Students Report"""
+    if not REPORTLAB_AVAILABLE:
+        raise ImportError("reportlab is not installed. Install it with: pip install reportlab")
+    
+    output = io.BytesIO()
+    
+    doc = SimpleDocTemplate(
+        output,
+        pagesize=A4,
+        rightMargin=40,
+        leftMargin=40,
+        topMargin=30,
+        bottomMargin=30,
+    )
+    
+    elements = []
+    styles = getSampleStyleSheet()
+    
+    # Title
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=18,
+        textColor=colors.HexColor('#1e40af'),
+        spaceAfter=15,
+        alignment=TA_CENTER,
+    )
+    elements.append(Paragraph('Subject-wise Total Students Report', title_style))
+    elements.append(Spacer(1, 0.2 * inch))
+    
+    # Metadata
+    report_date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    metadata_style = ParagraphStyle(
+        'Metadata',
+        parent=styles['Normal'],
+        fontSize=10,
+        textColor=colors.grey,
+        spaceAfter=10,
+    )
+    elements.append(Paragraph(f'Generated on: {report_date}', metadata_style))
+    elements.append(Spacer(1, 0.1 * inch))
+    
+    # Header styles
+    header_style = ParagraphStyle(
+        'HeaderStyle',
+        parent=styles['Normal'],
+        fontSize=11,
+        textColor=colors.whitesmoke,
+        fontName='Helvetica-Bold',
+        alignment=TA_CENTER,
+    )
+    
+    # Cell styles
+    cell_style = ParagraphStyle(
+        'CellStyle',
+        parent=styles['Normal'],
+        fontSize=10,
+        fontName='Helvetica',
+        alignment=TA_LEFT,
+        leading=12,
+    )
+    
+    center_style = ParagraphStyle(
+        'CenterStyle',
+        parent=cell_style,
+        alignment=TA_CENTER,
+    )
+
+    # Table Header
+    table_data = [
+        [
+            Paragraph('Sr No', header_style),
+            Paragraph('Subject Name', header_style),
+            Paragraph('Total Students', header_style),
+        ]
+    ]
+
+    # Data Rows
+    for i, item in enumerate(data, 1):
+        table_data.append([
+            Paragraph(str(i), center_style),
+            Paragraph(str(item.get('subject_name', '')), cell_style),
+            Paragraph(str(item.get('student_count', 0)), center_style),
+        ])
+    
+    # Grand Total Row
+    total = sum(item.get('student_count', 0) for item in data)
+    table_data.append([
+        '',
+        Paragraph('<b>GRAND TOTAL</b>', ParagraphStyle('TotalLabel', parent=cell_style, alignment=TA_RIGHT)),
+        Paragraph(f'<b>{total}</b>', center_style),
+    ])
+    
+    # Create Table
+    available_width = A4[0] - 80  # Account for 40 units margin on each side
+    table = Table(table_data, colWidths=[
+        0.8 * inch,
+        available_width - 2.0 * inch,
+        1.2 * inch
+    ])
+    
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e40af')),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 10),
+        ('TOPPADDING', (0, 0), (-1, 0), 10),
+        
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e1')),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.HexColor('#f8fafc')]),
+        
+        # Grand Total styling
+        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#f1f5f9')),
+        ('TOPPADDING', (0, 1), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
+        ('LEFTPADDING', (0, 0), (-1, -1), 12),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 12),
+    ]))
+    
+    elements.append(table)
+    
+    # Footer
+    elements.append(Spacer(1, 0.5 * inch))
+    elements.append(Paragraph('<i>End of Report</i>', ParagraphStyle('Footer', parent=styles['Normal'], alignment=TA_CENTER, fontSize=8, textColor=colors.grey)))
+    
+    # Build
+    doc.build(elements)
+    output.seek(0)
+    return output
+
+
+def generate_attendance_sheet_csv(data, subject_name, batch_time):
+    """Generate CSV for Attendance Sheet"""
+    output = io.StringIO()
+    
+    # Headers
+    header_info = [
+        ['NADIAD BALKAN-JI-BARI'],
+        ['ATTENDANCE REPORT'],
+        [f'Subject: {subject_name}', f'Batch: {batch_time}'],
+        [] # Empty row
+    ]
+    
+    writer = csv.writer(output)
+    for row in header_info:
+        writer.writerow(row)
+    
+    # Table Header
+    cols = ['Sr No', 'Student Name', 'Student ID']
+    for i in range(1, 30):
+        cols.append(str(i))
+    cols.extend(['M', 'I'])
+    
+    writer.writerow(cols)
+    
+    for i, item in enumerate(data, 1):
+        row = [i, item.get('student_name', ''), item.get('student_id', '')]
+        # Empty cells for attendance and M/I
+        row.extend([''] * 31)
+        writer.writerow(row)
+        
+    return output.getvalue()
+
+
+def generate_attendance_sheet_pdf(data, subject_name, batch_time):
+    """Generate PDF for Attendance Sheet (Legal Landscape)"""
+    if not REPORTLAB_AVAILABLE:
+        raise ImportError("reportlab is not installed.")
+    
+    output = io.BytesIO()
+    
+    # Legal Landscape
+    doc = SimpleDocTemplate(
+        output,
+        pagesize=landscape(LEGAL),
+        rightMargin=30,
+        leftMargin=30,
+        topMargin=20,
+        bottomMargin=20,
+    )
+    
+    elements = []
+    styles = getSampleStyleSheet()
+    
+    # Header Section
+    header_style = ParagraphStyle(
+        'HeaderStyle',
+        parent=styles['Normal'],
+        fontSize=14,
+        fontName='Helvetica-Bold',
+        alignment=TA_CENTER,
+        spaceAfter=5
+    )
+    
+    elements.append(Paragraph('NADIAD BALKAN-JI-BARI', header_style))
+    elements.append(Paragraph('ATTENDANCE REPORT', ParagraphStyle('SubHeader', parent=header_style, fontSize=12)))
+    elements.append(Spacer(1, 0.1 * inch))
+    
+    # Info line (Subject and Batch)
+    info_style = ParagraphStyle('InfoStyle', parent=styles['Normal'], fontSize=10, fontName='Helvetica-Bold')
+    info_table_data = [[
+        Paragraph(f'Name of Subject : {subject_name}', info_style),
+        Paragraph(f'Batch Time : {batch_time}', info_style)
+    ]]
+    info_table = Table(info_table_data, colWidths=[5 * inch, 4 * inch])
+    info_table.setStyle(TableStyle([('ALIGN', (0,0), (-1,-1), 'LEFT')]))
+    elements.append(info_table)
+    elements.append(Spacer(1, 0.1 * inch))
+    
+    # Table Header
+    header_font_size = 7
+    table_header_style = ParagraphStyle('TableHeader', parent=styles['Normal'], fontSize=header_font_size, fontName='Helvetica-Bold', alignment=TA_CENTER)
+    
+    header_row = [
+        Paragraph('Sr No', table_header_style),
+        Paragraph('Student Name', table_header_style),
+        Paragraph('Student ID', table_header_style)
+    ]
+    for i in range(1, 30):
+        header_row.append(Paragraph(str(i), table_header_style))
+    header_row.append(Paragraph('M', table_header_style))
+    header_row.append(Paragraph('I', table_header_style))
+    
+    table_data = [header_row]
+    
+    # Data Rows
+    cell_style = ParagraphStyle('CellStyle', parent=styles['Normal'], fontSize=8, fontName='Helvetica')
+    for i, item in enumerate(data, 1):
+        row = [
+            Paragraph(str(i), ParagraphStyle('CenterCell', parent=cell_style, alignment=TA_CENTER)),
+            Paragraph(item.get('student_name', ''), cell_style),
+            Paragraph(item.get('student_id', ''), ParagraphStyle('CenterCell', parent=cell_style, alignment=TA_CENTER))
+        ]
+        # Add 31 empty columns (29 days + M + I)
+        row.extend([''] * 31)
+        table_data.append(row)
+        
+    # Column Widths
+    # Total width of Landscape Legal is 14 inches = 1008 pts
+    # Margins 30+30 = 60 pts. Available 948 pts.
+    sr_w = 35
+    name_w = 160
+    id_w = 80
+    date_w = 21 # (948 - 35 - 160 - 80) / 31 = 673 / 31 = 21.7
+    
+    col_widths = [sr_w, name_w, id_w] + [date_w] * 31
+    
+    table = Table(table_data, colWidths=col_widths, repeatRows=1)
+    
+    table.setStyle(TableStyle([
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 2),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+    ]))
+    
+    elements.append(table)
+    
+    # Build
     doc.build(elements)
     output.seek(0)
     return output

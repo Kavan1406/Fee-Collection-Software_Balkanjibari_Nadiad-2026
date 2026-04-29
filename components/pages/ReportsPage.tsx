@@ -13,6 +13,8 @@ import type {
   PendingOutstandingFeesRow,
   SubjectRevenueTotalReport,
   SubjectRevenueTotalRow,
+  SubjectStudentReport,
+  SubjectStudentReportRow,
 } from '@/lib/api/analytics'
 
 interface ReportsPageProps {
@@ -78,6 +80,21 @@ export default function ReportsPage({ userRole }: ReportsPageProps) {
   const [r6Loading, setR6Loading] = useState(false)
   const [r6ReportData, setR6ReportData] = useState<SubjectRevenueTotalReport | null>(null)
   const [r6Downloading, setR6Downloading] = useState<string | null>(null)
+ 
+  // ── Report 7: Subject-wise Total Students ────────────────────────────────
+  const [r7StartDate, setR7StartDate] = useState('2026-04-15')
+  const [r7EndDate, setR7EndDate] = useState(new Date().toISOString().split('T')[0])
+  const [r7Loading, setR7Loading] = useState(false)
+  const [r7ReportData, setR7ReportData] = useState<SubjectStudentReport | null>(null)
+  const [r7Downloading, setR7Downloading] = useState<string | null>(null)
+
+  // ── Report 8: Attendance Sheet ───────────────────────────────────────────
+  const [r8Loading, setR8Loading] = useState(false)
+  const [r8Subject, setR8Subject] = useState<string>('')
+  const [r8Batch, setR8Batch] = useState<string>('ALL')
+  const [r8Batches, setR8Batches] = useState<string[]>([])
+  const [r8ReportData, setR8ReportData] = useState<any | null>(null)
+  const [r8Downloading, setR8Downloading] = useState<string | null>(null)
 
   // ── Bulk ID Card Generation ───────────────────────────────────────────
   const [bulkIdLoading, setBulkIdLoading] = useState(false)
@@ -192,6 +209,25 @@ export default function ReportsPage({ userRole }: ReportsPageProps) {
     } catch (error) {
       console.error('Failed to load batches for R5:', error)
       setR5SubjectBatches([])
+    }
+  }
+
+  const handleR8SubjectChange = async (subjectId: string) => {
+    setR8Subject(subjectId)
+    setR8Batch('ALL')
+    setR8ReportData(null)
+    if (!subjectId) { setR8Batches([]); return }
+    try {
+      const response = await subjectsApi.getBatches(Number(subjectId))
+      // @ts-ignore
+      const resData = response.data || response
+      const finalData = Array.isArray(resData) ? resData : (resData?.data || resData?.results || [])
+      setR8Batches(
+        finalData.map((batch: any) => batch?.batch_time || batch?.name || String(batch || '')).filter(Boolean)
+      )
+    } catch (error) {
+      console.error('Failed to load batches for R8:', error)
+      setR8Batches([])
     }
   }
 
@@ -430,6 +466,83 @@ export default function ReportsPage({ userRole }: ReportsPageProps) {
       notifyError(`Failed to download ${format} report`)
     } finally {
       setR6Downloading(null)
+    }
+  }
+ 
+  // ── Report 7 Handlers ─────────────────────────────────────────────────────
+  const generateR7Report = async () => {
+    if (r7StartDate > r7EndDate) { notifyError('Start date cannot be after end date'); return }
+    setR7Loading(true)
+    try {
+      const response = await analyticsApi.getSubjectStudentReport(r7StartDate, r7EndDate)
+      const data = (response as any)?.data || response
+      setR7ReportData(data || null)
+      notifySuccess('Report 7 generated successfully')
+    } catch (error) {
+      console.error('Report 7 failed:', error)
+      notifyError('Failed to generate Subject-wise Student report')
+    } finally {
+      setR7Loading(false)
+    }
+  }
+
+  const handleR7Download = async (format: 'CSV' | 'PDF') => {
+    try {
+      setR7Downloading(format)
+      if (format === 'CSV') {
+        await analyticsApi.exportSubjectStudentReportCsv(r7StartDate, r7EndDate)
+      } else {
+        await analyticsApi.exportSubjectStudentReportPdf(r7StartDate, r7EndDate)
+      }
+      notifySuccess(`${format} downloaded successfully`)
+    } catch (error) {
+      console.error('Report 7 download failed:', error)
+      notifyError(`Failed to download ${format} report`)
+    } finally {
+      setR7Downloading(null)
+    }
+  }
+
+  const generateAttendanceSheet = async () => {
+    if (!r8Subject) { notifyError('Please select a subject'); return }
+    setR8Loading(true)
+    try {
+      const response = await analyticsApi.getAttendanceSheetData(
+        Number(r8Subject), 
+        r8Batch === 'ALL' ? undefined : r8Batch
+      )
+      const data = (response as any)?.data || response
+      setR8ReportData(data || null)
+      notifySuccess('Attendance data loaded successfully')
+    } catch (error) {
+      console.error('Report 8 failed:', error)
+      notifyError('Failed to load attendance data')
+    } finally {
+      setR8Loading(false)
+    }
+  }
+
+  const handleR8Download = async (format: 'CSV' | 'PDF') => {
+    if (!r8Subject) { notifyError('Please select a subject'); return }
+    try {
+      setR8Downloading(format)
+      if (format === 'CSV') {
+        await analyticsApi.exportAttendanceSheetCsv(
+          Number(r8Subject), 
+          r8Batch === 'ALL' ? undefined : r8Batch
+        )
+      } else {
+        await analyticsApi.exportAttendanceSheetPdf(
+          Number(r8Subject), 
+          r8Batch === 'ALL' ? undefined : r8Batch
+        )
+      }
+      notifySuccess(`${format} downloaded successfully`)
+    } catch (error) {
+      console.error('Report 8 download failed:', error)
+      notifyError(`Failed to download ${format} report`)
+    } finally {
+      setR8Downloading(null)
     }
   }
 
@@ -1410,6 +1523,243 @@ export default function ReportsPage({ userRole }: ReportsPageProps) {
           <BarChart2 size={32} className="mx-auto mb-3 opacity-30" />
           <p className="text-sm font-semibold uppercase tracking-widest">No report generated yet</p>
           <p className="mt-2 text-xs">Choose a date range above, then click Generate Report.</p>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════
+          REPORT 7: SUBJECT-WISE TOTAL STUDENTS
+      ════════════════════════════════════════════════════════════════ */}
+      <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-100 shadow-sm mt-8">
+        <div className="mb-4">
+          <div className="flex items-center gap-3 mb-1">
+            <span className="inline-flex items-center justify-center rounded-xl bg-cyan-600 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1.5 shadow-sm shrink-0">
+              Report 7
+            </span>
+            <h2 className="text-xl sm:text-2xl font-bold text-slate-900 uppercase tracking-tight font-poppins">
+              Subject-Wise Total Students Report
+            </h2>
+          </div>
+          <p className="text-slate-500 text-sm mt-0.5 font-medium font-inter">
+            Total number of unique students enrolled in each subject within the selected date range.
+          </p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Start Date</label>
+            <input type="date" value={r7StartDate} onChange={(e) => setR7StartDate(e.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500/20" />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">End Date</label>
+            <input type="date" value={r7EndDate} onChange={(e) => setR7EndDate(e.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500/20" />
+          </div>
+          <div className="flex items-end">
+            <button onClick={generateR7Report} disabled={r7Loading}
+              className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-cyan-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-cyan-700 disabled:opacity-50">
+              {r7Loading ? <Loader2 size={16} className="animate-spin" /> : <TrendingUp size={16} />}
+              Generate Report
+            </button>
+          </div>
+        </div>
+        {r7ReportData && !r7Loading && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button onClick={() => handleR7Download('CSV')} disabled={!!r7Downloading}
+              className="inline-flex items-center gap-2 rounded-2xl bg-emerald-50 px-4 py-3 text-xs font-bold uppercase tracking-widest text-emerald-600 border border-emerald-100 disabled:opacity-50">
+              {r7Downloading === 'CSV' ? <Loader2 size={12} className="animate-spin" /> : <Download size={14} />}
+              Download CSV
+            </button>
+            <button onClick={() => handleR7Download('PDF')} disabled={!!r7Downloading}
+              className="inline-flex items-center gap-2 rounded-2xl bg-cyan-50 px-4 py-3 text-xs font-bold uppercase tracking-widest text-cyan-600 border border-cyan-100 disabled:opacity-50">
+              {r7Downloading === 'PDF' ? <Loader2 size={12} className="animate-spin" /> : <FileText size={14} />}
+              Download PDF
+            </button>
+          </div>
+        )}
+      </div>
+
+      {r7Loading ? (
+        <div className="rounded-2xl border border-slate-100 bg-white p-8 text-center text-slate-500 shadow-sm mt-4">
+          <Loader2 size={18} className="mx-auto mb-3 animate-spin" />
+          <p className="text-sm font-semibold uppercase tracking-widest">Loading report data...</p>
+        </div>
+      ) : r7ReportData ? (
+        <div className="space-y-4 mt-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+              <p className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Date Range</p>
+              <p className="mt-1 text-sm font-bold text-slate-900">{r7ReportData.start_date} → {r7ReportData.end_date}</p>
+            </div>
+            <div className="rounded-2xl border border-cyan-100 bg-cyan-50 p-4">
+              <p className="text-[10px] uppercase tracking-widest text-cyan-600 font-bold">Total Subjects</p>
+              <p className="mt-1 text-2xl font-bold text-cyan-900">{r7ReportData.data.length}</p>
+            </div>
+            <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-4">
+              <p className="text-[10px] uppercase tracking-widest text-indigo-600 font-bold">Grand Total Students</p>
+              <p className="mt-1 text-2xl font-bold text-indigo-900">{r7ReportData.total_unique_students}</p>
+            </div>
+          </div>
+          <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm">
+            <table className="min-w-full divide-y divide-slate-200 text-sm">
+              <thead className="bg-slate-900 text-white">
+                <tr>
+                  <th className="px-4 py-3 text-center text-[9px] font-bold uppercase tracking-widest w-16">Sr. No.</th>
+                  <th className="px-4 py-3 text-left text-[9px] font-bold uppercase tracking-widest">Subject Name</th>
+                  <th className="px-4 py-3 text-right text-[9px] font-bold uppercase tracking-widest">Total Students</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {r7ReportData.data.length > 0 ? (
+                  <>
+                    {r7ReportData.data.map((row, index) => (
+                      <tr key={row.subject_name + index}
+                        className={index % 2 === 0 ? 'bg-white hover:bg-slate-50 transition' : 'bg-slate-50 hover:bg-slate-100 transition'}>
+                        <td className="px-4 py-3 text-center font-semibold text-slate-400">{index + 1}</td>
+                        <td className="px-4 py-3 font-medium text-slate-900 uppercase">{row.subject_name}</td>
+                        <td className="px-4 py-3 text-right font-bold text-cyan-700">{row.student_count}</td>
+                      </tr>
+                    ))}
+                    <tr className="bg-slate-900 text-white">
+                      <td colSpan={2} className="px-4 py-4 text-center text-[10px] font-bold uppercase tracking-widest">
+                        Grand Total
+                      </td>
+                      <td className="px-4 py-4 text-right font-black text-lg text-cyan-300">
+                        {r7ReportData.total_unique_students}
+                      </td>
+                    </tr>
+                  </>
+                ) : (
+                  <tr><td colSpan={3} className="px-4 py-8 text-center text-slate-500">No enrollment records found for the selected criteria.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-10 text-center text-slate-400 mt-4">
+          <Users size={32} className="mx-auto mb-3 opacity-30" />
+          <p className="text-sm font-semibold uppercase tracking-widest">No report generated yet</p>
+          <p className="mt-2 text-xs">Choose a date range above, then click Generate Report.</p>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════
+          REPORT 8: ATTENDANCE SHEET (LEGAL SIZE)
+      ════════════════════════════════════════════════════════════════ */}
+      <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-100 shadow-sm mt-8">
+        <div className="mb-4">
+          <div className="flex items-center gap-3 mb-1">
+            <span className="inline-flex items-center justify-center rounded-xl bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1.5 shadow-sm shrink-0">
+              Report 8
+            </span>
+            <h2 className="text-xl sm:text-2xl font-bold text-slate-900 uppercase tracking-tight font-poppins">
+              Attendance Sheet (Legal Size)
+            </h2>
+          </div>
+          <p className="text-slate-500 text-sm mt-0.5 font-medium font-inter">
+            Generate an attendance sheet for a specific subject and batch. Designed for Legal Landscape printing.
+          </p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Subject</label>
+            <select
+              value={r8Subject}
+              onChange={(event) => handleR8SubjectChange(event.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-medium text-slate-900"
+            >
+              <option value="">Select Subject</option>
+              {allSubjects.map((subject) => (
+                <option key={subject.id} value={subject.id}>{subject.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Batch</label>
+            <select
+              value={r8Batch}
+              onChange={(event) => setR8Batch(event.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-medium text-slate-900"
+            >
+              <option value="ALL">All Batches</option>
+              {r8Batches.map((batch) => (
+                <option key={batch} value={batch}>{batch}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-end">
+            <button onClick={generateAttendanceSheet} disabled={r8Loading}
+              className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800 disabled:opacity-50">
+              {r8Loading ? <Loader2 size={16} className="animate-spin" /> : <Users size={16} />}
+              Generate Sheet Preview
+            </button>
+          </div>
+        </div>
+        {r8ReportData && !r8Loading && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button onClick={() => handleR8Download('CSV')} disabled={!!r8Downloading}
+              className="inline-flex items-center gap-2 rounded-2xl bg-emerald-50 px-4 py-3 text-xs font-bold uppercase tracking-widest text-emerald-600 border border-emerald-100 disabled:opacity-50">
+              {r8Downloading === 'CSV' ? <Loader2 size={12} className="animate-spin" /> : <Download size={14} />}
+              Download CSV
+            </button>
+            <button onClick={() => handleR8Download('PDF')} disabled={!!r8Downloading}
+              className="inline-flex items-center gap-2 rounded-2xl bg-slate-100 px-4 py-3 text-xs font-bold uppercase tracking-widest text-slate-900 border border-slate-200 disabled:opacity-50">
+              {r8Downloading === 'PDF' ? <Loader2 size={12} className="animate-spin" /> : <FileText size={14} />}
+              Download PDF (Legal)
+            </button>
+          </div>
+        )}
+      </div>
+
+      {r8Loading ? (
+        <div className="rounded-2xl border border-slate-100 bg-white p-8 text-center text-slate-500 shadow-sm mt-4">
+          <Loader2 size={18} className="mx-auto mb-3 animate-spin" />
+          <p className="text-sm font-semibold uppercase tracking-widest">Loading attendance data...</p>
+        </div>
+      ) : r8ReportData ? (
+        <div className="space-y-4 mt-4">
+           <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 flex items-center gap-3">
+            <TrendingUp size={18} className="text-amber-600" />
+            <p className="text-xs text-amber-800 font-medium">
+              Previewing {r8ReportData.rows.length} students. PDF version is optimized for Legal Landscape printing.
+            </p>
+          </div>
+          <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm">
+            <table className="min-w-full divide-y divide-slate-200 text-[10px]">
+              <thead className="bg-slate-900 text-white">
+                <tr>
+                  <th className="px-2 py-3 text-center font-bold uppercase tracking-widest w-10 border-r border-slate-700">Sr.</th>
+                  <th className="px-2 py-3 text-left font-bold uppercase tracking-widest w-40 border-r border-slate-700">Student Name</th>
+                  <th className="px-2 py-3 text-center font-bold uppercase tracking-widest w-20 border-r border-slate-700">Student ID</th>
+                  {Array.from({ length: 29 }, (_, i) => (
+                    <th key={i + 1} className="px-1 py-3 text-center font-bold border-r border-slate-700 w-6">{i + 1}</th>
+                  ))}
+                  <th className="px-2 py-3 text-center font-bold w-6 border-r border-slate-700">M</th>
+                  <th className="px-2 py-3 text-center font-bold w-6">I</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {r8ReportData.rows.map((row: any, index: number) => (
+                  <tr key={row.student_id + index} className={index % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                    <td className="px-2 py-2 text-center font-medium text-slate-400 border-r border-slate-100">{index + 1}</td>
+                    <td className="px-2 py-2 font-bold text-slate-900 border-r border-slate-100 uppercase">{row.student_name}</td>
+                    <td className="px-2 py-2 text-center font-mono text-slate-600 border-r border-slate-100">{row.student_id}</td>
+                    {Array.from({ length: 29 }, (_, i) => (
+                      <td key={i + 1} className="px-1 py-2 border-r border-slate-100"></td>
+                    ))}
+                    <td className="px-2 py-2 border-r border-slate-100"></td>
+                    <td className="px-2 py-2"></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-10 text-center text-slate-400 mt-4">
+          <Users size={32} className="mx-auto mb-3 opacity-30" />
+          <p className="text-sm font-semibold uppercase tracking-widest">No preview generated yet</p>
+          <p className="mt-2 text-xs">Select subject and batch above, then click Generate Sheet Preview.</p>
         </div>
       )}
 

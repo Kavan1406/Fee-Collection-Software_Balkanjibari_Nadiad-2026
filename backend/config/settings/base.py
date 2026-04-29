@@ -42,6 +42,8 @@ CORS_ALLOWED_ORIGIN_REGEXES = [
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:3000',
     'http://127.0.0.1:3000',
+    'http://localhost:3001',
+    'http://127.0.0.1:3001',
     'https://www.balkanjibari.org',
     'https://balkanjibari.org',
     'https://fee-collection-software-balkanjibar.vercel.app',

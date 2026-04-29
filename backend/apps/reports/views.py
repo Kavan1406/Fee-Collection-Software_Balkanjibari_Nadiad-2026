@@ -15,8 +15,12 @@ from .serializers import PaymentReportSerializer, EnrollmentReportSerializer
 from .utils import (
     generate_payment_report_csv,
     generate_enrollment_report_csv,
+    generate_subject_student_report_csv,
     generate_payment_report_pdf,
     generate_enrollment_report_pdf,
+    generate_subject_student_report_pdf,
+    generate_attendance_sheet_csv,
+    generate_attendance_sheet_pdf,
 )
 
 
@@ -265,3 +269,189 @@ class ReportsViewSet(viewsets.ViewSet):
                 'success': False,
                 'error': str(e),
             }, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['get'], url_path='subject-students')
+    def subject_student_report(self, request):
+        """
+        Get Subject-wise Total Students Report
+        """
+        try:
+            start_date, end_date, start_datetime, end_datetime = self._get_date_range(request)
+            
+            report_data = []
+            all_subjects = Subject.objects.filter(is_deleted=False, is_active=True).order_by('name')
+            
+            for sub in all_subjects:
+                count = Enrollment.objects.filter(
+                    subject=sub,
+                    is_deleted=False,
+                    created_at__gte=start_datetime,
+                    created_at__lte=end_datetime
+                ).values('student').distinct().count()
+                
+                report_data.append({
+                    'subject_name': sub.name,
+                    'student_count': count
+                })
+            
+            return Response({
+                'success': True,
+                'start_date': start_date.isoformat(),
+                'end_date': end_date.isoformat(),
+                'data': report_data,
+                'total_unique_students': sum(item['student_count'] for item in report_data)
+            })
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e),
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['get'], url_path='subject-students/export/csv')
+    def export_subject_student_report_csv(self, request):
+        """Export Subject-wise Total Students Report as CSV"""
+        try:
+            start_date, end_date, start_datetime, end_datetime = self._get_date_range(request)
+            
+            report_data = []
+            all_subjects = Subject.objects.filter(is_deleted=False, is_active=True).order_by('name')
+            for sub in all_subjects:
+                count = Enrollment.objects.filter(
+                    subject=sub,
+                    is_deleted=False,
+                    created_at__gte=start_datetime,
+                    created_at__lte=end_datetime
+                ).values('student').distinct().count()
+                report_data.append({'subject_name': sub.name, 'student_count': count})
+            
+            csv_content = generate_subject_student_report_csv(report_data)
+            response = HttpResponse(csv_content, content_type='text/csv')
+            response['Content-Disposition'] = f'attachment; filename="subject_students_report_{start_date}_{end_date}.csv"'
+            return response
+        except Exception as e:
+            return Response({'success': False, 'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['get'], url_path='subject-students/export/pdf')
+    def export_subject_student_report_pdf(self, request):
+        """Export Subject-wise Total Students Report as PDF"""
+        try:
+            start_date, end_date, start_datetime, end_datetime = self._get_date_range(request)
+            
+            report_data = []
+            all_subjects = Subject.objects.filter(is_deleted=False, is_active=True).order_by('name')
+            for sub in all_subjects:
+                count = Enrollment.objects.filter(
+                    subject=sub,
+                    is_deleted=False,
+                    created_at__gte=start_datetime,
+                    created_at__lte=end_datetime
+                ).values('student').distinct().count()
+                report_data.append({'subject_name': sub.name, 'student_count': count})
+            
+            pdf_buffer = generate_subject_student_report_pdf(report_data)
+            response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="subject_students_report_{start_date}_{end_date}.pdf"'
+            return response
+        except Exception as e:
+            return Response({'success': False, 'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['get'], url_path='attendance-sheet')
+    def attendance_sheet(self, request):
+        """Get Attendance Sheet data"""
+        try:
+            subject_id = request.query_params.get('subject_id')
+            batch = request.query_params.get('batch')
+            
+            if not subject_id:
+                return Response({'success': False, 'error': 'Subject ID is required'}, status=status.HTTP_400_BAD_REQUEST)
+                
+            subject = Subject.objects.get(id=subject_id, is_deleted=False)
+            enrollments = Enrollment.objects.filter(
+                subject=subject,
+                is_deleted=False,
+                student__is_deleted=False,
+                student__status='ACTIVE'
+            )
+            
+            if batch:
+                enrollments = enrollments.filter(batch_time=batch)
+                
+            enrollments = enrollments.select_related('student').order_by('student__first_name', 'student__last_name')
+            
+            report_data = []
+            for enr in enrollments:
+                report_data.append({
+                    'student_name': f"{enr.student.first_name} {enr.student.last_name}".upper(),
+                    'student_id': enr.student.student_id
+                })
+                
+            return Response({
+                'success': True,
+                'subject_name': subject.name,
+                'batch_time': batch or 'ALL BATCHES',
+                'rows': report_data
+            })
+        except Exception as e:
+            return Response({'success': False, 'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['get'], url_path='attendance-sheet/export/csv')
+    def export_attendance_sheet_csv(self, request):
+        """Export Attendance Sheet as CSV"""
+        try:
+            subject_id = request.query_params.get('subject_id')
+            batch = request.query_params.get('batch')
+            
+            subject = Subject.objects.get(id=subject_id, is_deleted=False)
+            enrollments = Enrollment.objects.filter(
+                subject=subject,
+                is_deleted=False,
+                student__is_deleted=False,
+                student__status='ACTIVE'
+            )
+            if batch: enrollments = enrollments.filter(batch_time=batch)
+            enrollments = enrollments.select_related('student').order_by('student__first_name', 'student__last_name')
+            
+            report_data = []
+            for enr in enrollments:
+                report_data.append({
+                    'student_name': f"{enr.student.first_name} {enr.student.last_name}".upper(),
+                    'student_id': enr.student.student_id
+                })
+                
+            csv_content = generate_attendance_sheet_csv(report_data, subject.name, batch or 'ALL BATCHES')
+            response = HttpResponse(csv_content, content_type='text/csv')
+            response['Content-Disposition'] = f'attachment; filename="attendance_sheet_{subject.name}_{batch or "all"}.csv"'
+            return response
+        except Exception as e:
+            return Response({'success': False, 'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['get'], url_path='attendance-sheet/export/pdf')
+    def export_attendance_sheet_pdf(self, request):
+        """Export Attendance Sheet as PDF (Legal Landscape)"""
+        try:
+            subject_id = request.query_params.get('subject_id')
+            batch = request.query_params.get('batch')
+            
+            subject = Subject.objects.get(id=subject_id, is_deleted=False)
+            enrollments = Enrollment.objects.filter(
+                subject=subject,
+                is_deleted=False,
+                student__is_deleted=False,
+                student__status='ACTIVE'
+            )
+            if batch: enrollments = enrollments.filter(batch_time=batch)
+            enrollments = enrollments.select_related('student').order_by('student__first_name', 'student__last_name')
+            
+            report_data = []
+            for enr in enrollments:
+                report_data.append({
+                    'student_name': f"{enr.student.first_name} {enr.student.last_name}".upper(),
+                    'student_id': enr.student.student_id
+                })
+                
+            pdf_buffer = generate_attendance_sheet_pdf(report_data, subject.name, batch or 'ALL BATCHES')
+            response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="attendance_sheet_{subject.name}_{batch or "all"}.pdf"'
+            return response
+        except Exception as e:
+            return Response({'success': False, 'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)

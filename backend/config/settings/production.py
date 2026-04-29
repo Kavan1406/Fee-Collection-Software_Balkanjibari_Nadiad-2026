@@ -8,7 +8,7 @@ import os
 from decouple import config
 
 # Host and Security Settings
-DEBUG = config("DEBUG", default=False, cast=bool)
+DEBUG = True  # TEMPORARY: Enabled for deep diagnostic of CORS/500 issues
 ALLOWED_HOSTS = [
     "*",
     "www.balkanjibari.org",
@@ -22,16 +22,21 @@ ALLOWED_HOSTS = [
     "127.0.0.1",
 ]
 
-# CORS Configuration - PERMANENT FIX
-CORS_ALLOW_ALL_ORIGINS = False
+# CORS Configuration - LIBERATION MODE
+CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://.*\.balkanjibari\.org$",
     r"^https://.*\.vercel\.app$",
     r"^https://.*\.onrender\.com$",
+    r"^http://localhost(:\d+)?$",
+    r"^http://127\.0\.0\.1(:\d+)?$",
 ]
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
     "https://www.balkanjibari.org",
     "https://balkanjibari.org",
     "https://balkanji-bari-dashboard.vercel.app",
@@ -93,8 +98,13 @@ CSRF_TRUSTED_ORIGINS = [
     "https://fee-collection-software-balkanjibar.vercel.app",
     "https://admin-student-dashboard-ui.vercel.app",
     "https://balkanji-backend-ai5a.onrender.com",
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:3001",
     "https://*.vercel.app",
     "https://*.onrender.com",
+    "https://*.balkanjibari.org",
 ]
 
 # Time Zone
@@ -105,10 +115,13 @@ USE_X_FORWARDED_HOST = True
 USE_X_FORWARDED_PORT = True
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
-# Security Headers for Render
-SECURE_SSL_REDIRECT = config("SECURE_SSL_REDIRECT", default=not DEBUG, cast=bool)
+# Security Headers for Render - DIAGNOSTIC OVERWRITE
+SECURE_SSL_REDIRECT = False  # Set to False to prevent infinite redirect loops behind proxy
 SESSION_COOKIE_SECURE = config("SESSION_COOKIE_SECURE", default=not DEBUG, cast=bool)
 CSRF_COOKIE_SECURE = config("CSRF_COOKIE_SECURE", default=not DEBUG, cast=bool)
+SECURE_HSTS_SECONDS = 0
+SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+SECURE_HSTS_PRELOAD = False
 
 # Ensure Whitenoise is in middleware (it's in base, but let's be sure)
 if "whitenoise.middleware.WhiteNoiseMiddleware" not in MIDDLEWARE:
