@@ -261,26 +261,11 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
       
       // Normalize registration requests to match the row format
       const regRequests = (regRequestResponse.data || regRequestResponse.results || []).map((req: any) => {
-        // Extract subject names from subjects_data
-        let subjectNames = 'General';
-        if (Array.isArray(req.subjects_data) && req.subjects_data.length > 0) {
-          subjectNames = req.subjects_data
-            .map((s: any) => s.subject_name || s.name || 'Subject')
-            .join(', ');
-        } else if (typeof req.subjects_data === 'string' && req.subjects_data.length > 2) {
-          try {
-            const parsed = JSON.parse(req.subjects_data);
-            if (Array.isArray(parsed)) {
-              subjectNames = parsed.map((s: any) => s.subject_name || s.name || 'Subject').join(', ');
-            }
-          } catch (e) {}
-        }
-
         return {
           request_id: req.id,
-          student_id: req.student_id || `REQ-${req.id}`,
+          student_id: req.predicted_student_id || req.student_id || `REQ-${req.id}`,
           student_name: req.name,
-          subject: subjectNames,
+          subject: req.subject_names || 'General',
           total_fees: Number(req.total_fees || 0),
           status: req.status,
           payment_status: req.status === 'PENDING' ? 'PENDING' : (req.status === 'ACCEPTED' ? 'SUCCESS' : 'FAILED'),

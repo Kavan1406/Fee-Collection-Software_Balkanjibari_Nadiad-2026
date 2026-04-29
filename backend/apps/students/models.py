@@ -253,6 +253,28 @@ class StudentRegistrationRequest(models.Model):
         ordering = ['-created_at']
 
     @property
+    def subject_names(self):
+        """Extract subject names from subjects_data."""
+        if not self.subjects_data or not isinstance(self.subjects_data, list):
+            return "General"
+        
+        names = []
+        for item in self.subjects_data:
+            name = item.get('subject_name') or item.get('name')
+            if name:
+                names.append(name)
+            else:
+                # Try to fetch from DB if only ID is present
+                try:
+                    from apps.subjects.models import Subject
+                    s = Subject.objects.get(id=item.get('subject_id'))
+                    names.append(s.name)
+                except:
+                    names.append("Subject")
+        
+        return ", ".join(names) if names else "General"
+
+    @property
     def total_fees(self):
         """Calculate total fees from subjects_data."""
         from decimal import Decimal

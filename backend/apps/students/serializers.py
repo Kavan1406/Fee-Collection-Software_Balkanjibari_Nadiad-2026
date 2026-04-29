@@ -773,6 +773,7 @@ class StudentRegistrationRequestAdminSerializer(serializers.ModelSerializer):
     """Admin serializer for viewing registration requests with full details."""
 
     created_student_id = serializers.SerializerMethodField()
+    predicted_student_id = serializers.SerializerMethodField()
     photo = serializers.SerializerMethodField()
 
     class Meta:
@@ -783,8 +784,29 @@ class StudentRegistrationRequestAdminSerializer(serializers.ModelSerializer):
             'name', 'age', 'gender', 'date_of_birth', 'photo',
             'parent_name', 'phone', 'email', 'address', 'area', 'blood_group',
             'enrollment_date', 'payment_method', 'subjects_data',
-            'total_fees', 'created_student_id', 'created_at', 'updated_at',
+            'total_fees', 'subject_names', 'created_student_id', 'predicted_student_id', 'created_at', 'updated_at',
         ]
+
+    def get_predicted_student_id(self, obj):
+        """Predict the next sequential student ID."""
+        if obj.status == 'ACCEPTED' and obj.created_student:
+            return obj.created_student.student_id
+            
+        from .models import Student
+        from django.db.models.functions import Cast, Substr
+        from django.db.models import IntegerField, Max
+        
+        # Find the maximum numeric part of existing STU IDs
+        max_id_val = Student.objects.filter(
+            student_id__startswith='STU'
+        ).aggregate(
+            max_val=Max(
+                Cast(Substr('student_id', 4), IntegerField())
+            )
+        )['max_val']
+
+        new_id = (max_id_val + 1) if max_id_val else 1
+        return f'STU{new_id:03d}'
 
     def get_photo(self, obj):
         if not obj.photo:
