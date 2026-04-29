@@ -783,7 +783,7 @@ class StudentRegistrationRequestAdminSerializer(serializers.ModelSerializer):
             'name', 'age', 'gender', 'date_of_birth', 'photo',
             'parent_name', 'phone', 'email', 'address', 'area', 'blood_group',
             'enrollment_date', 'payment_method', 'subjects_data',
-            'created_student_id', 'created_at', 'updated_at',
+            'total_fees', 'created_student_id', 'created_at', 'updated_at',
         ]
 
     def get_photo(self, obj):

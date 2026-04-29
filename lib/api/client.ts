@@ -271,7 +271,8 @@ const requestCache = new Map<string, {
 const REQUEST_DEDUP_WINDOW = 100; // milliseconds
 
 const createRequestKey = (config: any) => {
-  return `${config.method}-${config.url}-${JSON.stringify(config.params)}`;
+  const paramsStr = config.params ? JSON.stringify(config.params) : '{}';
+  return `${config.method}-${config.url}-${paramsStr}`;
 };
 
 // Wrap apiClient methods to deduplicate requests

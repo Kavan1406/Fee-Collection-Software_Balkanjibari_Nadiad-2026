@@ -260,18 +260,35 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
       const paymentCollected = paymentResponses.flatMap((response: any) => response?.data || [])
       
       // Normalize registration requests to match the row format
-      const regRequests = (regRequestResponse.data || regRequestResponse.results || []).map((req: any) => ({
-        request_id: req.id,
-        student_id: req.student_id || `REQ-${req.id}`,
-        student_name: req.name,
-        subject: req.subjects_data?.map((s: any) => s.subject_name).join(', ') || 'General',
-        total_fees: req.total_fees || 0,
-        status: req.status,
-        payment_status: req.status === 'PENDING' ? 'PENDING' : (req.status === 'ACCEPTED' ? 'SUCCESS' : 'FAILED'),
-        payment_mode: req.payment_method || 'CASH',
-        created_at: req.created_at,
-        is_registration: true // Flag to distinguish
-      }))
+      const regRequests = (regRequestResponse.data || regRequestResponse.results || []).map((req: any) => {
+        // Extract subject names from subjects_data
+        let subjectNames = 'General';
+        if (Array.isArray(req.subjects_data) && req.subjects_data.length > 0) {
+          subjectNames = req.subjects_data
+            .map((s: any) => s.subject_name || s.name || 'Subject')
+            .join(', ');
+        } else if (typeof req.subjects_data === 'string' && req.subjects_data.length > 2) {
+          try {
+            const parsed = JSON.parse(req.subjects_data);
+            if (Array.isArray(parsed)) {
+              subjectNames = parsed.map((s: any) => s.subject_name || s.name || 'Subject').join(', ');
+            }
+          } catch (e) {}
+        }
+
+        return {
+          request_id: req.id,
+          student_id: req.student_id || `REQ-${req.id}`,
+          student_name: req.name,
+          subject: subjectNames,
+          total_fees: Number(req.total_fees || 0),
+          status: req.status,
+          payment_status: req.status === 'PENDING' ? 'PENDING' : (req.status === 'ACCEPTED' ? 'SUCCESS' : 'FAILED'),
+          payment_mode: req.payment_method || 'CASH',
+          created_at: req.created_at,
+          is_registration: true // Flag to distinguish
+        };
+      })
 
       setRows([...paymentCollected, ...regRequests])
     } catch (err: any) {
@@ -356,6 +373,25 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
     const ok = window.confirm(`${actionLabel} for ${groupedRequest.student_name} - Total: ₹${totalAmount.toLocaleString('en-IN')}?`)
     if (!ok) return
 
+    // Move window.open to the very beginning to avoid pop-up blockers
+    // We open tabs early and then redirect them later
+    const docTabs: { receipt?: Window | null; idCard?: Window | null }[] = []
+    
+    // We'll open one pair of tabs for now, or multiple if we know the count
+    // Since we don't know the exact count yet, we'll open at least one pair 
+    // and handle the rest after the async call if needed (though browser might block those)
+    const primaryReceiptTab = window.open('about:blank', '_blank')
+    const primaryIdCardTab = window.open('about:blank', '_blank')
+
+    if (primaryReceiptTab) {
+      primaryReceiptTab.document.title = 'Generating receipt...'
+      primaryReceiptTab.document.body.innerHTML = '<p style="font-family: Arial, sans-serif; padding: 16px;">Generating receipt PDF...</p>'
+    }
+    if (primaryIdCardTab) {
+      primaryIdCardTab.document.title = 'Generating ID card...'
+      primaryIdCardTab.document.body.innerHTML = '<p style="font-family: Arial, sans-serif; padding: 16px;">Generating ID card PDF...</p>'
+    }
+
     try {
       setProcessingId(uniqueRequests[0]?.request_id || 0)
       notifyInfo(`Processing ${isRegistration ? 'registration' : 'payment'} and generating documents...`)
@@ -370,6 +406,8 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
         if (result.success) {
            enrollmentIds = result.enrollment_ids || [result.enrollment_id].filter(Boolean) as number[]
            paymentIds = result.payment_ids || [result.payment_id].filter(Boolean) as number[]
+        } else {
+           throw new Error(result.error?.message || 'Failed to accept registration')
         }
       } else {
         // Use paymentsApi.acceptOfflineRequest
@@ -396,39 +434,38 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
       }
 
       if (enrollmentIds.length === 0 && paymentIds.length === 0) {
+          if (primaryReceiptTab) primaryReceiptTab.close()
+          if (primaryIdCardTab) primaryIdCardTab.close()
           notifySuccess('Action completed successfully.')
           await fetchPendingCashRequests()
           return
       }
 
-      // Open receipt tab
-      const receiptTab = window.open('about:blank', '_blank')
-      if (receiptTab) {
-        receiptTab.document.title = 'Generating receipt...'
-        receiptTab.document.body.innerHTML = '<p style="font-family: Arial, sans-serif; padding: 16px;">Generating receipt PDF...</p>'
-      }
-
-      // Open ID card tab
-      const idCardTab = window.open('about:blank', '_blank')
-      if (idCardTab) {
-        idCardTab.document.title = 'Generating ID card...'
-        idCardTab.document.body.innerHTML = '<p style="font-family: Arial, sans-serif; padding: 16px;">Generating ID card PDF...</p>'
-      }
-
-      // Generate and open documents for the primary (or consolidated) record
+      // Fill the primary tabs
       const primaryEnrollmentId = enrollmentIds[0]
       const primaryPaymentId = paymentIds[0]
 
       const docResults = await Promise.allSettled([
-        receiptTab && primaryPaymentId ? paymentsApi.openReceiptInNewTab(primaryPaymentId, receiptTab) : Promise.resolve(),
-        idCardTab && primaryEnrollmentId ? enrollmentsApi.openIdCardInNewTab(primaryEnrollmentId, idCardTab) : Promise.resolve(),
-        primaryPaymentId ? paymentsApi.downloadReceipt(primaryPaymentId) : Promise.resolve(),
-        primaryEnrollmentId ? enrollmentsApi.downloadIdCard(primaryEnrollmentId) : Promise.resolve()
+        primaryReceiptTab && primaryPaymentId ? paymentsApi.openReceiptInNewTab(primaryPaymentId, primaryReceiptTab) : Promise.resolve(),
+        primaryIdCardTab && primaryEnrollmentId ? enrollmentsApi.openIdCardInNewTab(primaryEnrollmentId, primaryIdCardTab) : Promise.resolve(),
+        // Also trigger background downloads
+        ...paymentIds.map(pid => paymentsApi.downloadReceipt(pid)),
+        ...enrollmentIds.map(eid => enrollmentsApi.downloadIdCard(eid))
       ])
+
+      // If there are more subjects, we try to open them too (might be blocked, but we try)
+      if (enrollmentIds.length > 1) {
+        for (let i = 1; i < enrollmentIds.length; i++) {
+           const eid = enrollmentIds[i]
+           const pid = paymentIds[i]
+           if (pid) paymentsApi.downloadReceipt(pid)
+           if (eid) enrollmentsApi.downloadIdCard(eid)
+        }
+      }
 
       notifySuccess(`${isRegistration ? 'Registration' : 'Payment'} accepted and documents generated.`)
 
-      if (!idCardTab || idCardTab.closed) {
+      if ((primaryIdCardTab && primaryIdCardTab.closed) || !primaryIdCardTab) {
         notifyInfo('Browser blocked pop-ups. Please allow them to auto-open documents.')
       }
 

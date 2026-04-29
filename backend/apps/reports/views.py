@@ -376,12 +376,12 @@ class ReportsViewSet(viewsets.ViewSet):
             if batch:
                 enrollments = enrollments.filter(batch_time=batch)
                 
-            enrollments = enrollments.select_related('student').order_by('student__first_name', 'student__last_name')
+            enrollments = enrollments.select_related('student').order_by('student__name')
             
             report_data = []
             for enr in enrollments:
                 report_data.append({
-                    'student_name': f"{enr.student.first_name} {enr.student.last_name}".upper(),
+                    'student_name': str(enr.student.name).upper(),
                     'student_id': enr.student.student_id
                 })
                 
@@ -409,12 +409,12 @@ class ReportsViewSet(viewsets.ViewSet):
                 student__status='ACTIVE'
             )
             if batch: enrollments = enrollments.filter(batch_time=batch)
-            enrollments = enrollments.select_related('student').order_by('student__first_name', 'student__last_name')
+            enrollments = enrollments.select_related('student').order_by('student__name')
             
             report_data = []
             for enr in enrollments:
                 report_data.append({
-                    'student_name': f"{enr.student.first_name} {enr.student.last_name}".upper(),
+                    'student_name': str(enr.student.name).upper(),
                     'student_id': enr.student.student_id
                 })
                 
@@ -440,12 +440,12 @@ class ReportsViewSet(viewsets.ViewSet):
                 student__status='ACTIVE'
             )
             if batch: enrollments = enrollments.filter(batch_time=batch)
-            enrollments = enrollments.select_related('student').order_by('student__first_name', 'student__last_name')
+            enrollments = enrollments.select_related('student').order_by('student__name')
             
             report_data = []
             for enr in enrollments:
                 report_data.append({
-                    'student_name': f"{enr.student.first_name} {enr.student.last_name}".upper(),
+                    'student_name': str(enr.student.name).upper(),
                     'student_id': enr.student.student_id
                 })
                 

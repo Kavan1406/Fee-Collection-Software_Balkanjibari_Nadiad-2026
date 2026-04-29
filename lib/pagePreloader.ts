@@ -89,19 +89,13 @@ export function preloadRolePages(userRole: 'admin' | 'staff' | 'student' | 'acco
 
 /**
  * Preload pages on hover over navigation items
+ * (Aggressive idle preloading disabled to prevent browser 'preloaded but not used' warnings)
  */
 export function setupPagePrefetching(userId: string | undefined): void {
-  if (!userId) return
-
-  // Preload on idle after a short delay
-  if ('requestIdleCallback' in window) {
-    requestIdleCallback(() => {
-      // Preload common pages for better UX
-      ['students', 'payments', 'enrollments', 'analytics'].forEach(page => {
-        preloadPage(page)
-      })
-    }, { timeout: 5000 })
-  }
+  if (!userId) return;
+  
+  // We no longer pre-fetch on idle by default to save bandwidth and keep logs clean.
+  // The hover-based prefetching in the Sidebar provides enough snappiness.
 }
 
 /**

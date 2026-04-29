@@ -153,25 +153,30 @@ class Student(models.Model):
     def save(self, *args, **kwargs):
         # Auto-generate student_id if not set
         if not self.student_id:
-            while True:
-                last_student = Student.objects.filter(
-                    student_id__startswith='STU'
-                ).order_by('student_id').last()
-                
-                if last_student:
-                    try:
-                        last_id = int(last_student.student_id[3:])
-                        new_id = last_id + 1
-                    except (ValueError, TypeError, IndexError):
-                        new_id = Student.objects.filter(student_id__startswith='STU').count() + 1
-                else:
-                    new_id = 1
-                
-                candidate_id = f'STU{new_id:03d}'
-                if not Student.objects.filter(student_id=candidate_id).exists():
-                    self.student_id = candidate_id
-                    break
-                # If exists, loop will continue and find the next one
+            from django.db.models.functions import Cast, Substr
+            from django.db.models import IntegerField, Max
+            
+            # Find the maximum numeric part of existing STU IDs
+            max_id_val = Student.objects.filter(
+                student_id__startswith='STU'
+            ).aggregate(
+                max_val=Max(
+                    Cast(Substr('student_id', 4), IntegerField())
+                )
+            )['max_val']
+
+            if max_id_val:
+                new_id = max_id_val + 1
+            else:
+                new_id = 1
+            
+            # Use 3-digit padding (STU001) but allow it to grow (STU1000)
+            self.student_id = f'STU{new_id:03d}'
+            
+            # Final safety check for collisions
+            while Student.objects.filter(student_id=self.student_id).exists():
+                new_id += 1
+                self.student_id = f'STU{new_id:03d}'
         
         super().save(*args, **kwargs)
 
@@ -246,6 +251,38 @@ class StudentRegistrationRequest(models.Model):
     class Meta:
         db_table = 'student_registration_requests'
         ordering = ['-created_at']
+
+    @property
+    def total_fees(self):
+        """Calculate total fees from subjects_data."""
+        from decimal import Decimal
+        total = Decimal('0.00')
+        if not self.subjects_data or not isinstance(self.subjects_data, list):
+            return total
+            
+        for i, item in enumerate(self.subjects_data):
+            # Try to get fee from the data itself if stored
+            fee_val = item.get('total_fee') or item.get('fee') or item.get('fee_amount')
+            if fee_val is not None:
+                total += Decimal(str(fee_val))
+            else:
+                # Fallback to fetching from Subject model if possible (expensive in list view, but okay for single)
+                try:
+                    from apps.subjects.models import Subject
+                    subject = Subject.objects.get(id=item.get('subject_id'))
+                    curr_fee = subject.current_fee
+                    if curr_fee:
+                        s_fee = Decimal(str(curr_fee.fee_amount))
+                    elif subject.monthly_fee:
+                        s_fee = Decimal(str(subject.monthly_fee))
+                    else:
+                        s_fee = Decimal('0.00')
+                    
+                    lib_fee = Decimal('10.00') if i == 0 else Decimal('0.00')
+                    total += s_fee + lib_fee
+                except:
+                    pass
+        return total
 
     def __str__(self):
         return f"RegistrationRequest({self.name}, {self.status})"
