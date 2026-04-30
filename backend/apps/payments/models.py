@@ -156,17 +156,17 @@ class Payment(models.Model):
             from datetime import datetime
             year = datetime.now().year
             
-            last_payment = Payment.objects.filter(
+            payments = Payment.objects.filter(
                 payment_id__startswith=f'PAY-{year}'
-            ).order_by('payment_id').last()
+            ).values_list('payment_id', flat=True)
             
-            if last_payment:
-                last_num = int(last_payment.payment_id.split('-')[2])
-                new_num = last_num + 1
+            if payments:
+                max_num = max(int(pid.split('-')[2]) for pid in payments)
+                new_num = max_num + 1
             else:
                 new_num = 1
             
-            self.payment_id = f'PAY-{year}-{new_num:03d}'
+            self.payment_id = f'PAY-{year}-{new_num:04d}'
         
         # Auto-generate receipt_number only if status is SUCCESS and not already set
         # ONE RECEIPT PER STUDENT: Use the same receipt number for all payments of a student
@@ -190,13 +190,13 @@ class Payment(models.Model):
                     print(f"DEBUG: Reusing receipt number {self.receipt_number} for student {student.student_id}")
                 else:
                     # Generate a new receipt number for this student's first payment
-                    last_receipt = Payment.objects.filter(
+                    receipts = Payment.objects.filter(
                         receipt_number__startswith=f'REC-{year}'
-                    ).order_by('receipt_number').last()
+                    ).values_list('receipt_number', flat=True)
                     
-                    if last_receipt:
-                        last_num = int(last_receipt.receipt_number.split('-')[2])
-                        new_num = last_num + 1
+                    if receipts:
+                        max_num = max(int(rid.split('-')[2]) for rid in receipts)
+                        new_num = max_num + 1
                     else:
                         new_num = 1
                     
