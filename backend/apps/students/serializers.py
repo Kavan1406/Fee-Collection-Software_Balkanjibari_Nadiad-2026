@@ -431,10 +431,9 @@ class StudentCreateSerializer(serializers.ModelSerializer):
                 if payment_method == 'ONLINE':
                     paid_amount = Decimal('0.00')
                     payment_status = 'CREATED'
-                elif payment_method == 'CASH':
-                    # All cash registrations (office or public) start as unpaid in the Enrollment record.
-                    # They will be marked as paid during the "Accept" step in RequestAcceptancePage.
-                    paid_amount = Decimal('0.00')
+                elif payment_method == 'CASH' and is_staff:
+                    # Staff registration via CASH: cashier will confirm and mark SUCCESS
+                    paid_amount = total_fee
                     payment_status = 'PENDING_CONFIRMATION'
                 else:
                     paid_amount = Decimal('0.00')
