@@ -421,7 +421,7 @@ export default function RequestAcceptancePage({ userRole }: RequestAcceptancePag
       if (enrollmentIds.length === 0 && paymentIds.length === 0) {
           if (primaryReceiptTab) primaryReceiptTab.close()
           if (primaryIdCardTab) primaryIdCardTab.close()
-          notifySuccess('Action completed successfully.')
+          notifySuccess('Action completed, but no enrollments or payments were created for this student.')
           await fetchPendingCashRequests()
           return
       }

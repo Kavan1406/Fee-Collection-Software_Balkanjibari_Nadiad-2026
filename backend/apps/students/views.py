@@ -512,29 +512,38 @@ class StudentRegistrationRequestViewSet(viewsets.ModelViewSet):
             if val is not None:
                 student_data[field] = str(val) if not isinstance(val, str) else val
 
-        # Subjects data
-        subjects_data = reg_request.subjects_data or []
-        student_data['enrollments'] = json.dumps(subjects_data)
+        # Subjects data - pass directly as list
+        student_data['enrollments'] = reg_request.subjects_data or []
+        print(f"[DIAGNOSTIC] Accepting request {reg_request.id} for {reg_request.name}. Enrollments: {student_data['enrollments']}")
 
         # Use StudentCreateSerializer to create the student
-        create_serializer = StudentCreateSerializer(data=student_data, context={'request': request})
-        if not create_serializer.is_valid():
+        student = None
+        try:
+            with transaction.atomic():
+                create_serializer = StudentCreateSerializer(data=student_data, context={'request': request})
+                if not create_serializer.is_valid():
+                    return Response({
+                        'success': False,
+                        'error': create_serializer.errors
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+                student = create_serializer.save()
+
+                # Copy photo if present
+                if reg_request.photo:
+                    student.photo = reg_request.photo
+                    student.save()
+
+                # Mark request as accepted and link to student
+                reg_request.status = 'ACCEPTED'
+                reg_request.created_student = student
+                reg_request.save()
+        except Exception as e:
+            logger.error(f"Failed to create student during request acceptance: {str(e)}", exc_info=True)
             return Response({
                 'success': False,
-                'error': create_serializer.errors
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        student = create_serializer.save()
-
-        # Copy photo if present
-        if reg_request.photo:
-            student.photo = reg_request.photo
-            student.save()
-
-        # Mark request as accepted and link to student
-        reg_request.status = 'ACCEPTED'
-        reg_request.created_student = student
-        reg_request.save()
+                'error': {'message': f'Failed to create student: {str(e)}'}
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         # IMPORTANT: Mark all created payments as SUCCESS immediately if CASH
         created_enrollments = student.enrollments.all()

@@ -397,10 +397,6 @@ class StudentCreateSerializer(serializers.ModelSerializer):
             pass
 
         # 3. Process Enrollments
-        print(f"[DIAGNOSTIC] Processing {len(enrollments_data)} enrollments")
-        from decimal import Decimal
-        # 3. Process Enrollments
-        print(f"[DIAGNOSTIC] Processing {len(enrollments_data)} enrollments")
         from decimal import Decimal
         for i, enr_data in enumerate(enrollments_data):
             subject_id = enr_data.get('subject_id')
