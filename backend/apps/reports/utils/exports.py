@@ -2,6 +2,7 @@ import csv
 import io
 from datetime import datetime
 from decimal import Decimal
+import os
 
 try:
     from reportlab.lib.pagesizes import letter, A4, LEGAL, landscape
@@ -547,6 +548,36 @@ def generate_attendance_sheet_pdf(data, subject_name, batch_time):
         bottomMargin=20,
     )
     
+    def draw_watermark(canvas, doc):
+        canvas.saveState()
+        try:
+            # Try to find logo in common locations
+            current_dir = os.path.dirname(os.path.abspath(__file__)) # .../backend/apps/reports/utils/
+            root_dir = os.path.abspath(os.path.join(current_dir, '..', '..', '..', '..'))
+            
+            possible_paths = [
+                os.path.join(root_dir, 'public', 'logo.jpeg'),
+                os.path.join(os.getcwd(), 'public', 'logo.jpeg'),
+                os.path.join(os.getcwd(), '..', 'public', 'logo.jpeg'),
+                '/opt/render/project/src/public/logo.jpeg'
+            ]
+            
+            logo_path = None
+            for p in possible_paths:
+                if os.path.exists(p):
+                    logo_path = p
+                    break
+            
+            if logo_path:
+                canvas.setFillAlpha(0.08) # Subtle watermark
+                # Legal Landscape is 1008 x 612 points
+                w, h = 1008, 612
+                img_size = 4 * 72 # 4 inches
+                canvas.drawImage(logo_path, w/2 - img_size/2, h/2 - img_size/2, width=img_size, height=img_size, mask='auto')
+        except:
+            pass
+        canvas.restoreState()
+
     elements = []
     styles = getSampleStyleSheet()
     
@@ -561,7 +592,8 @@ def generate_attendance_sheet_pdf(data, subject_name, batch_time):
     )
     
     elements.append(Paragraph('NADIAD BALKAN-JI-BARI', header_style))
-    elements.append(Paragraph('ATTENDANCE REPORT', ParagraphStyle('SubHeader', parent=header_style, fontSize=12)))
+    elements.append(Paragraph('BALKANJI BARI SUMMER CAMP 2026', ParagraphStyle('SubHeader', parent=header_style, fontSize=12)))
+    elements.append(Paragraph('ATTENDANCE REPORT 2026', ParagraphStyle('SubHeader', parent=header_style, fontSize=11)))
     elements.append(Spacer(1, 0.1 * inch))
     
     # Info line (Subject and Batch)
@@ -629,6 +661,6 @@ def generate_attendance_sheet_pdf(data, subject_name, batch_time):
     elements.append(table)
     
     # Build
-    doc.build(elements)
+    doc.build(elements, onFirstPage=draw_watermark, onLaterPages=draw_watermark)
     output.seek(0)
     return output
